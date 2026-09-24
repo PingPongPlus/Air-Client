@@ -175,6 +175,53 @@ public final class GlassRenderingTest implements FabricClientGameTest {
         context.setScreen(TitleScreen::new);
         try (var world = context.worldBuilder().create()) {
             context.waitFor(client -> client.player != null && client.gui.overlay() == null);
+            context.runOnClient(client -> {
+                if (!pingplus.voicechat.client.spotify.SpotifySettings.enabled()) pingplus.voicechat.client.spotify.SpotifySettings.toggle();
+            });
+            context.setScreen(() -> new net.minecraft.client.gui.screens.ChatScreen("draft stays here", false));
+            context.waitTicks(10);
+            context.takeScreenshot("spotify-chat-icons");
+            context.runOnClient(client -> {
+                Screen chat = client.gui.screen();
+                var buttons = chat.children().stream().filter(c -> c instanceof Button).map(c -> (Button)c).toList();
+                if (buttons.size() != 3) throw new AssertionError("Spotify icon controls missing");
+                if (pingplus.voicechat.client.spotify.SpotifyClient.INSTANCE.state().playback() == null && buttons.stream().anyMatch(b -> b.active))
+                    throw new AssertionError("Unavailable playback controls must be disabled");
+                var widget = pingplus.voicechat.client.gui.hud.HudEditor.bounds("spotify", chat.width, chat.height);
+                int oldX = (int)Math.round(widget.x()), oldY = (int)Math.round(widget.y());
+                var down = new net.minecraft.client.input.MouseButtonEvent(oldX + 20, oldY + 12, new net.minecraft.client.input.MouseButtonInfo(0, 0));
+                chat.mouseClicked(down, false);
+                var move = new net.minecraft.client.input.MouseButtonEvent(60, 180, new net.minecraft.client.input.MouseButtonInfo(0, 0));
+                if (!chat.mouseDragged(move, 60 - down.x(), 180 - down.y())) throw new AssertionError("HUD drag not handled");
+                chat.mouseReleased(move);
+                var moved = pingplus.voicechat.client.gui.hud.HudEditor.bounds("spotify", chat.width, chat.height);
+                if (Math.round(moved.x()) == oldX && Math.round(moved.y()) == oldY) throw new AssertionError("HUD did not move");
+                var saved = new java.util.Properties();
+                try (var reader = java.nio.file.Files.newBufferedReader(net.fabricmc.loader.api.FabricLoader.getInstance()
+                        .getConfigDir().resolve("voicechat-hud-layout.properties"))) { saved.load(reader); }
+                catch (java.io.IOException e) { throw new AssertionError(e); }
+                if (saved.getProperty("spotify.x") == null || saved.getProperty("spotify.y") == null) throw new AssertionError("Position was not saved");
+            });
+            context.runOnClient(client -> {
+                client.gui.screen().onClose();
+            });
+            context.waitTicks(10);
+            context.takeScreenshot("spotify-persistent-hud");
+            context.setScreen(() -> new pingplus.voicechat.client.gui.ClickGuiScreen(fps,key,coords));
+            context.waitTicks(10);
+            clickCompactButton(context, "Spotify");
+            context.runOnClient(client -> {
+                if (pingplus.voicechat.client.spotify.SpotifySettings.enabled()) throw new AssertionError("ClickGUI did not disable Spotify");
+            });
+            context.takeScreenshot("spotify-clickgui-toggle");
+            clickCompactButton(context, "Spotify");
+            context.runOnClient(client -> {
+                if (!pingplus.voicechat.client.spotify.SpotifySettings.enabled()) throw new AssertionError("ClickGUI did not enable Spotify");
+                // Restore a clean default layout for subsequent captures.
+                pingplus.voicechat.client.spotify.SpotifySettings.position(client.gui.screen().width, 8,
+                        client.gui.screen().width, client.gui.screen().height, 240, 100);
+                pingplus.voicechat.client.spotify.SpotifySettings.save();
+            });
             context.setScreen(() -> new net.minecraft.client.gui.screens.PauseScreen(true));
             context.waitTicks(20);
             context.takeScreenshot("glass-pause");

@@ -49,6 +49,7 @@ public final class ClickGuiScreen extends Screen {
         Category hud = category("HUD", "On-screen information");
         toggle(hud,"Frame rate",fpsHud::isEnabled,fpsHud::toggle);
         toggle(hud,"Coordinates",coordinatesHud::isEnabled,coordinatesHud::toggle);
+        toggle(hud,"Spotify",pingplus.voicechat.client.spotify.SpotifySettings::enabled,pingplus.voicechat.client.spotify.SpotifySettings::toggle);
         Category render = category("RENDER", "See the details");
         toggle(render,"Hitboxes",()->PlayerSettings.hitboxes,()->PlayerSettings.hitboxes=!PlayerSettings.hitboxes);
         Category player = category("PLAYER", "Shape your presence");
