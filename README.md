@@ -3,4 +3,4 @@ Some features are already available like PlayerRendering modifications.
 More features coming soon. 
 Still in development check out a quick demo below!
 
-<img width="2940" height="1912" alt="image" src="https://github.com/user-attachments/assets/83071c3e-dadd-45d8-a14c-b5026df55312" />
+<img width="2940" height="1912" alt="image" src="https://github.com/user-attachments/assets/70b41e6a-6749-4d79-9f84-49677b717280" />
