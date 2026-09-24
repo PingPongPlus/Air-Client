@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.struct.InjectionInfo;
 @Mixin(SplashRenderer.class)
 public abstract class SplashRendererMixin {
 
-    Component customSplash = Component.literal("Made by pingplus");    @Inject(
+    Component customSplash = Component.literal("by pingplus & Immamaster");    @Inject(
             method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;ILnet/minecraft/client/gui/Font;F)V",
             at = @At("HEAD"),
             cancellable = true
