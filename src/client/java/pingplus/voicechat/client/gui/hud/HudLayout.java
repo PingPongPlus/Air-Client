@@ -32,19 +32,27 @@ public final class HudLayout {
         }
     }
     public Bounds bounds(String id, int sw, int sh, int width, int height, double defaultX, double defaultY) {
+        return bounds(id, sw, sh, width, height, defaultX, defaultY, false);
+    }
+    public Bounds bounds(String id, int sw, int sh, int width, int height, double defaultX, double defaultY, boolean growDown) {
         Position p = positions.get(id);
-        double scale = fitted(p == null ? 1 : p.scale(), sw, sh, width, height);
+        int layoutH = growDown ? Math.min(height, 18) : height;
+        double scale = fitted(p == null ? 1 : p.scale(), sw, sh, width, layoutH);
         double w = width * scale, h = height * scale;
-        double roomX = Math.max(0, sw - 16 - w), roomY = Math.max(0, sh - 40 - h);
+        double roomX = Math.max(0, sw - 16 - w), roomY = Math.max(0, sh - 40 - layoutH * scale);
         double x = p == null ? Math.clamp(defaultX, 8, 8 + roomX) : 8 + p.x() * roomX;
         double y = p == null ? Math.clamp(defaultY, 8, 8 + roomY) : 8 + p.y() * roomY;
         return new Bounds(x, y, w, h, scale);
     }
     public void place(String id, double x, double y, double scale, int sw, int sh, int width, int height) {
+        place(id, x, y, scale, sw, sh, width, height, false);
+    }
+    public void place(String id, double x, double y, double scale, int sw, int sh, int width, int height, boolean growDown) {
         double requested = Double.isFinite(scale) ? Math.clamp(scale, .5, 3) : 1;
-        double fit = fitted(requested, sw, sh, width, height);
+        int layoutH = growDown ? Math.min(height, 18) : height;
+        double fit = fitted(requested, sw, sh, width, layoutH);
         positions.put(id, new Position(fraction(x - 8, sw - 16 - width * fit),
-                fraction(y - 8, sh - 40 - height * fit), requested));
+                fraction(y - 8, sh - 40 - layoutH * fit), requested));
     }
     private static double fraction(double offset, double available) {
         return Double.isFinite(offset) && available > 0 ? Math.clamp(offset / available, 0, 1) : 0;

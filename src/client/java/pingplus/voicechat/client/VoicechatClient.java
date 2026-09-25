@@ -13,6 +13,7 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pingplus.voicechat.client.gui.ArraylistHud;
 import pingplus.voicechat.client.gui.ClickGuiScreen;
 import pingplus.voicechat.client.gui.CoordinatesHud;
 import pingplus.voicechat.client.gui.FpsHud;
@@ -46,11 +47,16 @@ public class VoicechatClient implements ClientModInitializer {
         KeyMapping openGuiKey = registerOpenGuiKey();
         HandSwapFeature handSwap = new HandSwapFeature();
 
-        HudEditor.register(new HudEditor.Entry("fps", "FPS", 112, 18, (w,h) -> 18, (w,h) -> 13,
+        ArraylistHud arraylistHud = new ArraylistHud(fpsHud, coordinatesHud);
+
+        HudEditor.register(new HudEditor.Entry("fps", "FPS", () -> 112, () -> 18, (w,h) -> 18, (w,h) -> 13,
                 fpsHud::isEnabled, (g,mx,my,dt,editing) -> fpsHud.render(g), java.util.List::of));
-        HudEditor.register(new HudEditor.Entry("coordinates", "Coordinates", 200, 18, (w,h) -> 18, (w,h) -> 38,
+        HudEditor.register(new HudEditor.Entry("coordinates", "Coordinates", () -> 200, () -> 18, (w,h) -> 18, (w,h) -> 38,
                 coordinatesHud::isEnabled, (g,mx,my,dt,editing) -> coordinatesHud.render(g), java.util.List::of));
-        HudEditor.register(new HudEditor.Entry("spotify", "Spotify", 240, 100,
+        HudEditor.register(new HudEditor.Entry("arraylist", "Arraylist", arraylistHud::width, arraylistHud::height,
+                (w,h) -> w - arraylistHud.width() - 8, (w,h) -> 8,
+                arraylistHud::isEnabled, (g,mx,my,dt,editing) -> arraylistHud.render(g), java.util.List::of, true));
+        HudEditor.register(new HudEditor.Entry("spotify", "Spotify", () -> 240, () -> 100,
                 (w,h) -> SpotifySettings.x(w, 240), (w,h) -> SpotifySettings.y(h, 100),
                 SpotifySettings::enabled, (g,mx,my,dt,editing) -> SpotifyWidget.INSTANCE.render(g,mx,my,dt,editing),
                 () -> SpotifyWidget.INSTANCE.buttons()));
@@ -80,7 +86,8 @@ public class VoicechatClient implements ClientModInitializer {
                             new ClickGuiScreen(
                                     fpsHud,
                                     openGuiKey,
-                                    coordinatesHud
+                                    coordinatesHud,
+                                    arraylistHud
                             )
                     );
                 }
@@ -140,7 +147,7 @@ public class VoicechatClient implements ClientModInitializer {
                 )
         );
 
-        HudEditor.register(new HudEditor.Entry("voice", "Voice status", 300, 78,
+        HudEditor.register(new HudEditor.Entry("voice", "Voice status", () -> 300, () -> 78,
                 (w,h) -> 8, (w,h) -> 70, () -> voice.settings.enabled,
                 (graphics, mx, my, dt, editing) -> {
                     Minecraft client = Minecraft.getInstance();

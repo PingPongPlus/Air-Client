@@ -44,7 +44,16 @@ public final class GlassButtonRenderer {
             GlassStyle.round(graphics, x, y, width, height, 12, GlassStyle.alpha(0xFF263D54, (data >>> 24) / 255f));
             return;
         }
-        if (pipeline == GlassPipelines.BUTTON) data = (data & 0xFFFFFF00) | Math.min(height, 255);
+        if (pipeline == GlassPipelines.BUTTON) {
+            // Green channel packs the enabled bit (bit 7) plus the global corner-radius scale (bits 0-6).
+            boolean enabled = (data & 0x00FF00) != 0;
+            data = (data & 0xFFFF00FF) | (((enabled ? 128 : 0) + GlassCornerSettings.buttonQuant()) << 8);
+            data = (data & 0xFFFFFF00) | Math.min(height, 255);
+        } else {
+            // All control colors are grayscale: keep intensity in red/blue, corner scale (8-bit) in green.
+            int gray = (data >>> 16) & 0xFF;
+            data = (data & 0xFF000000) | (gray << 16) | (GlassCornerSettings.controlQuant() << 8) | gray;
+        }
         GlassBackdrop.request();
         Matrix3x2f pose = new Matrix3x2f(graphics.pose());
         ScreenRectangle scissor = graphics.scissorStack.peek();

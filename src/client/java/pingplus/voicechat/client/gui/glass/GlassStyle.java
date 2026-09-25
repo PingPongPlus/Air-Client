@@ -12,6 +12,7 @@ public final class GlassStyle {
         return (Math.round((color >>> 24) * Math.clamp(alpha, 0, 1)) << 24) | (color & 0xFFFFFF);
     }
     public static void round(GuiGraphicsExtractor g, int x, int y, int w, int h, int r, int color) {
+        r = (int)Math.round(r * GlassCornerSettings.getScale());
         if (w <= 0 || h <= 0 || (color >>> 24) == 0) return;
         // Rasterize the fallback silhouette at physical-pixel resolution, including edge coverage.
         int scale = Math.max(1, (int)Math.ceil(net.minecraft.client.Minecraft.getInstance().getWindow().getGuiScale()));

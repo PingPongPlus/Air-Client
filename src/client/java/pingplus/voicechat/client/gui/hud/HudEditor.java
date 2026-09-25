@@ -15,8 +15,14 @@ import java.util.function.*;
 /** Shared draw transforms and hit testing for every mod HUD widget. Chat owns edit input. */
 public final class HudEditor {
     @FunctionalInterface public interface Renderer { void draw(GuiGraphicsExtractor g, int mx, int my, float dt, boolean editing); }
-    public record Entry(String id, String label, int width, int height, IntBinaryOperator defaultX,
-                        IntBinaryOperator defaultY, BooleanSupplier visible, Renderer renderer, Supplier<List<Button>> controls) {}
+    public record Entry(String id, String label, IntSupplier width, IntSupplier height, IntBinaryOperator defaultX,
+                        IntBinaryOperator defaultY, BooleanSupplier visible, Renderer renderer, Supplier<List<Button>> controls,
+                        boolean growDown) {
+        public Entry(String id, String label, IntSupplier width, IntSupplier height, IntBinaryOperator defaultX,
+                     IntBinaryOperator defaultY, BooleanSupplier visible, Renderer renderer, Supplier<List<Button>> controls) {
+            this(id, label, width, height, defaultX, defaultY, visible, renderer, controls, false);
+        }
+    }
     private static final Map<String, Entry> ENTRIES = new LinkedHashMap<>();
     private static final Map<Button, ControlProxy> PROXIES = new IdentityHashMap<>();
     private static final HudLayout LAYOUT = new HudLayout(FabricLoader.getInstance().getConfigDir().resolve("voicechat-hud-layout.properties"));
@@ -34,7 +40,7 @@ public final class HudEditor {
     }
     public static HudLayout.Bounds bounds(String id, int sw, int sh) {
         Entry e = ENTRIES.get(id);
-        return LAYOUT.bounds(id, sw, sh, e.width(), e.height(), e.defaultX().applyAsInt(sw, sh), e.defaultY().applyAsInt(sw, sh));
+        return LAYOUT.bounds(id, sw, sh, e.width().getAsInt(), e.height().getAsInt(), e.defaultX().applyAsInt(sw, sh), e.defaultY().applyAsInt(sw, sh), e.growDown());
     }
     private static boolean active() {
         var client = Minecraft.getInstance(); return client.player != null && !client.gui.hud.isHidden();
@@ -126,18 +132,19 @@ public final class HudEditor {
     public static boolean drag(double mx, double my) {
         if (selected == null) return false;
         Entry e = ENTRIES.get(selected);
+        int w = e.width().getAsInt(), h = e.height().getAsInt();
         if (resizing) {
             // Project the pointer delta onto the size diagonal: smooth proportional scaling.
-            double delta = ((mx - startX) * e.width() + (my - startY) * e.height()) /
-                    (e.width() * (double)e.width() + e.height() * (double)e.height());
-            LAYOUT.place(selected, initial.x(), initial.y(), initial.scale() + delta, screenWidth, screenHeight, e.width(), e.height());
-        } else LAYOUT.place(selected, initial.x() + mx - startX, initial.y() + my - startY, initial.scale(), screenWidth, screenHeight, e.width(), e.height());
+            double delta = ((mx - startX) * w + (my - startY) * h) /
+                    (w * (double)w + h * (double)h);
+            LAYOUT.place(selected, initial.x(), initial.y(), initial.scale() + delta, screenWidth, screenHeight, w, h, e.growDown());
+        } else LAYOUT.place(selected, initial.x() + mx - startX, initial.y() + my - startY, initial.scale(), screenWidth, screenHeight, w, h, e.growDown());
         dirty = true; return true;
     }
     public static boolean scroll(double mx, double my, double amount) {
         Entry e = hit(mx, my); if (e == null || amount == 0) return false;
         var b = bounds(e.id(), screenWidth, screenHeight);
-        LAYOUT.place(e.id(), b.x(), b.y(), b.scale() + Math.signum(amount) * .1, screenWidth, screenHeight, e.width(), e.height());
+        LAYOUT.place(e.id(), b.x(), b.y(), b.scale() + Math.signum(amount) * .1, screenWidth, screenHeight, e.width().getAsInt(), e.height().getAsInt(), e.growDown());
         save(); return true;
     }
     public static boolean finish() {
