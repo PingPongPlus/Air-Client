@@ -34,4 +34,5 @@ addRenderableWidget(Button.builder(Component.literal("My feature"), button -> {
 The bounds are `x, y, width, height` in GUI coordinates. Move the Close button and
 enlarge the background if needed. No separate button class is required.
 
-The existing coordinates HUD and player Mixins are independent of this menu.
+The HUD category toggles gameplay widgets. To add a feature from logic to the
+on-screen glass panel, see [WIDGETS.md](WIDGETS.md).

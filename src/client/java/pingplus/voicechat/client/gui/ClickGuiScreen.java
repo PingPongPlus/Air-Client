@@ -24,6 +24,7 @@ public final class ClickGuiScreen extends Screen {
     private int canvasWidth, canvasHeight;
     private final FpsHud fpsHud;
     private final CoordinatesHud coordinatesHud;
+    private final ArraylistHud arraylistHud;
     private final KeyMapping openGuiKey;
     private final List<Category> categories = new ArrayList<>();
     private final List<Entry> entries = new ArrayList<>();
@@ -37,9 +38,9 @@ public final class ClickGuiScreen extends Screen {
     private KeyMapping pendingKey;
     private static final Identifier WALLPAPER = Identifier.fromNamespaceAndPath("voicechat", "textures/gui/title_background.png");
 
-    public ClickGuiScreen(FpsHud fpsHud, KeyMapping openGuiKey, CoordinatesHud coordinatesHud) {
+    public ClickGuiScreen(FpsHud fpsHud, KeyMapping openGuiKey, CoordinatesHud coordinatesHud, ArraylistHud arraylistHud) {
         super(Component.literal("Client controls"));
-        this.fpsHud=fpsHud; this.openGuiKey=openGuiKey; this.coordinatesHud=coordinatesHud;
+        this.fpsHud=fpsHud; this.openGuiKey=openGuiKey; this.coordinatesHud=coordinatesHud; this.arraylistHud=arraylistHud;
         expanded.put("Player scale",true); expanded.put("Swap interval",true); expanded.put("General",true);
     }
 
@@ -53,8 +54,12 @@ public final class ClickGuiScreen extends Screen {
         Category hud = category("HUD", "On-screen information");
         toggle(hud,"Frame rate",fpsHud::isEnabled,fpsHud::toggle);
         toggle(hud,"Coordinates",coordinatesHud::isEnabled,coordinatesHud::toggle);
+        toggle(hud,"Spotify",pingplus.voicechat.client.spotify.SpotifySettings::enabled,pingplus.voicechat.client.spotify.SpotifySettings::toggle);
+        toggle(hud,"Arraylist",arraylistHud::isEnabled,arraylistHud::toggle);
+        toggle(hud,"Arraylist glass",arraylistHud::isGlass,arraylistHud::toggleGlass);
         Category render = category("RENDER", "See the details");
         toggle(render,"Hitboxes",()->PlayerSettings.hitboxes,()->PlayerSettings.hitboxes=!PlayerSettings.hitboxes);
+        add(render,new CornerSlider(panelWidth-20),26);
         Category player = category("PLAYER", "Shape your presence");
         toggle(player,"Body",()->PlayerSettings.mainBodyPart,()->PlayerSettings.mainBodyPart=!PlayerSettings.mainBodyPart);
         toggle(player,"Left arm",()->PlayerSettings.leftArm,()->PlayerSettings.leftArm=!PlayerSettings.leftArm);
@@ -311,6 +316,19 @@ public final class ClickGuiScreen extends Screen {
             GlassButtonRenderer.control(g,x+2+Math.round(position*13),y+2,9,9,GlassStyle.alpha(0xFFF3F3F3,opacity));
         }
         @Override protected net.minecraft.network.chat.MutableComponent createNarrationMessage(){return Component.literal(label+(state.getAsBoolean()?", on":", off"));}
+    }
+    private final class CornerSlider extends AbstractSliderButton {
+        CornerSlider(int w){super(0,0,w,26,Component.literal("Corner radius"),GlassCornerSettings.getScale()/GlassCornerSettings.MAX);updateMessage();}
+        @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Corners   %d %%",Math.round(GlassCornerSettings.getScale()*100))));}
+        @Override protected void applyValue(){GlassCornerSettings.setScale((float)(value*GlassCornerSettings.MAX));updateMessage();}
+        @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
+            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            int x=getX()+4,y=getY()+19,length=width-8;
+            GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
+            GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
+            g.nextStratum();
+            GlassButtonRenderer.control(g,getX()+(int)Math.round((width-8)*value),y-3,8,9,GlassStyle.alpha(isHoveredOrFocused()?0xFFFFFFFF:GlassStyle.TEXT,opacity));
+        }
     }
     private final class SpeedSlider extends AbstractSliderButton {
         SpeedSlider(int w){super(0,0,w,26,Component.literal("Hand swap interval"),Math.clamp((PlayerSettings.handSwapIntervalTicks-1)/19.0,0,1));updateMessage();}

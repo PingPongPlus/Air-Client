@@ -17,16 +17,19 @@ void main() {
     vec2 halfSize = size * 0.5;
     vec2 p = (localUV - 0.5) * size;
     float pixelScale = max(size.y / max(glassData.b * 255.0, 1.0), 1.0);
-    // Buttons are capsules; larger panels retain practical rounded corners.
-    float radius = min(halfSize.x, halfSize.y);
-    if (glassData.b * 255.0 > 40.0) radius = min(radius, 14.0 * pixelScale);
+    // Green channel packs the enabled bit (bit 7) plus the global corner-radius scale (bits 0-6).
+    float greenByte = floor(glassData.g * 255.0 + 0.5);
+    float enabled = step(128.0, greenByte);
+    float cornerScale = (greenByte - enabled * 128.0) / 64.0;
+    // Buttons are capsules; larger panels retain practical rounded corners. Both scale globally.
+    float radius = min(halfSize.x, halfSize.y) * cornerScale;
+    if (glassData.b * 255.0 > 40.0) radius = min(radius, 14.0 * pixelScale * cornerScale);
     float distance = roundedBox(p, halfSize, radius);
     float aa = max(fwidth(distance), 0.75);
     // Evaluate derivatives before divergent discard/return branches at the silhouette.
     vec2 screenNormal = normalize(vec2(dFdx(distance), dFdy(distance)) + vec2(0.0001));
     float coverage = 1.0 - smoothstep(-aa, aa, distance);
     float hover = glassData.r;
-    float enabled = glassData.g;
     float opacity = glassData.a;
     // Stronger interaction feedback only for controls, not cursor-lit large panels.
     float highlight = hover * enabled * (1.0 - step(40.5, glassData.b * 255.0));

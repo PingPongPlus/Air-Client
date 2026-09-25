@@ -1,6 +1,5 @@
 package pingplus.voicechat.client.gui;
 
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
@@ -16,15 +15,13 @@ public final class FpsHud {
         enabled = !enabled;
     }
 
-    public void extract(GuiGraphicsExtractor graphics, DeltaTracker delta) {
+    public void render(GuiGraphicsExtractor graphics) {
         Minecraft client = Minecraft.getInstance();
-        if (!enabled || client.player == null || client.gui.screen() != null) {
+        if (!enabled || client.player == null) {
             return;
         }
 
         String text = "FPS  " + client.getFps();
-        int x = 10;
-        int y = 10;
-        graphics.text(client.font, text, x + 12, y + 7, GuiTheme.TEXT, false);
+        graphics.text(client.font, text, 4, 4, GuiTheme.TEXT, false);
     }
 }
