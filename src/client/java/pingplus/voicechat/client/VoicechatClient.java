@@ -51,6 +51,7 @@ public class VoicechatClient implements ClientModInitializer {
         pingplus.voicechat.client.gui.glass.GlassPipelines.initialize();
         syncSlayerCfg();
         pingplus.voicechat.client.slayer.SlayerOutlineHook.register(SLAYER_CFG);
+        pingplus.voicechat.client.etherwarp.EtherwarpHook.register();
         initializeClientFeatures();
         initializeVoiceChat();
     }
@@ -82,6 +83,13 @@ public class VoicechatClient implements ClientModInitializer {
                 (w,h) -> SpotifySettings.x(w, 240), (w,h) -> SpotifySettings.y(h, 100),
                 SpotifySettings::enabled, (g,mx,my,dt,editing) -> SpotifyWidget.INSTANCE.render(g,mx,my,dt,editing),
                 () -> SpotifyWidget.INSTANCE.buttons()));
+        HudEditor.register(new HudEditor.Entry("agg", "AGG",
+                () -> pingplus.voicechat.client.gui.hud.AggWidget.SIZE,
+                () -> pingplus.voicechat.client.gui.hud.AggWidget.SIZE,
+                (w,h) -> w - pingplus.voicechat.client.gui.hud.AggWidget.SIZE - 8, (w,h) -> 70,
+                pingplus.voicechat.client.gui.hud.AggSettings::isEnabled,
+                (g,mx,my,dt,editing) -> pingplus.voicechat.client.gui.hud.AggWidget.INSTANCE.render(g,mx,my,dt,editing),
+                java.util.List::of));
 
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
                 Identifier.fromNamespaceAndPath("voicechat", "editable_hud"), (graphics, delta) -> {

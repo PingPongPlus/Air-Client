@@ -16,6 +16,10 @@ import java.util.WeakHashMap;
 public final class GlassButtonRenderer {
     private static final Map<AbstractWidget, Hover> HOVERS = new WeakHashMap<>();
     private static final int SHADOW_PADDING = 3;
+    // The boss bar bloom halo reaches further than a button shadow, so its
+    // quad gets a wider padding (bar geometry itself is unaffected: the shader
+    // derives pixel size from the UV derivatives, which stay constant).
+    private static final int BOSS_BAR_PADDING = 8;
 
     public static void draw(GuiGraphicsExtractor graphics, AbstractWidget button) {
         if (button.getWidth() <= 0 || button.getHeight() <= 0 || button.getAlpha() <= 0) return;
@@ -48,10 +52,15 @@ public final class GlassButtonRenderer {
         int data = (Math.round(Math.clamp(opacity, 0, 1) * 255) << 24)
                 | (fill ? 0x00FF0000 : 0)
                 | (Math.round(Math.clamp(phase, 0, 1) * 255) << 8);
-        drawShape(graphics, x, y, width, height, data, GlassPipelines.BOSS_BAR);
+        drawShape(graphics, x, y, width, height, data, GlassPipelines.BOSS_BAR, BOSS_BAR_PADDING);
     }
 
     private static void drawShape(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int data, RenderPipeline pipeline) {
+        drawShape(graphics, x, y, width, height, data, pipeline, SHADOW_PADDING);
+    }
+
+    private static void drawShape(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int data,
+                                  RenderPipeline pipeline, int pad) {
         if (width <= 0 || height <= 0) return;
         if (net.minecraft.client.Minecraft.getInstance().gui.overlay() instanceof net.minecraft.client.gui.screens.LoadingOverlay) {
             GlassStyle.round(graphics, x, y, width, height, 12, GlassStyle.alpha(0xFF263D54, (data >>> 24) / 255f));
@@ -70,19 +79,19 @@ public final class GlassButtonRenderer {
         GlassBackdrop.request();
         Matrix3x2f pose = new Matrix3x2f(graphics.pose());
         ScreenRectangle scissor = graphics.scissorStack.peek();
-        ScreenRectangle bounds = new ScreenRectangle(x - SHADOW_PADDING, y - SHADOW_PADDING,
-                width + 2 * SHADOW_PADDING, height + 2 * SHADOW_PADDING).transformMaxBounds(pose);
+        ScreenRectangle bounds = new ScreenRectangle(x - pad, y - pad,
+                width + 2 * pad, height + 2 * pad).transformMaxBounds(pose);
         if (scissor != null) bounds = bounds.intersection(scissor);
         if (bounds == null) return;
-        graphics.guiRenderState.addGuiElement(new GlassState(pipeline, pose, x, y, width, height, data, scissor, bounds));
+        graphics.guiRenderState.addGuiElement(new GlassState(pipeline, pose, x, y, width, height, data, pad, scissor, bounds));
     }
 
     private record GlassState(RenderPipeline pipeline, Matrix3x2f pose, int x, int y, int width, int height, int data,
-                              ScreenRectangle scissorArea, ScreenRectangle bounds) implements GuiElementRenderState {
+                              int pad, ScreenRectangle scissorArea, ScreenRectangle bounds) implements GuiElementRenderState {
         // Resolved during render preparation, after beginFrame() allocates the targets.
         @Override public TextureSetup textureSetup() { return GlassBackdrop.textures(); }
         @Override public void buildVertices(VertexConsumer vertices) {
-            float p = SHADOW_PADDING;
+            float p = pad;
             vertex(vertices, x - p, y - p, -p / width, -p / height);
             vertex(vertices, x - p, y + height + p, -p / width, 1 + p / height);
             vertex(vertices, x + width + p, y + height + p, 1 + p / width, 1 + p / height);

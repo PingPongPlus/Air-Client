@@ -26,6 +26,7 @@ public final class SlayerOutlineRenderer {
     // name tags usually only show current HP, so the max is tracked.
     private static final Map<Integer, Double> MAX_SEEN = new ConcurrentHashMap<>();
     private static final Set<String> LOGGED_NAMES = ConcurrentHashMap.newKeySet();
+    private static final Set<String> REJECTED_LOGGED = ConcurrentHashMap.newKeySet();
     private static SlayerOutlineConfig cfg = new SlayerOutlineConfig();
 
     // Health bar entry, consumed by MobHealthBarRenderer.
@@ -50,32 +51,37 @@ public final class SlayerOutlineRenderer {
 
         // Phase 1: mobs with their own name tag.
         for (Entity e : all) {
-            SlayerMobDetector.Kind kind = SlayerMobDetector.classifyMob(e, all, cfg, myName);
-            if (kind != SlayerMobDetector.Kind.NONE) {
+            SlayerMobDetector.TagMatch match = SlayerMobDetector.classifyMob(e, all, cfg, myName);
+            if (match.kind() != SlayerMobDetector.Kind.NONE) {
                 claimed.add(e.getId());
-                apply(e, kind, SlayerMobDetector.fullName(e), now);
-                logDetection(e, kind);
+                apply(e, match.kind(), match.name(), SlayerMobDetector.fullName(e), now);
+                logDetection(e, match.kind());
             } else {
                 putGlow(e.getId(), SlayerMobDetector.Kind.NONE);
+                logRejectedTag(SlayerMobDetector.fullName(e));
             }
         }
 
         // Phase 2: one name stand -> exactly one nearest mob (Enderman fix).
         for (Entity e : all) {
-            if (e instanceof ArmorStand stand
-                    && SlayerMobDetector.classifyName(SlayerMobDetector.fullName(stand), cfg)
+            if (e instanceof ArmorStand stand) {
+                if (SlayerMobDetector.matchEntity(stand, cfg).kind()
                         != SlayerMobDetector.Kind.NONE) {
-                leftoverStands.add(stand);
+                    leftoverStands.add(stand);
+                } else {
+                    logRejectedTag(SlayerMobDetector.fullName(stand));
+                }
             }
         }
         for (ArmorStand stand : leftoverStands) {
             String standName = SlayerMobDetector.fullName(stand);
-            SlayerMobDetector.Kind kind = SlayerMobDetector.classifyName(standName, cfg);
+            SlayerMobDetector.TagMatch match = SlayerMobDetector.matchEntity(stand, cfg);
+            if (match.kind() == SlayerMobDetector.Kind.NONE) continue;
             LivingEntity target = SlayerMobDetector.nearestCandidate(stand, all, cfg, myName, claimed);
             if (target == null) continue;
             claimed.add(target.getId());
-            apply(target, kind, standName, now);
-            logDetection(stand, kind);
+            apply(target, match.kind(), match.name(), standName, now);
+            logDetection(stand, match.kind());
         }
 
         // Other players get a light-blue outline, same through-wall pass.
@@ -88,6 +94,15 @@ public final class SlayerOutlineRenderer {
                         CACHE.put(e.getId(), rgb);
                     }
                 }
+            }
+        }
+
+        // Own player glows pink: clean and strong, visible in third person.
+        if (pingplus.voicechat.client.PlayerSettings.selfOutline) {
+            var me = Minecraft.getInstance().player;
+            if (me != null) {
+                CACHE.put(me.getId(),
+                        pingplus.voicechat.client.PlayerSettings.selfOutlineColor & 0xFFFFFF);
             }
         }
 
@@ -110,7 +125,7 @@ public final class SlayerOutlineRenderer {
     }
 
     // Outline colour only for boss/miniboss; every claimed kind gets a bar target.
-    private static void apply(Entity e, SlayerMobDetector.Kind kind, String hpName, long now) {
+    private static void apply(Entity e, SlayerMobDetector.Kind kind, String displayName, String hpName, long now) {
         putGlow(e.getId(), kind);
         if (e instanceof LivingEntity living && !living.isRemoved() && living.isAlive()) {
             float hp = living.getHealth();
@@ -129,7 +144,7 @@ public final class SlayerOutlineRenderer {
             TARGETS.put(e.getId(), new Target(
                     e.getId(),
                     kind,
-                    SlayerMobDetector.matchName(SlayerMobDetector.fullName(living)),
+                    displayName,
                     hp,
                     maxHp,
                     now));
@@ -165,6 +180,16 @@ public final class SlayerOutlineRenderer {
                 default -> "none";
             };
             LOG.info("Detected {}: '{}' -> {}", kind, name, effect);
+        }
+    }
+
+    // One-time diagnostics for boss-like tags that stay unclaimed (e.g. live tag
+    // variants the strict filter misses, or foreign "Spawned by" bosses).
+    private static void logRejectedTag(String tag) {
+        String clean = SlayerMobDetector.stripColor(tag).trim();
+        if (clean.isEmpty() || !SlayerMobDetector.containsKnownName(clean)) return;
+        if (REJECTED_LOGGED.add(clean)) {
+            LOG.info("Boss-like tag not claimed: '{}'", clean);
         }
     }
 

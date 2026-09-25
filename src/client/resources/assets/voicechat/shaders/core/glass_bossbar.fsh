@@ -20,8 +20,9 @@ void main() {
     float aa = max(fwidth(d), 0.75);
     float coverage = 1.0 - smoothstep(-aa, aa, d);
 
-    // Soft outer glow halo (kept even outside the silhouette).
-    float halo = 1.0 - smoothstep(0.0, 5.0, d);
+    // Soft outer glow halo, wider and stronger (kept even outside the silhouette).
+    // Fades to zero at the quad edge (8px padding) so there is no clipping seam.
+    float halo = 1.0 - smoothstep(0.0, 7.0, d);
     if (coverage < 0.001 && halo < 0.004) discard;
 
     float t = clamp(p.y / size.y + 0.5, 0.0, 1.0); // 0 bottom, 1 top
@@ -53,6 +54,15 @@ void main() {
     float shine = exp(-pow((band - 0.5) / 0.24, 2.0));
     color += shine * (glassData.r > 0.5 ? 0.16 : 0.07);
 
+    // Wandering diagonal light stripe (shimmer): loops subtly left-to-right
+    // once per phase cycle. Faded at the bar edges so the loop point is invisible.
+    float travel = fract(glassData.b) * 1.8 - 0.4;
+    float across = p.x / size.x + 0.5;
+    float diag = across - 0.4 * (p.y / size.y + 0.5);
+    float stripe = exp(-pow((diag - travel) / 0.13, 2.0));
+    float edgeFade = smoothstep(0.0, 0.15, across) * (1.0 - smoothstep(0.85, 1.0, across));
+    color += stripe * edgeFade * (glassData.r > 0.5 ? 0.15 : 0.06);
+
     // Soft top gloss.
     color += 0.06 * pow(t, 2.0);
 
@@ -62,8 +72,8 @@ void main() {
 
     // Blue glow aura around the bar.
     vec3 glowColour = vec3(0.45, 0.68, 1.0);
-    color += glowColour * halo * 0.32;
+    color += glowColour * halo * 0.5;
 
-    float alpha = max(coverage, halo * 0.45);
+    float alpha = max(coverage, halo * 0.55);
     fragColor = vec4(color, alpha * glassData.a);
 }

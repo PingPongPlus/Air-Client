@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import pingplus.voicechat.client.GreenHitboxRenderer;
+import pingplus.voicechat.client.etherwarp.EtherwarpRenderer;
 
 @Mixin(DebugRenderer.class)
 public abstract class DebugRendererMixin {
@@ -19,5 +20,6 @@ public abstract class DebugRendererMixin {
         @Inject(method = "refreshRendererList", at = @At("TAIL"))
     private void addGreenHitboxes(CallbackInfo ci) {
         renderers.add(new GreenHitboxRenderer());
+        renderers.add(new EtherwarpRenderer());
     }
 }

@@ -184,6 +184,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             var foreignBossId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var minibossId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var dianaId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var bossNoTierId = new java.util.concurrent.atomic.AtomicInteger(-1);
             context.runOnClient(client -> {
                 var server = client.getSingleplayerServer();
                 var serverWorld = server.overworld();
@@ -191,7 +192,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 var base = client.player.position().add(look.x * 3, look.y * 3, look.z * 3);
                 var boss = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                boss.setCustomName(Component.literal("Revenant Horror"));
+                boss.setCustomName(Component.literal("☠ Revenant Horror IV 20❤"));
                 boss.setCustomNameVisible(true);
                 boss.setPos(base.x, base.y, base.z);
                 serverWorld.addFreshEntity(boss);
@@ -209,7 +210,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 wolfId.set(wolf.getId());
                 var wolfStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                wolfStand.setCustomName(Component.literal("Sven Packmaster"));
+                wolfStand.setCustomName(Component.literal("☠ Sven Packmaster III 500k❤"));
                 wolfStand.setCustomNameVisible(true);
                 wolfStand.setInvisible(true);
                 wolfStand.setPos(base.x + 5, base.y + 2, base.z);
@@ -222,7 +223,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 wrongZombieId.set(wrong.getId());
                 var wrongStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                wrongStand.setCustomName(Component.literal("Sven Packmaster"));
+                wrongStand.setCustomName(Component.literal("☠ Sven Packmaster III 500k❤"));
                 wrongStand.setCustomNameVisible(true);
                 wrongStand.setInvisible(true);
                 wrongStand.setPos(base.x + 8, base.y + 2, base.z);
@@ -230,7 +231,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Boss spawned by ANOTHER player must not glow.
                 var foreign = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                foreign.setCustomName(Component.literal("Revenant Horror Spawned by: SomebodyElse"));
+                foreign.setCustomName(Component.literal("☠ Revenant Horror IV 20❤ Spawned by: SomebodyElse"));
                 foreign.setCustomNameVisible(true);
                 foreign.setPos(base.x + 11, base.y, base.z);
                 serverWorld.addFreshEntity(foreign);
@@ -238,7 +239,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Miniboss: red outline, always glows.
                 var mini = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                mini.setCustomName(Component.literal("Revenant Champion"));
+                mini.setCustomName(Component.literal("☠ Revenant Champion II 900k❤"));
                 mini.setCustomNameVisible(true);
                 mini.setPos(base.x + 14, base.y, base.z);
                 serverWorld.addFreshEntity(mini);
@@ -246,11 +247,19 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Diana mob: health bar target, no glow.
                 var diana = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                diana.setCustomName(Component.literal("Gaia Construct"));
+                diana.setCustomName(Component.literal("[Lv120] Gaia Construct 1.5M❤"));
                 diana.setCustomNameVisible(true);
                 diana.setPos(base.x + 17, base.y, base.z);
                 serverWorld.addFreshEntity(diana);
                 dianaId.set(diana.getId());
+                // Tier-less boss tag (no roman numeral) must still count as boss.
+                var bossNoTier = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                bossNoTier.setCustomName(Component.literal("☠ Revenant Horror 20❤"));
+                bossNoTier.setCustomNameVisible(true);
+                bossNoTier.setPos(base.x + 20, base.y, base.z);
+                serverWorld.addFreshEntity(bossNoTier);
+                bossNoTierId.set(bossNoTier.getId());
                 // Wall between player and the boss: the outline must stay visible
                 // through it (vanilla outline pass). The screenshot proves it.
                 // Block placement must run on the server thread.
@@ -307,11 +316,19 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(bossId.get())
                         != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS)
                     throw new AssertionError("Boss missing from health bar targets");
+                // Tier-less boss tag must still count as boss (exact name + HP + class).
+                int bossNoTierColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(bossNoTierId.get());
+                if (bossNoTierColour != (PlayerSettings.slayerBossColor & 0xFFFFFF))
+                    throw new AssertionError("Tier-less boss not highlighted, colour="
+                            + Integer.toHexString(bossNoTierColour));
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(bossNoTierId.get())
+                        != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS)
+                    throw new AssertionError("Tier-less boss missing from health bar targets");
                 if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(client.player.getId()) != null)
                     throw new AssertionError("Player must never be a health bar target");
-                int playerColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(client.player.getId());
-                if (playerColour != -1)
-                    throw new AssertionError("Player must never glow, colour=" + Integer.toHexString(playerColour));
+                int selfColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(client.player.getId());
+                if (selfColour != (PlayerSettings.selfOutlineColor & 0xFFFFFF))
+                    throw new AssertionError("Own player must glow pink, colour=" + Integer.toHexString(selfColour));
                 // Perspective scaling: full close up, smaller far away, hidden beyond 20.
                 double near = pingplus.voicechat.client.gui.MobHealthBarRenderer.scaleFor(3 * 3);
                 double mid = pingplus.voicechat.client.gui.MobHealthBarRenderer.scaleFor(7 * 7);
@@ -324,12 +341,14 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                     throw new AssertionError("No health bar targets for bar/line rendering");
             });
             // Damage the boss: the bar fill must shrink with the mob's HP.
+            // Like on Hypixel, the name tag updates to the new current HP.
             context.runOnClient(client -> {
                 var server = client.getSingleplayerServer();
                 server.execute(() -> {
                     var boss = server.overworld().getEntity(bossId.get());
                     if (boss instanceof net.minecraft.world.entity.LivingEntity living) {
                         living.hurt(server.overworld().damageSources().generic(), 8.0F);
+                        living.setCustomName(Component.literal("☠ Revenant Horror IV 12❤"));
                     }
                 });
             });
@@ -402,7 +421,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             context.runOnClient(client -> GlassGpuTiming.finish("Pause 1440x900"));
             context.waitTicks(20);
             context.takeScreenshot("glass-pause-rain-motion");
-            context.setScreen(() -> new pingplus.voicechat.client.gui.ClickGuiScreen(fps,key,coords));
+            context.setScreen(() -> new pingplus.voicechat.client.gui.ClickGuiScreen(fps,key,coords,arraylist));
             context.waitTicks(20);
             context.takeScreenshot("clickgui-world");
             context.runOnClient(client -> reload.set(client.reloadResourcePacks()));

@@ -16,11 +16,12 @@ import pingplus.voicechat.client.slayer.SlayerOutlineRenderer;
 
 // Uniform glossy boss bar above mobs: soft blue gradient with a water-like
 // animated interior, glow halo and moving shine. Same design for every boss.
-// The bar scales with perspective (1/distance), exactly like the mob appears
-// to shrink, and fades out beyond 20 blocks. The fill follows the mob's HP.
+// The bar width scales with perspective (1/distance), exactly like the mob
+// appears to shrink, and fades out beyond 20 blocks. The bar height is
+// boss-specific and untouched. The fill follows the mob's HP.
 // Unlocked only while "No mob names" is enabled.
 public final class MobHealthBarRenderer {
-    private static final int BAR_WIDTH = 56;
+    private static final int BAR_WIDTH = 72;
     private static final int BAR_HEIGHT = 8;
     private static final double MAX_DISTANCE = 20.0;
     private static final double REFERENCE_DISTANCE = 3.2;
@@ -34,7 +35,7 @@ public final class MobHealthBarRenderer {
     public static double scaleFor(double distSq) {
         double dist = Math.sqrt(distSq);
         if (dist >= MAX_DISTANCE) return 0;
-        double scale = Math.pow(Math.clamp(REFERENCE_DISTANCE / dist, 0.25, 1.0), 1.3);
+        double scale = Math.pow(Math.min(1.0, REFERENCE_DISTANCE / dist), 1.3);
         double fade = 1.0 - smoothstep(12, MAX_DISTANCE, dist);
         return scale * fade;
     }
@@ -53,8 +54,8 @@ public final class MobHealthBarRenderer {
         long now = System.nanoTime();
         float dt = lastFrame == 0 ? 0.05F : Math.min(0.1F, (now - lastFrame) / 1e9F);
         lastFrame = now;
-        // Shine and water waves cycle slowly.
-        float phase = (float) ((now / 1_000_000_000L % 3000) / 3000.0);
+        // Shine and water waves loop once every 3 seconds (subtle, never distracting).
+        float phase = (float) ((now % 3_000_000_000L) / 3_000_000_000.0);
         float userOpacity = Math.clamp(PlayerSettings.mobBarOpacity, 0, 1);
 
         int width = client.getWindow().getGuiScaledWidth();
@@ -100,8 +101,8 @@ public final class MobHealthBarRenderer {
         float opacity = anim.alpha() * userOpacity;
         if (opacity <= 0.02F) return;
 
-        int w = Math.max(12, (int) Math.round(BAR_WIDTH * scale));
-        int h = Math.max(8, (int) Math.round(BAR_HEIGHT * scale));
+        int w = Math.max(2, (int) Math.round(BAR_WIDTH * scale));
+        int h = Math.max(2, (int) Math.round(BAR_HEIGHT * scale));
         int x = (int) (cx - w / 2.0);
         int y = (int) cy;
 
