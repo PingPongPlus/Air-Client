@@ -1,5 +1,6 @@
 package pingplus.voicechat.client.gui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.*;
@@ -9,7 +10,9 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.client.renderer.RenderPipelines;
+import org.lwjgl.glfw.GLFW;
 import pingplus.voicechat.client.PlayerSettings;
+import pingplus.voicechat.client.VoicechatClient;
 import pingplus.voicechat.client.gui.glass.*;
 import java.util.*;
 import java.util.function.*;
@@ -31,12 +34,13 @@ public final class ClickGuiScreen extends Screen {
     private float opacity = 1;
     private Category dragging;
     private double dragX, dragY;
+    private KeyMapping pendingKey;
     private static final Identifier WALLPAPER = Identifier.fromNamespaceAndPath("voicechat", "textures/gui/title_background.png");
 
     public ClickGuiScreen(FpsHud fpsHud, KeyMapping openGuiKey, CoordinatesHud coordinatesHud) {
         super(Component.literal("Client controls"));
         this.fpsHud=fpsHud; this.openGuiKey=openGuiKey; this.coordinatesHud=coordinatesHud;
-        expanded.put("Player scale",true); expanded.put("Swap interval",true);
+        expanded.put("Player scale",true); expanded.put("Swap interval",true); expanded.put("General",true);
     }
 
     @Override protected void init() {
@@ -68,14 +72,54 @@ public final class ClickGuiScreen extends Screen {
         toggle(automation,"Hand swap",()->PlayerSettings.handSwap,()->PlayerSettings.handSwap=!PlayerSettings.handSwap);
         disclosure(automation,"Swap interval");
         if (expanded.get("Swap interval")) add(automation,new SpeedSlider(panelWidth-20),26);
+        Category skyblock = category("SKYBLOCK", "Hypixel skyblock helpers");
+        disclosure(skyblock,"General");
+        if (expanded.get("General")) {
+            toggle(skyblock,"No particles",()->PlayerSettings.hideParticles,()->PlayerSettings.hideParticles=!PlayerSettings.hideParticles);
+            toggle(skyblock,"No mob names",()->PlayerSettings.hideMobNames,()->{
+                PlayerSettings.hideMobNames=!PlayerSettings.hideMobNames;
+                rebuildWidgets();
+            });
+            // Health bar is only unlocked while mob names are hidden.
+            if (PlayerSettings.hideMobNames) {
+                toggle(skyblock,"Mob HP bar",()->PlayerSettings.mobHealthBar,()->PlayerSettings.mobHealthBar=!PlayerSettings.mobHealthBar);
+                add(skyblock,new PercentSlider(panelWidth-20),26);
+            }
+            toggle(skyblock,"Slayer outline",()->PlayerSettings.slayerOutline,()->{
+                PlayerSettings.slayerOutline=!PlayerSettings.slayerOutline;
+                PlayerSettings.slayerBossHighlight=PlayerSettings.slayerOutline;
+                VoicechatClient.syncSlayerCfg();
+            });
+            toggle(skyblock,"Boss yellow",()->PlayerSettings.slayerBoss,()->{
+                PlayerSettings.slayerBoss=!PlayerSettings.slayerBoss;
+                VoicechatClient.syncSlayerCfg();
+            });
+            toggle(skyblock,"Miniboss red",()->PlayerSettings.slayerMiniboss,()->{
+                PlayerSettings.slayerMiniboss=!PlayerSettings.slayerMiniboss;
+                VoicechatClient.syncSlayerCfg();
+            });
+            toggle(skyblock,"Boss lines",()->PlayerSettings.slayerLine,()->PlayerSettings.slayerLine=!PlayerSettings.slayerLine);
+            toggle(skyblock,"Player outline",()->PlayerSettings.playerOutline,()->PlayerSettings.playerOutline=!PlayerSettings.playerOutline);
+        }
+        Category keys = category("KEYS", "Hotkeys, click then press");
+        keyButton(keys, "GUI", VoicechatClient.openGuiKey());
+        keyButton(keys, "Voice", VoicechatClient.voiceMenuKey());
+        keyButton(keys, "Talk", VoicechatClient.talkKey());
+        keyButton(keys, "Mute", VoicechatClient.muteKey());
+        add(keys, new Button(0,0,panelWidth-20,18,Component.literal("Reset keys"),b->{resetKeys();rebuildWidgets();},supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,"Reset keys",getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        },18);
         // Stack shorter categories together, keeping the full Player settings column visible.
         int[] columnY = new int[columns];
         Arrays.fill(columnY, 30);
-        int[] columnFor = columns == 2 ? new int[]{0,0,1,0}
-                : columns == 3 ? new int[]{0,0,1,2} : new int[]{0,1,2,3};
+        int[] columnFor = columns == 2 ? new int[]{0,0,1,0,1,0}
+                : columns == 3 ? new int[]{0,0,1,2,1,2} : new int[]{0,1,2,3,1,0};
         for (int i=0; i<categories.size(); i++) {
             Category c=categories.get(i);
-            int col=columnFor[i];
+            int col=columnFor[Math.min(i, columnFor.length-1)];
             c.x=startX+col*(panelWidth+8); c.y=columnY[col];
             columnY[col]+=c.height()+6;
             int[] saved=positions.get(c.title);
@@ -114,6 +158,27 @@ public final class ClickGuiScreen extends Screen {
             }catch(NumberFormatException ignored){box.setTextColor(0xFFFF9B99);}
         });
         add(c,box,20);
+    }
+    private void keyButton(Category c, String name, KeyMapping mapping) {
+        String label = mapping == null ? name + ": -"
+            : mapping == pendingKey ? name + ": press..." : name + ": " + mapping.getTranslatedKeyMessage().getString();
+        add(c, new Button(0,0,panelWidth-20,18,Component.literal(label),b->{pendingKey=mapping;rebuildWidgets();},supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused() || mapping == pendingKey) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,mapping == pendingKey ? name + ": press..." : name + ": " + (mapping == null ? "-" : mapping.getTranslatedKeyMessage().getString()),getX()+4,getY()+4,mapping == pendingKey ? GlassStyle.ACCENT : GlassStyle.MUTED);
+            }
+        },18);
+    }
+    private void resetKeys() {
+        if (VoicechatClient.openGuiKey() != null) VoicechatClient.openGuiKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_RIGHT_SHIFT));
+        if (VoicechatClient.voiceMenuKey() != null) VoicechatClient.voiceMenuKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_V));
+        if (VoicechatClient.talkKey() != null) VoicechatClient.talkKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_CAPS_LOCK));
+        if (VoicechatClient.muteKey() != null) VoicechatClient.muteKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_M));
+        pendingKey = null;
+        saveKeys();
+    }
+    private void saveKeys() {
+        try { minecraft.options.save(); } catch (Exception ignored) {}
     }
     private void updateScroll() {
         maxScroll=Math.max(0,categories.stream().mapToInt(c->c.y+c.height()).max().orElse(0)-(canvasHeight-16));
@@ -167,8 +232,17 @@ public final class ClickGuiScreen extends Screen {
     }
     @Override public void mouseMoved(double x, double y) { super.mouseMoved(x / UI_SCALE, y / UI_SCALE); }
     @Override public boolean mouseClicked(MouseButtonEvent event,boolean twice){
+        if (pendingKey != null) {
+            try {
+                pendingKey.setKey(InputConstants.Type.MOUSE.getOrCreate(event.button()));
+                saveKeys();
+            } catch (Exception ignored) {}
+            pendingKey = null;
+            rebuildWidgets();
+            return true;
+        }
         MouseButtonEvent e = logicalMouse(event);
-        if(openGuiKey.matchesMouse(e)){onClose();return true;}
+        if(openGuiKey != null && openGuiKey.matchesMouse(e)){onClose();return true;}
         if(closing!=0)return true;
         if(e.y()<26){if(e.x()>canvasWidth-85)onClose();return true;}
         if(e.y()>canvasHeight-16)return true;
@@ -189,7 +263,21 @@ public final class ClickGuiScreen extends Screen {
     }
     @Override public boolean mouseReleased(MouseButtonEvent e){if(dragging!=null){dragging=null;return true;}return super.mouseReleased(logicalMouse(e));}
     @Override public boolean keyPressed(KeyEvent e){
-        if(openGuiKey.matches(e)){onClose();return true;}
+        if (pendingKey != null) {
+            if (e.key() == GLFW.GLFW_KEY_ESCAPE) {
+                pendingKey = null;
+                rebuildWidgets();
+                return true;
+            }
+            try {
+                pendingKey.setKey(InputConstants.getKey(e));
+                saveKeys();
+            } catch (Exception ignored) {}
+            pendingKey = null;
+            rebuildWidgets();
+            return true;
+        }
+        if(openGuiKey != null && openGuiKey.matches(e)){onClose();return true;}
         boolean handled=super.keyPressed(e);
         if(getFocused() instanceof AbstractWidget w){
             if(w.getY()<28)scroll=Math.max(0,scroll+w.getY()-30);
@@ -228,6 +316,19 @@ public final class ClickGuiScreen extends Screen {
         SpeedSlider(int w){super(0,0,w,26,Component.literal("Hand swap interval"),Math.clamp((PlayerSettings.handSwapIntervalTicks-1)/19.0,0,1));updateMessage();}
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Interval   %.2f s",PlayerSettings.handSwapIntervalTicks/20.0)));}
         @Override protected void applyValue(){PlayerSettings.handSwapIntervalTicks=1+(int)Math.round(value*19);updateMessage();}
+        @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
+            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            int x=getX()+4,y=getY()+19,length=width-8;
+            GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
+            GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
+            g.nextStratum();
+            GlassButtonRenderer.control(g,getX()+(int)Math.round((width-8)*value),y-3,8,9,GlassStyle.alpha(isHoveredOrFocused()?0xFFFFFFFF:GlassStyle.TEXT,opacity));
+        }
+    }
+    private final class PercentSlider extends AbstractSliderButton {
+        PercentSlider(int w){super(0,0,w,26,Component.literal("Bar opacity"),Math.clamp(PlayerSettings.mobBarOpacity,0,1));updateMessage();}
+        @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Bar opacity   %d%%",Math.round(value*100))));}
+        @Override protected void applyValue(){PlayerSettings.mobBarOpacity=(float)value;updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
             text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
             int x=getX()+4,y=getY()+19,length=width-8;

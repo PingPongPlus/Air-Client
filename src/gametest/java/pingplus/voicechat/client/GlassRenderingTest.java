@@ -175,6 +175,177 @@ public final class GlassRenderingTest implements FabricClientGameTest {
         context.setScreen(TitleScreen::new);
         try (var world = context.worldBuilder().create()) {
             context.waitFor(client -> client.player != null && client.gui.overlay() == null);
+            // Slayer outline end-to-end: spawn a named boss and check the glow pipeline.
+            var bossId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var plainId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var wolfId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var wrongZombieId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var foreignBossId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var minibossId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var dianaId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            context.runOnClient(client -> {
+                var server = client.getSingleplayerServer();
+                var serverWorld = server.overworld();
+                var look = client.player.getLookAngle();
+                var base = client.player.position().add(look.x * 3, look.y * 3, look.z * 3);
+                var boss = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                boss.setCustomName(Component.literal("Revenant Horror"));
+                boss.setCustomNameVisible(true);
+                boss.setPos(base.x, base.y, base.z);
+                serverWorld.addFreshEntity(boss);
+                bossId.set(boss.getId());
+                var plain = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                plain.setPos(base.x + 2, base.y, base.z);
+                serverWorld.addFreshEntity(plain);
+                plainId.set(plain.getId());
+                // Name-tag pattern: invisible armor stand above a WOLF with "Sven Packmaster".
+                var wolf = net.minecraft.world.entity.EntityTypes.WOLF.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                wolf.setPos(base.x + 5, base.y, base.z);
+                serverWorld.addFreshEntity(wolf);
+                wolfId.set(wolf.getId());
+                var wolfStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                wolfStand.setCustomName(Component.literal("Sven Packmaster"));
+                wolfStand.setCustomNameVisible(true);
+                wolfStand.setInvisible(true);
+                wolfStand.setPos(base.x + 5, base.y + 2, base.z);
+                serverWorld.addFreshEntity(wolfStand);
+                // Same name tag over a ZOMBIE must NOT glow (wrong mob class).
+                var wrong = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                wrong.setPos(base.x + 8, base.y, base.z);
+                serverWorld.addFreshEntity(wrong);
+                wrongZombieId.set(wrong.getId());
+                var wrongStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                wrongStand.setCustomName(Component.literal("Sven Packmaster"));
+                wrongStand.setCustomNameVisible(true);
+                wrongStand.setInvisible(true);
+                wrongStand.setPos(base.x + 8, base.y + 2, base.z);
+                serverWorld.addFreshEntity(wrongStand);
+                // Boss spawned by ANOTHER player must not glow.
+                var foreign = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                foreign.setCustomName(Component.literal("Revenant Horror Spawned by: SomebodyElse"));
+                foreign.setCustomNameVisible(true);
+                foreign.setPos(base.x + 11, base.y, base.z);
+                serverWorld.addFreshEntity(foreign);
+                foreignBossId.set(foreign.getId());
+                // Miniboss: red outline, always glows.
+                var mini = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                mini.setCustomName(Component.literal("Revenant Champion"));
+                mini.setCustomNameVisible(true);
+                mini.setPos(base.x + 14, base.y, base.z);
+                serverWorld.addFreshEntity(mini);
+                minibossId.set(mini.getId());
+                // Diana mob: health bar target, no glow.
+                var diana = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                diana.setCustomName(Component.literal("Gaia Construct"));
+                diana.setCustomNameVisible(true);
+                diana.setPos(base.x + 17, base.y, base.z);
+                serverWorld.addFreshEntity(diana);
+                dianaId.set(diana.getId());
+                // Wall between player and the boss: the outline must stay visible
+                // through it (vanilla outline pass). The screenshot proves it.
+                // Block placement must run on the server thread.
+                var wallBase = net.minecraft.core.BlockPos.containing(
+                        client.player.position().add(look.x * 1.6, look.y * 1.6, look.z * 1.6));
+                server.execute(() -> {
+                    for (int wy = 0; wy < 3; wy++) {
+                        serverWorld.setBlockAndUpdate(wallBase.above(wy),
+                                net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+                    }
+                });
+            });
+            context.runOnClient(client -> {
+                // Enable health bars and boss lines so screenshots show them.
+                PlayerSettings.hideMobNames = true;
+                PlayerSettings.mobHealthBar = true;
+                PlayerSettings.slayerLine = true;
+            });
+            context.waitTicks(30);
+            context.takeScreenshot("slayer-boss");
+            context.waitTicks(10);
+            context.takeScreenshot("slayer-boss-steady");
+            context.runOnClient(client -> {
+                int bossColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(bossId.get());
+                if (bossColour != (PlayerSettings.slayerBossColor & 0xFFFFFF))
+                    throw new AssertionError("Slayer outline did not highlight boss, cache colour="
+                            + Integer.toHexString(bossColour));
+                int plainColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(plainId.get());
+                if (plainColour != -1)
+                    throw new AssertionError("Plain zombie wrongly highlighted, colour="
+                            + Integer.toHexString(plainColour));
+                int wolfColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(wolfId.get());
+                if (wolfColour != (PlayerSettings.slayerBossColor & 0xFFFFFF))
+                    throw new AssertionError("Wolf with Sven name tag not highlighted, colour="
+                            + Integer.toHexString(wolfColour));
+                int wrongColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(wrongZombieId.get());
+                if (wrongColour != -1)
+                    throw new AssertionError("Zombie next to Sven name tag wrongly highlighted, colour="
+                            + Integer.toHexString(wrongColour));
+                int foreignColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(foreignBossId.get());
+                if (foreignColour != -1)
+                    throw new AssertionError("Boss spawned by another player must not glow, colour="
+                            + Integer.toHexString(foreignColour));
+                int miniColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(minibossId.get());
+                if (miniColour != (PlayerSettings.slayerMinibossColor & 0xFFFFFF))
+                    throw new AssertionError("Miniboss not highlighted, colour=" + Integer.toHexString(miniColour));
+                // Diana mob: health bar target without glow.
+                int dianaColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(dianaId.get());
+                if (dianaColour != -1)
+                    throw new AssertionError("Diana mob must not glow, colour=" + Integer.toHexString(dianaColour));
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(dianaId.get())
+                        != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.DIANA)
+                    throw new AssertionError("Diana mob missing from health bar targets");
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(bossId.get())
+                        != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS)
+                    throw new AssertionError("Boss missing from health bar targets");
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(client.player.getId()) != null)
+                    throw new AssertionError("Player must never be a health bar target");
+                int playerColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(client.player.getId());
+                if (playerColour != -1)
+                    throw new AssertionError("Player must never glow, colour=" + Integer.toHexString(playerColour));
+                // Perspective scaling: full close up, smaller far away, hidden beyond 20.
+                double near = pingplus.voicechat.client.gui.MobHealthBarRenderer.scaleFor(3 * 3);
+                double mid = pingplus.voicechat.client.gui.MobHealthBarRenderer.scaleFor(7 * 7);
+                double far = pingplus.voicechat.client.gui.MobHealthBarRenderer.scaleFor(21 * 21);
+                if (near != 1.0) throw new AssertionError("Bar should be full size when close: " + near);
+                if (!(mid > 0.3 && mid < near)) throw new AssertionError("Bar should shrink with distance: " + mid);
+                if (far != 0) throw new AssertionError("Bar must hide beyond 20 blocks: " + far);
+                // Health bar targets feed the bar and the line renderer.
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targets().isEmpty())
+                    throw new AssertionError("No health bar targets for bar/line rendering");
+            });
+            // Damage the boss: the bar fill must shrink with the mob's HP.
+            context.runOnClient(client -> {
+                var server = client.getSingleplayerServer();
+                server.execute(() -> {
+                    var boss = server.overworld().getEntity(bossId.get());
+                    if (boss instanceof net.minecraft.world.entity.LivingEntity living) {
+                        living.hurt(server.overworld().damageSources().generic(), 8.0F);
+                    }
+                });
+            });
+            context.waitTicks(10);
+            context.takeScreenshot("slayer-boss-damaged");
+            context.runOnClient(client -> {
+                var damaged = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targets().stream()
+                        .filter(t -> t.id() == bossId.get()).findFirst().orElse(null);
+                if (damaged == null || damaged.hp() >= damaged.maxHp())
+                    throw new AssertionError("Boss bar must shrink with HP after damage, hp="
+                            + (damaged == null ? "missing" : damaged.hp() + "/" + damaged.maxHp()));
+            });
+            context.runOnClient(client -> {
+                PlayerSettings.hideMobNames = false;
+                PlayerSettings.mobHealthBar = false;
+                PlayerSettings.slayerLine = false;
+            });
             context.setScreen(() -> new net.minecraft.client.gui.screens.PauseScreen(true));
             context.waitTicks(20);
             context.takeScreenshot("glass-pause");

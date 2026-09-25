@@ -19,6 +19,5 @@ public abstract class DebugRendererMixin {
         @Inject(method = "refreshRendererList", at = @At("TAIL"))
     private void addGreenHitboxes(CallbackInfo ci) {
         renderers.add(new GreenHitboxRenderer());
-
     }
 }

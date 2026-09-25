@@ -24,7 +24,10 @@
     "GlassLoadingScreenMixin",
     "GlassLoadingTextMixin",
     "GlassMessageTextMixin",
-    "GlassRainToggleMixin"
+    "GlassRainToggleMixin",
+    "ParticleHideMixin",
+    "MobNameHideMixin",
+    "SlayerOutlineMixin"
   ],
   "injectors": {
     "defaultRequire": 1

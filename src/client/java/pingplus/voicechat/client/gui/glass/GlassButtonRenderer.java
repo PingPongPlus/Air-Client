@@ -38,6 +38,19 @@ public final class GlassButtonRenderer {
         drawShape(graphics, x, y, width, height, color, GlassPipelines.CONTROL);
     }
 
+    public static void bar(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
+        drawShape(graphics, x, y, width, height, color, GlassPipelines.BAR);
+    }
+
+    /** Boss health bar piece: alpha=opacity, red channel=fill flag, blue channel=shine phase. */
+    public static void bossBar(GuiGraphicsExtractor graphics, int x, int y, int width, int height,
+                               boolean fill, float phase, float opacity) {
+        int data = (Math.round(Math.clamp(opacity, 0, 1) * 255) << 24)
+                | (fill ? 0x00FF0000 : 0)
+                | (Math.round(Math.clamp(phase, 0, 1) * 255) << 8);
+        drawShape(graphics, x, y, width, height, data, GlassPipelines.BOSS_BAR);
+    }
+
     private static void drawShape(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int data, RenderPipeline pipeline) {
         if (width <= 0 || height <= 0) return;
         if (net.minecraft.client.Minecraft.getInstance().gui.overlay() instanceof net.minecraft.client.gui.screens.LoadingOverlay) {

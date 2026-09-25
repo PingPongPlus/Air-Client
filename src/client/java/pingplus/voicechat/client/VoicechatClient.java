@@ -22,10 +22,22 @@ import pingplus.voicechat.client.gui.FpsHud;
  */
 public class VoicechatClient implements ClientModInitializer {
     private static VoiceConnection voiceConnection;
+    private static KeyMapping openGuiKey;
+    private static KeyMapping voiceMenuKey;
+    private static KeyMapping talkKey;
+    private static KeyMapping muteKey;
 
     public static VoiceStatus voiceStatus(java.util.UUID id) {
         return voiceConnection == null ? VoiceStatus.NOT_CONNECTED : voiceConnection.statusFor(id);
     }
+
+    public static KeyMapping openGuiKey() { return openGuiKey; }
+    public static KeyMapping voiceMenuKey() { return voiceMenuKey; }
+    public static KeyMapping talkKey() { return talkKey; }
+    public static KeyMapping muteKey() { return muteKey; }
+
+    public static final pingplus.voicechat.client.slayer.SlayerOutlineConfig SLAYER_CFG =
+        new pingplus.voicechat.client.slayer.SlayerOutlineConfig();
 
     public static final Logger LOG =
             LoggerFactory.getLogger("laby-voicechat");
@@ -33,18 +45,28 @@ public class VoicechatClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         pingplus.voicechat.client.gui.glass.GlassPipelines.initialize();
+        syncSlayerCfg();
+        pingplus.voicechat.client.slayer.SlayerOutlineHook.register(SLAYER_CFG);
         initializeClientFeatures();
         initializeVoiceChat();
+    }
+
+    public static void syncSlayerCfg() {
+        SLAYER_CFG.enabled = PlayerSettings.slayerOutline && PlayerSettings.slayerBossHighlight;
+        SLAYER_CFG.highlightBoss = PlayerSettings.slayerBoss;
+        SLAYER_CFG.highlightMiniboss = PlayerSettings.slayerMiniboss;
+        SLAYER_CFG.bossColor = PlayerSettings.slayerBossColor;
+        SLAYER_CFG.minibossColor = PlayerSettings.slayerMinibossColor;
     }
 
     private void initializeClientFeatures() {
         FpsHud fpsHud = new FpsHud();
         CoordinatesHud coordinatesHud = new CoordinatesHud();
-        KeyMapping openGuiKey = registerOpenGuiKey();
+        openGuiKey = registerOpenGuiKey();
         HandSwapFeature handSwap = new HandSwapFeature();
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (openGuiKey.consumeClick()) {
+            while (openGuiKey != null && openGuiKey.consumeClick()) {
                 // Do not replace inventory, chat, or another mod's screen.
                 if (client.gui.screen() == null && client.player != null) {
                     client.gui.setScreen(
@@ -71,6 +93,20 @@ public class VoicechatClient implements ClientModInitializer {
                 VanillaHudElements.CHAT,
                 Identifier.fromNamespaceAndPath("voicechat", "coordinates_hud"),
                 coordinatesHud::extract
+        );
+
+        // Glass health bars above mobs (unlocked with hidden mob names).
+        HudElementRegistry.addLast(
+                Identifier.fromNamespaceAndPath("voicechat", "mob_health_bar"),
+                (graphics, delta) ->
+                        pingplus.voicechat.client.gui.MobHealthBarRenderer.render(graphics)
+        );
+
+        // Screen-space ESP lines to bosses/minibosses.
+        HudElementRegistry.addLast(
+                Identifier.fromNamespaceAndPath("voicechat", "boss_line"),
+                (graphics, delta) ->
+                        pingplus.voicechat.client.gui.BossLineHud.render(graphics)
         );
     }
 
@@ -99,7 +135,7 @@ public class VoicechatClient implements ClientModInitializer {
                 Identifier.fromNamespaceAndPath("voicechat", "controls")
         );
 
-        KeyMapping menu = KeyMappingHelper.registerKeyMapping(
+        voiceMenuKey = KeyMappingHelper.registerKeyMapping(
                 new KeyMapping(
                         "key.voicechat.settings",
                         GLFW.GLFW_KEY_V,
@@ -107,7 +143,7 @@ public class VoicechatClient implements ClientModInitializer {
                 )
         );
 
-        KeyMapping talk = KeyMappingHelper.registerKeyMapping(
+        talkKey = KeyMappingHelper.registerKeyMapping(
                 new KeyMapping(
                         "key.voicechat.talk",
                         GLFW.GLFW_KEY_CAPS_LOCK,
@@ -115,13 +151,16 @@ public class VoicechatClient implements ClientModInitializer {
                 )
         );
 
-        KeyMapping mute = KeyMappingHelper.registerKeyMapping(
+        muteKey = KeyMappingHelper.registerKeyMapping(
                 new KeyMapping(
                         "key.voicechat.mute",
                         GLFW.GLFW_KEY_M,
                         category
                 )
         );
+        KeyMapping menu = voiceMenuKey;
+        KeyMapping talk = talkKey;
+        KeyMapping mute = muteKey;
 
         HudElementRegistry.addLast(
                 Identifier.fromNamespaceAndPath("voicechat", "status"),
