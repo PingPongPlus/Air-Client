@@ -46,6 +46,8 @@ repositories {
     // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html
     // for more information about repositories.
+    maven { url 'https://jitpack.io' }
+    maven { url 'https://api.modrinth.com/maven' }
     exclusiveContent {
         forRepository {
             maven { url = "https://maven.azureaaron.net/releases" }
@@ -79,6 +81,15 @@ dependencies {
     // Clean glowing outline wie SkyHanni (CustomGlowCallback)
     implementation "net.azureaaron:render-chest:1.0.3+26.2"
     include "net.azureaaron:render-chest:1.0.3+26.2"
+
+    // SkyCofl (sky.coflnet.com auction house frontend)
+    implementation include("com.github.Coflnet:CoflSkyCore:3406a83b4a")
+    implementation include("org.greenrobot:eventbus-java:3.3.1")
+    implementation include("org.java-websocket:Java-WebSocket:1.5.2")
+    implementation include("com.google.code.gson:gson:2.10.1")
+    implementation include("com.neovisionaries:nv-websocket-client:2.14")
+    implementation include("maven.modrinth:yacl:3.9.4+26.2-fabric")
+    implementation files('libs/baritone-api-fabric-1.19.0.jar')
 }
 
 processResources {
@@ -136,10 +147,30 @@ tasks.named('check') { dependsOn 'spotifySmokeTest' }
 
 jar {
     from({ zipTree(tasks.named('voiceRuntime').get().archiveFile.get().asFile) })
+    from({ zipTree('libs/baritone-api-fabric-1.19.0.jar') }) {
+        exclude 'fabric.mod.json'
+        exclude 'META-INF/jars/**'
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'module-info.class'
+    }
+    from({ zipTree('libs/nether-pathfinder-1.6.jar') }) {
+        exclude 'fabric.mod.json'
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'module-info.class'
+    }
     from("LICENSE.txt") {
         rename { "${it}_${project.archives_base_name}" }
     }
 }
+
+def curseforgeTestModsDir = file('C:/Users/Immad/curseforge/minecraft/Instances/test/mods')
+tasks.register('deployTest', Copy) {
+    dependsOn jar
+    from jar.archiveFile
+    into curseforgeTestModsDir
+}
+tasks.named('jar') { finalizedBy 'deployTest' }
+tasks.named('build') { dependsOn 'deployTest' }
 
 // configure the maven publication
 publishing {
