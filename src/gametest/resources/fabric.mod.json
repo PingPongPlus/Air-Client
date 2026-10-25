@@ -5,6 +5,6 @@
   "environment": "client",
   "mixins": ["glass-test.mixins.json"],
   "entrypoints": {
-    "fabric-client-gametest": ["pingplus.voicechat.client.GlassRenderingTest"]
+    "fabric-client-gametest": ["pingplus.voicechat.client.GlassRenderingTest", "pingplus.voicechat.client.EtherwarpTest", "pingplus.voicechat.client.AggTest"]
   }
 }

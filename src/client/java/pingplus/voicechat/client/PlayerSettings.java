@@ -36,6 +36,9 @@ public final class PlayerSettings {
     public static boolean hideMobNames = false;
     public static boolean mobHealthBar = false;
     public static float mobBarOpacity = 0.85f;
+    public static boolean selfOutline = true;
+    public static int selfOutlineColor = 0xFF69B4;
+    public static boolean etherwarpHelper = true;
     public static boolean playerOutline = true;
     public static int playerOutlineColor = 0x7FDBFF;
     public static boolean dockHotbar = true;

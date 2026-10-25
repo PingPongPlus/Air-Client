@@ -39,3 +39,7 @@ HUD edge toggles, the Arraylist, CPS, Speed, and Keystrokes start off. Existing 
 For HUD widgets and their separate layout editor, see [WIDGETS.md](WIDGETS.md).
 For the fixed-center reticle and its live preview, see [CROSSHAIR.md](CROSSHAIR.md).
 For sneaking while inventories and other screens are open, see [FORCE_SNEAK.md](FORCE_SNEAK.md).
+
+The Skyblock options also include **Etherwarp helper**, **Self glow**, and the animated
+**AGG** sticker. AGG uses the shared HUD editor (normally **G**) for dragging,
+resizing, and resetting its layout; visibility is saved separately.

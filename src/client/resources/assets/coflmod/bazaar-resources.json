@@ -1,0 +1,4258 @@
+{
+	"bazaarConversions": {
+		"SILVER_FANG": "Silver Fang",
+		"ENCHANTED_RAW_CHICKEN": "Enchanted Raw Chicken",
+		"INK_SACK:3": "Cocoa Beans",
+		"BROWN_MUSHROOM": "Brown Mushroom",
+		"ENCHANTED_WATER_LILY": "Enchanted Lily Pad",
+		"INK_SACK:4": "Lapis Lazuli",
+		"TARANTULA_WEB": "Tarantula Web",
+		"CARROT_ITEM": "Carrot",
+		"ENCHANTED_POTATO": "Enchanted Potato",
+		"LOG:1": "Spruce Log",
+		"ENCHANTED_SLIME_BALL": "Enchanted Slimeball",
+		"ENCHANTED_GOLDEN_CARROT": "Enchanted Golden Carrot",
+		"LOG:3": "Jungle Log",
+		"LOG:2": "Birch Log",
+		"ENCHANTED_RABBIT_HIDE": "Enchanted Rabbit Hide",
+		"ENCHANTED_GLOWSTONE_DUST": "Enchanted Glowstone Dust",
+		"ENCHANTED_INK_SACK": "Enchanted Ink Sac",
+		"ENCHANTED_CACTUS": "Enchanted Cactus",
+		"ENCHANTED_SUGAR_CANE": "Enchanted Sugar Cane",
+		"ENCHANTED_BIRCH_LOG": "Enchanted Birch Log",
+		"ENCHANTED_GUNPOWDER": "Enchanted Gunpowder",
+		"ENCHANTED_MELON": "Enchanted Melon",
+		"ENCHANTED_COOKED_SALMON": "Enchanted Cooked Salmon",
+		"ENCHANTED_SUGAR": "Enchanted Sugar",
+		"LOG": "Oak Log",
+		"CACTUS": "Cactus",
+		"ENCHANTED_BLAZE_ROD": "Enchanted Blaze Rod",
+		"GHAST_TEAR": "Ghast Tear",
+		"ENCHANTED_CAKE": "Enchanted Cake",
+		"PUMPKIN": "Pumpkin",
+		"ENCHANTED_ENDER_PEARL": "Enchanted Ender Pearl",
+		"PURPLE_CANDY": "Purple Candy",
+		"WHEAT": "Wheat",
+		"ENCHANTED_FERMENTED_SPIDER_EYE": "Enchanted Fermented Spider Eye",
+		"ENCHANTED_GOLD_BLOCK": "Enchanted Gold Block",
+		"ENCHANTED_RAW_SALMON": "Enchanted Raw Salmon",
+		"ENCHANTED_JUNGLE_LOG": "Enchanted Jungle Log",
+		"ENCHANTED_FLINT": "Enchanted Flint",
+		"ENCHANTED_GLISTERING_MELON": "Enchanted Glistering Melon",
+		"IRON_INGOT": "Iron Ingot",
+		"PRISMARINE_SHARD": "Prismarine Shard",
+		"ENCHANTED_EMERALD": "Enchanted Emerald",
+		"ENCHANTED_SPIDER_EYE": "Enchanted Spider Eye",
+		"ENCHANTED_EMERALD_BLOCK": "Enchanted Emerald Block",
+		"RED_MUSHROOM": "Red Mushroom",
+		"MUTTON": "Mutton",
+		"ENCHANTED_MELON_BLOCK": "Enchanted Melon Block",
+		"ENCHANTED_CLAY_BALL": "Enchanted Clay",
+		"DIAMOND": "Diamond",
+		"COBBLESTONE": "Cobblestone",
+		"SPIDER_EYE": "Spider Eye",
+		"RAW_FISH": "Raw Fish",
+		"ENCHANTED_PUFFERFISH": "Enchanted Pufferfish",
+		"GLOWSTONE_DUST": "Glowstone Dust",
+		"GOLD_INGOT": "Gold Ingot",
+		"REVENANT_VISCERA": "Revenant Viscera",
+		"TARANTULA_SILK": "Tarantula Silk",
+		"POTATO_ITEM": "Potato",
+		"ENCHANTED_MUTTON": "Enchanted Mutton",
+		"ENCHANTED_HUGE_MUSHROOM_1": "Enchanted Brown Mushroom Block",
+		"SUPER_COMPACTOR_3000": "Super Compactor 3000",
+		"ENCHANTED_IRON": "Enchanted Iron",
+		"SUPER_EGG": "Super Enchanted Egg",
+		"STOCK_OF_STONKS": "Stock of Stonks",
+		"ENCHANTED_COBBLESTONE": "Enchanted Cobblestone",
+		"ENCHANTED_BONE": "Enchanted Bone",
+		"ENCHANTED_PAPER": "Enchanted Paper",
+		"ENCHANTED_HUGE_MUSHROOM_2": "Enchanted Red Mushroom Block",
+		"PORK": "Raw Porkchop",
+		"ENCHANTED_DIAMOND_BLOCK": "Enchanted Diamond Block",
+		"EMERALD": "Emerald",
+		"ENCHANTED_RABBIT_FOOT": "Enchanted Rabbit Foot",
+		"PRISMARINE_CRYSTALS": "Prismarine Crystals",
+		"HOT_POTATO_BOOK": "Hot Potato Book",
+		"ENCHANTED_ICE": "Enchanted Ice",
+		"ICE": "Ice",
+		"CLAY_BALL": "Clay",
+		"HUGE_MUSHROOM_1": "Brown Mushroom Block",
+		"HUGE_MUSHROOM_2": "Red Mushroom Block",
+		"LOG_2:1": "Dark Oak Log",
+		"GREEN_GIFT": "Green Gift",
+		"ENCHANTED_SNOW_BLOCK": "Enchanted Snow Block",
+		"GOLDEN_TOOTH": "Golden Tooth",
+		"STRING": "String",
+		"PACKED_ICE": "Packed Ice",
+		"WATER_LILY": "Lily Pad",
+		"RABBIT_FOOT": "Rabbit's Foot",
+		"LOG_2": "Acacia Log",
+		"REDSTONE": "Redstone",
+		"ENCHANTED_OBSIDIAN": "Enchanted Obsidian",
+		"ENCHANTED_COAL": "Enchanted Coal",
+		"COAL": "Coal",
+		"ENCHANTED_QUARTZ": "Enchanted Quartz",
+		"ENDER_PEARL": "Ender Pearl",
+		"ENCHANTED_COAL_BLOCK": "Enchanted Coal Block",
+		"ENCHANTED_CACTUS_GREEN": "Enchanted Cactus Green",
+		"ENCHANTED_PRISMARINE_CRYSTALS": "Enchanted Prismarine Crystals",
+		"ENCHANTED_CARROT_STICK": "Enchanted Carrot on a Stick",
+		"ENCHANTED_CARROT_ON_A_STICK": "Enchanted Carrot on a Stick",
+		"ENCHANTED_ENDSTONE": "Enchanted End Stone",
+		"ENCHANTED_LAPIS_LAZULI_BLOCK": "Enchanted Lapis Block",
+		"ENCHANTED_COOKIE": "Enchanted Cookie",
+		"ENCHANTED_STRING": "Enchanted String",
+		"SLIME_BALL": "Slimeball",
+		"ENDER_STONE": "End Stone",
+		"ENCHANTED_RAW_FISH": "Enchanted Raw Fish",
+		"ENCHANTED_ACACIA_LOG": "Enchanted Acacia Log",
+		"SNOW_BALL": "Snowball",
+		"ENCHANTED_EGG": "Enchanted Egg",
+		"QUARTZ": "Nether Quartz",
+		"RAW_BEEF": "Raw Beef",
+		"ENCHANTED_EYE_OF_ENDER": "Enchanted Eye of Ender",
+		"SAND": "Sand",
+		"RAW_CHICKEN": "Raw Chicken",
+		"MAGMA_CREAM": "Magma Cream",
+		"SUGAR_CANE": "Sugar Cane",
+		"ENCHANTED_LAPIS_LAZULI": "Enchanted Lapis Lazuli",
+		"ENCHANTED_GHAST_TEAR": "Enchanted Ghast Tear",
+		"ENCHANTED_COCOA": "Enchanted Cocoa Beans",
+		"RED_GIFT": "Red Gift",
+		"ENCHANTED_RAW_BEEF": "Enchanted Raw Beef",
+		"SEEDS": "Seeds",
+		"ENCHANTED_LEATHER": "Enchanted Leather",
+		"ENCHANTED_SPONGE": "Enchanted Sponge",
+		"ENCHANTED_FEATHER": "Enchanted Feather",
+		"ENCHANTED_SLIME_BLOCK": "Enchanted Slime Block",
+		"ENCHANTED_OAK_LOG": "Enchanted Oak Log",
+		"RABBIT_HIDE": "Rabbit Hide",
+		"WHITE_GIFT": "White Gift",
+		"INK_SACK": "Ink Sac",
+		"FLINT": "Flint",
+		"ENCHANTED_SPRUCE_LOG": "Enchanted Spruce Log",
+		"WOLF_TOOTH": "Wolf Tooth",
+		"ENCHANTED_ROTTEN_FLESH": "Enchanted Rotten Flesh",
+		"ENCHANTED_GRILLED_PORK": "Enchanted Grilled Pork",
+		"SULPHUR": "Gunpowder",
+		"NETHER_STALK": "Nether Wart",
+		"RABBIT": "Raw Rabbit",
+		"ENCHANTED_NETHER_STALK": "Enchanted Nether Wart",
+		"ENCHANTED_REDSTONE_BLOCK": "Enchanted Redstone Block",
+		"ENCHANTED_QUARTZ_BLOCK": "Enchanted Quartz Block",
+		"ENCHANTED_CARROT": "Enchanted Carrot",
+		"ENCHANTED_PUMPKIN": "Enchanted Pumpkin",
+		"GREEN_CANDY": "Green Candy",
+		"ENCHANTED_REDSTONE": "Enchanted Redstone",
+		"ROTTEN_FLESH": "Rotten Flesh",
+		"ENCHANTED_COOKED_FISH": "Enchanted Cooked Fish",
+		"OBSIDIAN": "Obsidian",
+		"ENCHANTED_MAGMA_CREAM": "Enchanted Magma Cream",
+		"GRAVEL": "Gravel",
+		"MELON": "Melon",
+		"ENCHANTED_PACKED_ICE": "Enchanted Packed Ice",
+		"RAW_FISH:3": "Pufferfish",
+		"ENCHANTED_PRISMARINE_SHARD": "Enchanted Prismarine Shard",
+		"ENCHANTED_IRON_BLOCK": "Enchanted Iron Block",
+		"LEATHER": "Leather",
+		"ENCHANTED_COOKED_MUTTON": "Enchanted Cooked Mutton",
+		"BONE": "Bone",
+		"RAW_FISH:1": "Raw Salmon",
+		"REVENANT_FLESH": "Revenant Flesh",
+		"ENCHANTED_PORK": "Enchanted Pork",
+		"ENCHANTED_GLOWSTONE": "Enchanted Glowstone",
+		"ENCHANTED_RABBIT": "Enchanted Raw Rabbit",
+		"ENCHANTED_BREAD": "Enchanted Bread",
+		"FEATHER": "Feather",
+		"ENCHANTED_CHARCOAL": "Enchanted Charcoal",
+		"ENCHANTED_BLAZE_POWDER": "Enchanted Blaze Powder",
+		"NETHERRACK": "Netherrack",
+		"SUMMONING_EYE": "Summoning Eye",
+		"SPONGE": "Sponge",
+		"BLAZE_ROD": "Blaze Rod",
+		"ENCHANTED_DARK_OAK_LOG": "Enchanted Dark Oak Log",
+		"SNOW_BLOCK": "Snow Block",
+		"ENCHANTED_BAKED_POTATO": "Enchanted Baked Potato",
+		"COMPACTOR": "Compactor",
+		"ENCHANTED_DIAMOND": "Enchanted Diamond",
+		"ENCHANTED_GOLD": "Enchanted Gold",
+		"WISE_FRAGMENT": "Wise Dragon Fragment",
+		"PROTECTOR_FRAGMENT": "Protector Dragon Fragment",
+		"STRONG_FRAGMENT": "Strong Dragon Fragment",
+		"YOUNG_FRAGMENT": "Young Dragon Fragment",
+		"UNSTABLE_FRAGMENT": "Unstable Dragon Fragment",
+		"SUPERIOR_FRAGMENT": "Superior Dragon Fragment",
+		"OLD_FRAGMENT": "Old Dragon Fragment",
+		"ENCHANTED_FIREWORK_ROCKET": "Enchanted Firework Rocket",
+		"ENCHANTED_LAVA_BUCKET": "Enchanted Lava Bucket",
+		"CATALYST": "Catalyst",
+		"ENCHANTED_REDSTONE_LAMP": "Enchanted Redstone Lamp",
+		"ENCHANTED_HAY_BLOCK": "Enchanted Hay Bale",
+		"HAY_BLOCK": "Hay Bale",
+		"ENCHANTED_SEEDS": "Enchanted Seeds",
+		"ENCHANTED_SAND": "Enchanted Sand",
+		"ENCHANTED_RED_MUSHROOM": "Enchanted Red Mushroom",
+		"ENCHANTED_BROWN_MUSHROOM": "Enchanted Brown Mushroom",
+		"ENCHANTED_WET_SPONGE": "Enchanted Wet Sponge",
+		"HAMSTER_WHEEL": "Hamster Wheel",
+		"FOUL_FLESH": "Foul Flesh",
+		"RECOMBOBULATOR_3000": "Recombobulator 3000",
+		"HOLY_FRAGMENT": "Holy Dragon Fragment",
+		"FUMING_POTATO_BOOK": "Fuming Potato Book",
+		"CARROT_BAIT": "Carrot Bait",
+		"MINNOW_BAIT": "Minnow Bait",
+		"FISH_BAIT": "Fish Bait",
+		"LIGHT_BAIT": "Light Bait",
+		"DARK_BAIT": "Dark Bait",
+		"SPOOKY_BAIT": "Spooky Bait",
+		"SPIKED_BAIT": "Spiked Bait",
+		"BLESSED_BAIT": "Blessed Bait",
+		"ICE_BAIT": "Ice Bait",
+		"WHALE_BAIT": "Whale Bait",
+		"ENCHANTED_CLOWNFISH": "Enchanted Clownfish",
+		"RAW_FISH:2": "Clownfish",
+		"ENCHANTED_BONE_BLOCK": "Enchanted Bone Block",
+		"BOOSTER_COOKIE": "Booster Cookie",
+		"TIGER_SHARK_TOOTH": "Tiger Shark Tooth",
+		"BLUE_SHARK_TOOTH": "Blue Shark Tooth",
+		"NURSE_SHARK_TOOTH": "Nurse Shark Tooth",
+		"GREAT_WHITE_SHARK_TOOTH": "Great White Shark Tooth",
+		"SHARK_FIN": "Shark Fin",
+		"ENCHANTED_SHARK_FIN": "Enchanted Shark Fin",
+		"BAZAAR_COOKIE": "Bazaar Cookie",
+		"GRIFFIN_FEATHER": "Griffin Feather",
+		"DAEDALUS_STICK": "Daedalus Stick",
+		"ANCIENT_CLAW": "Ancient Claw",
+		"ENCHANTED_ANCIENT_CLAW": "Enchanted Ancient Claw",
+		"REFINED_MINERAL": "Refined Mineral",
+		"SHARK_BAIT": "Shark Bait",
+		"HYPER_CATALYST": "Hyper Catalyst",
+		"ECTOPLASM": "Ectoplasm",
+		"PUMPKIN_GUTS": "Pumpkin Guts",
+		"SPOOKY_SHARD": "Spooky Shard",
+		"WEREWOLF_SKIN": "Werewolf Skin",
+		"SOUL_FRAGMENT": "Soul Fragment",
+		"JACOBS_TICKET": "Jacob's Ticket",
+		"EXP_BOTTLE": "Experience Bottle",
+		"GRAND_EXP_BOTTLE": "Grand Experience Bottle",
+		"TITANIC_EXP_BOTTLE": "Titanic Experience Bottle",
+		"COLOSSAL_EXP_BOTTLE": "Colossal Experience Bottle",
+		"POLISHED_PUMPKIN": "Polished Pumpkin",
+		"TIGHTLY_TIED_HAY_BALE": "Tightly-Tied Hay Bale",
+		"MUTANT_NETHER_STALK": "Mutant Nether Wart",
+		"REFINED_MITHRIL": "Refined Mithril",
+		"TITANIUM_ORE": "Titanium",
+		"MITHRIL_ORE": "Mithril",
+		"STARFALL": "Starfall",
+		"REFINED_TITANIUM": "Refined Titanium",
+		"REFINED_DIAMOND": "Refined Diamond",
+		"JERRY_BOX_GOLDEN": "Golden Jerry Box",
+		"JERRY_BOX_PURPLE": "Purple Jerry Box",
+		"JERRY_BOX_BLUE": "Blue Jerry Box",
+		"JERRY_BOX_GREEN": "Green Jerry Box",
+		"ENCHANTED_MITHRIL": "Enchanted Mithril",
+		"ENCHANTED_TITANIUM": "Enchanted Titanium",
+		"MAGMA_BUCKET": "Magma Bucket",
+		"PLASMA_BUCKET": "Plasma Bucket",
+		"DWARVEN_COMPACTOR": "Dwarven Super Compactor",
+		"POWER_CRYSTAL": "Power Crystal",
+		"TREASURITE": "Treasurite",
+		"ENCHANTED_NETHERRACK": "Enchanted Netherrack",
+		"NULL_SPHERE": "Null Sphere",
+		"NULL_OVOID": "Null Ovoid",
+		"NULL_ATOM": "Null Atom",
+		"RAW_SOULFLOW": "Raw Soulflow",
+		"SOULFLOW": "Soulflow",
+		"ABSOLUTE_ENDER_PEARL": "Absolute Ender Pearl",
+		"ROUGH_JADE_GEM": "\u2618 Rough Jade Gemstone",
+		"FLAWED_JADE_GEM": "\u2618 Flawed Jade Gemstone",
+		"FINE_JADE_GEM": "\u2618 Fine Jade Gemstone",
+		"FLAWLESS_JADE_GEM": "\u2618 Flawless Jade Gemstone",
+		"PERFECT_JADE_GEM": "\u2618 Perfect Jade Gemstone",
+		"ROUGH_AMBER_GEM": "\u2E15 Rough Amber Gemstone",
+		"FLAWED_AMBER_GEM": "\u2E15 Flawed Amber Gemstone",
+		"FINE_AMBER_GEM": "\u2E15 Fine Amber Gemstone",
+		"FLAWLESS_AMBER_GEM": "\u2E15 Flawless Amber Gemstone",
+		"PERFECT_AMBER_GEM": "\u2E15 Perfect Amber Gemstone",
+		"ROUGH_TOPAZ_GEM": "\u2727 Rough Topaz Gemstone",
+		"FLAWED_TOPAZ_GEM": "\u2727 Flawed Topaz Gemstone",
+		"FINE_TOPAZ_GEM": "\u2727 Fine Topaz Gemstone",
+		"FLAWLESS_TOPAZ_GEM": "\u2727 Flawless Topaz Gemstone",
+		"PERFECT_TOPAZ_GEM": "\u2727 Perfect Topaz Gemstone",
+		"ROUGH_SAPPHIRE_GEM": "\u270E Rough Sapphire Gemstone",
+		"FLAWED_SAPPHIRE_GEM": "\u270E Flawed Sapphire Gemstone",
+		"FINE_SAPPHIRE_GEM": "\u270E Fine Sapphire Gemstone",
+		"FLAWLESS_SAPPHIRE_GEM": "\u270E Flawless Sapphire Gemstone",
+		"PERFECT_SAPPHIRE_GEM": "\u270E Perfect Sapphire Gemstone",
+		"ROUGH_AMETHYST_GEM": "\u2748 Rough Amethyst Gemstone",
+		"FLAWED_AMETHYST_GEM": "\u2748 Flawed Amethyst Gemstone",
+		"FINE_AMETHYST_GEM": "\u2748 Fine Amethyst Gemstone",
+		"FLAWLESS_AMETHYST_GEM": "\u2748 Flawless Amethyst Gemstone",
+		"PERFECT_AMETHYST_GEM": "\u2748 Perfect Amethyst Gemstone",
+		"ROUGH_JASPER_GEM": "\u2741 Rough Jasper Gemstone",
+		"FLAWED_JASPER_GEM": "\u2741 Flawed Jasper Gemstone",
+		"FINE_JASPER_GEM": "\u2741 Fine Jasper Gemstone",
+		"FLAWLESS_JASPER_GEM": "\u2741 Flawless Jasper Gemstone",
+		"PERFECT_JASPER_GEM": "\u2741 Perfect Jasper Gemstone",
+		"ROUGH_RUBY_GEM": "\u2764 Rough Ruby Gemstone",
+		"FLAWED_RUBY_GEM": "\u2764 Flawed Ruby Gemstone",
+		"FINE_RUBY_GEM": "\u2764 Fine Ruby Gemstone",
+		"FLAWLESS_RUBY_GEM": "\u2764 Flawless Ruby Gemstone",
+		"PERFECT_RUBY_GEM": "\u2764 Perfect Ruby Gemstone",
+		"ROUGH_OPAL_GEM": "\u2742 Rough Opal Gemstone",
+		"FLAWED_OPAL_GEM": "\u2742 Flawed Opal Gemstone",
+		"FINE_OPAL_GEM": "\u2742 Fine Opal Gemstone",
+		"FLAWLESS_OPAL_GEM": "\u2742 Flawless Opal Gemstone",
+		"PERFECT_OPAL_GEM": "\u2742 Perfect Opal Gemstone",
+		"HARD_STONE": "Hard Stone",
+		"ENCHANTED_HARD_STONE": "Enchanted Hard Stone",
+		"CONCENTRATED_STONE": "Concentrated Stone",
+		"YOGGIE": "Yoggie",
+		"SLUDGE_JUICE": "Sludge Juice",
+		"WORM_MEMBRANE": "Worm Membrane",
+		"GOBLIN_EGG_GREEN": "Green Goblin Egg",
+		"GOBLIN_EGG_BLUE": "Blue Goblin Egg",
+		"GOBLIN_EGG_RED": "Red Goblin Egg",
+		"GOBLIN_EGG_YELLOW": "Yellow Goblin Egg",
+		"GOBLIN_EGG": "Goblin Egg",
+		"ARACHNE_KEEPER_FRAGMENT": "Arachne's Calling",
+		"SOUL_STRING": "Soul String",
+		"CHEESE_FUEL": "Tasty Cheese",
+		"MYCEL": "Mycelium",
+		"ENCHANTED_MYCELIUM": "Enchanted Mycelium",
+		"ENCHANTED_MYCELIUM_CUBE": "Enchanted Mycelium Cube",
+		"SULPHUR_ORE": "Sulphur",
+		"ENCHANTED_SULPHUR": "Enchanted Sulphur",
+		"ENCHANTED_SULPHUR_CUBE": "Enchanted Sulphur Cube",
+		"SAND:1": "Red Sand",
+		"ENCHANTED_RED_SAND": "Enchanted Red Sand",
+		"ENCHANTED_RED_SAND_CUBE": "Enchanted Red Sand Cube",
+		"CORRUPTED_BAIT": "Corrupted Bait",
+		"HORNS_OF_TORMENT": "Horns of Torment",
+		"DARK_ORB": "Dark Orb",
+		"ROCK_GEMSTONE": "Dwarven Geode",
+		"END_STONE_SHULKER": "End Stone Shulker",
+		"ENDER_MONOCLE": "Ender Monocle",
+		"HAZMAT_ENDERMAN": "Hazmat Enderman",
+		"LUXURIOUS_SPOOL": "Luxurious Spool",
+		"KUUDRA_MANDIBLE": "Kuudra Mandible",
+		"BLAZE_ROD_DISTILLATE": "Blaze Rod Distillate",
+		"ACACIA_BIRDHOUSE": "Acacia Birdhouse",
+		"DERELICT_ASHE": "Derelict Ashe",
+		"MOIL_LOG": "Moil Log",
+		"MAGMA_FISH_GOLD": "Gold Magmafish",
+		"MELON_BLOCK": "Melon Block",
+		"AMBER_MATERIAL": "Amber Material",
+		"CRUDE_GABAGOOL_DISTILLATE": "Gabagool Distillate",
+		"METEOR_SHARD": "Meteor Shard",
+		"DIAMOND_ATOM": "Diamond Atom",
+		"PRECURSOR_GEAR": "Precursor Gear",
+		"NECROMANCER_BROOCH": "Necromancer's Brooch",
+		"DEEP_SEA_ORB": "Deep Sea Orb",
+		"PETRIFIED_STARFALL": "Petrified Starfall",
+		"RED_SCARF": "Red Scarf",
+		"SADAN_BROOCH": "Sadan's Brooch",
+		"ONYX": "Black Diamond",
+		"OMEGA_EGG": "Omega Enchanted Egg",
+		"MAGMA_CREAM_DISTILLATE": "Magma Cream Distillate",
+		"FURBALL": "Furball",
+		"GIANT_TOOTH": "Giant Tooth",
+		"ENDSTONE_GEODE": "End Stone Geode",
+		"OPTICAL_LENS": "Optical Lens",
+		"HOT_BAIT": "Hot Bait",
+		"BEATING_HEART": "Beating Heart",
+		"AMALGAMATED_CRIMSONITE_NEW": "Amalgamated Crimsonite",
+		"AMALGAMATED_CRIMSONITE": "Amalgamated Crimsonite (Old)",
+		"TOIL_LOG": "Toil Log",
+		"SALMON_OPAL": "Salmon Opal",
+		"AOTE_STONE": "Warped Stone",
+		"GOLDEN_BALL": "Golden Ball",
+		"MAGMA_FISH": "Magmafish",
+		"GLOWSTONE_DUST_DISTILLATE": "Glowstone Distillate",
+		"MANDRAA": "Mandraa",
+		"MOLTEN_CUBE": "Molten Cube",
+		"BULKY_STONE": "Bulky Stone",
+		"INFERNO_VERTEX": "Inferno Vertex",
+		"REFINED_AMBER": "Andesite Whetstone",
+		"JADERALD": "Jaderald",
+		"NETHER_STALK_DISTILLATE": "Nether Wart Distillate",
+		"RARE_DIAMOND": "Rare Diamond",
+		"CRUDE_GABAGOOL": "Crude Gabagool",
+		"DRAGON_SCALE": "Dragon Scale",
+		"DRAGON_HORN": "Dragon Horn",
+		"HARDENED_WOOD": "Hardened Wood",
+		"HEAVY_GABAGOOL": "Heavy Gabagool",
+		"INFERNO_APEX": "Inferno Apex",
+		"ECCENTRIC_PAINTING": "Eccentric Painting",
+		"REAPER_PEPPER": "Reaper Pepper",
+		"DIAMONITE": "Diamonite",
+		"SPIRIT_DECOY": "Spirit Stone",
+		"HYPERGOLIC_GABAGOOL": "Hypergolic Gabagool",
+		"OBSIDIAN_TABLET": "Obsidian Tablet",
+		"VITAMIN_DEATH": "Vitamin Death",
+		"CANDY_CORN": "Candy Corn",
+		"MIDAS_JEWEL": "Midas Jewel",
+		"PREMIUM_FLESH": "Premium Flesh",
+		"PURE_MITHRIL": "Pure Mithril",
+		"JERRY_STONE": "Jerry Stone",
+		"MOLTEN_POWDER": "Molten Powder",
+		"ROCK_CANDY": "Rock Candy",
+		"MAGMA_URCHIN": "Magma Urchin",
+		"SEARING_STONE": "Searing Stone",
+		"BLESSED_FRUIT": "Blessed Fruit",
+		"HOT_STUFF": "Scorched Topaz",
+		"SUSPICIOUS_VIAL": "Suspicious Vial",
+		"DIRT_BOTTLE": "Dirt Bottle",
+		"RED_NOSE": "Red Nose",
+		"MAGMA_FISH_SILVER": "Silver Magmafish",
+		"DRAGON_CLAW": "Dragon Claw",
+		"LUCKY_DICE": "Lucky Dice",
+		"FUEL_GABAGOOL": "Fuel Gabagool",
+		"PRECIOUS_PEARL": "Precious Pearl",
+		"SCORCHED_BOOKS": "Scorched Books",
+		"MAGMA_FISH_DIAMOND": "Diamond Magmafish",
+		"WITHER_BLOOD": "Wither Blood",
+		"BLAZE_WAX": "Blaze Wax",
+		"LAPIS_CRYSTAL": "Lapis Crystal",
+		"SHINY_PRISM": "Shiny Prism",
+		"CHILI_PEPPER": "Chili Pepper",
+		"ENTROPY_SUPPRESSOR": "Entropy Suppressor",
+		"ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN_2": "No Pain No Gain II",
+		"ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN_1": "No Pain No Gain I",
+		"ENCHANTMENT_PROTECTION_7": "Protection VII",
+		"ENCHANTMENT_PROTECTION_6": "Protection VI",
+		"ESSENCE_DRAGON": "Dragon Essence",
+		"ENCHANTMENT_TURBO_COCO_1": "Turbo-Cocoa I",
+		"ENCHANTMENT_TURBO_COCO_5": "Turbo-Cocoa V",
+		"ENCHANTMENT_TURBO_COCO_4": "Turbo-Cocoa IV",
+		"ENCHANTMENT_TURBO_COCO_3": "Turbo-Cocoa III",
+		"ENCHANTMENT_TURBO_COCO_2": "Turbo-Cocoa II",
+		"ENCHANTMENT_CORRUPTION_5": "Corruption V",
+		"ENCHANTMENT_CORRUPTION_4": "Corruption IV",
+		"ENCHANTMENT_CORRUPTION_3": "Corruption III",
+		"ENCHANTMENT_CORRUPTION_2": "Corruption II",
+		"ENCHANTMENT_CORRUPTION_1": "Corruption I",
+		"ENCHANTMENT_CAYENNE_5": "Cayenne V",
+		"ENCHANTMENT_CAYENNE_4": "Cayenne IV",
+		"ENCHANTMENT_CAYENNE_3": "Cayenne III",
+		"ENCHANTMENT_CAYENNE_2": "Cayenne II",
+		"ENCHANTMENT_CAYENNE_1": "Cayenne I",
+		"ENCHANTMENT_TURBO_CACTUS_5": "Turbo-Cacti V",
+		"ENCHANTMENT_TURBO_CACTUS_4": "Turbo-Cacti IV",
+		"ENCHANTMENT_TURBO_CACTUS_3": "Turbo-Cacti III",
+		"ENCHANTMENT_TURBO_CACTUS_2": "Turbo-Cacti II",
+		"ENCHANTMENT_TURBO_CACTUS_1": "Turbo-Cacti I",
+		"ENCHANTMENT_FIRE_ASPECT_3": "Fire Aspect III",
+		"ENCHANTMENT_ENDER_SLAYER_7": "Ender Slayer VII",
+		"ENCHANTMENT_ENDER_SLAYER_6": "Ender Slayer VI",
+		"ENCHANTMENT_BIG_BRAIN_4": "Big Brain IV",
+		"ENCHANTMENT_BIG_BRAIN_5": "Big Brain V",
+		"ENCHANTMENT_BIG_BRAIN_3": "Big Brain III",
+		"ENCHANTMENT_THUNDERLORD_7": "Thunderlord VII",
+		"ENCHANTMENT_THUNDERLORD_6": "Thunderlord VI",
+		"ENCHANTMENT_TURBO_MELON_5": "Turbo-Melon V",
+		"ENCHANTMENT_SHARPNESS_7": "Sharpness VII",
+		"ENCHANTMENT_SHARPNESS_6": "Sharpness VI",
+		"ENCHANTMENT_MANA_STEAL_1": "Mana Steal I",
+		"ENCHANTMENT_MANA_STEAL_2": "Mana Steal II",
+		"ENCHANTMENT_MANA_STEAL_3": "Mana Steal III",
+		"ENCHANTMENT_STRONG_MANA_7": "Strong Mana VII",
+		"ENCHANTMENT_TURBO_MELON_3": "Turbo-Melon III",
+		"ENCHANTMENT_STRONG_MANA_6": "Strong Mana VI",
+		"ENCHANTMENT_TURBO_MELON_4": "Turbo-Melon IV",
+		"ENCHANTMENT_STRONG_MANA_5": "Strong Mana V",
+		"ENCHANTMENT_TURBO_MELON_1": "Turbo-Melon I",
+		"ENCHANTMENT_STRONG_MANA_4": "Strong Mana IV",
+		"ENCHANTMENT_TURBO_MELON_2": "Turbo-Melon II",
+		"ENCHANTMENT_STRONG_MANA_3": "Strong Mana III",
+		"ENCHANTMENT_STRONG_MANA_2": "Strong Mana II",
+		"ENCHANTMENT_STRONG_MANA_1": "Strong Mana I",
+		"ENCHANTMENT_HARDENED_MANA_1": "Hardened Mana I",
+		"ENCHANTMENT_HARDENED_MANA_3": "Hardened Mana III",
+		"ENCHANTMENT_HARDENED_MANA_2": "Hardened Mana II",
+		"ENCHANTMENT_ULTIMATE_COMBO_1": "Combo I",
+		"ENCHANTMENT_ULTIMATE_COMBO_2": "Combo II",
+		"ENCHANTMENT_ULTIMATE_COMBO_5": "Combo V",
+		"ENCHANTMENT_ULTIMATE_COMBO_3": "Combo III",
+		"ENCHANTMENT_ULTIMATE_COMBO_4": "Combo IV",
+		"ENCHANTMENT_STRONG_MANA_9": "Strong Mana IX",
+		"ENCHANTMENT_STRONG_MANA_8": "Strong Mana VIII",
+		"ENCHANTMENT_TURBO_WARTS_1": "Turbo-Warts I",
+		"ENCHANTMENT_TURBO_WARTS_2": "Turbo-Warts II",
+		"ENCHANTMENT_TURBO_WARTS_3": "Turbo-Warts III",
+		"ENCHANTMENT_TURBO_WARTS_4": "Turbo-Warts IV",
+		"ENCHANTMENT_TURBO_WARTS_5": "Turbo-Warts V",
+		"ENCHANTMENT_HARDENED_MANA_5": "Hardened Mana V",
+		"ENCHANTMENT_HARDENED_MANA_4": "Hardened Mana IV",
+		"ENCHANTMENT_HARDENED_MANA_7": "Hardened Mana VII",
+		"ENCHANTMENT_HARDENED_MANA_6": "Hardened Mana VI",
+		"ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN_4": "No Pain No Gain IV",
+		"ENCHANTMENT_HARDENED_MANA_9": "Hardened Mana IX",
+		"ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN_3": "No Pain No Gain III",
+		"ENCHANTMENT_HARDENED_MANA_8": "Hardened Mana VIII",
+		"ENCHANTMENT_ULTIMATE_NO_PAIN_NO_GAIN_5": "No Pain No Gain V",
+		"SIL_EX": "Silex",
+		"ENCHANTMENT_EXPERIENCE_4": "Experience IV",
+		"ESSENCE_SPIDER": "Spider Essence",
+		"IMPLOSION_SCROLL": "Implosion",
+		"ENCHANTMENT_MANA_VAMPIRE_10": "Mana Vampire X",
+		"ENCHANTMENT_DELICATE_5": "Delicate V",
+		"ENCHANTMENT_PROSECUTE_6": "Prosecute VI",
+		"ENCHANTMENT_CASTER_6": "Caster VI",
+		"ENCHANTMENT_RESPITE_5": "Respite V",
+		"ENCHANTMENT_RESPITE_3": "Respite III",
+		"ENCHANTMENT_RESPITE_4": "Respite IV",
+		"ENCHANTMENT_RESPITE_1": "Respite I",
+		"ENCHANTMENT_RESPITE_2": "Respite II",
+		"ENCHANTMENT_OVERLOAD_5": "Overload V",
+		"ENCHANTMENT_OVERLOAD_4": "Overload IV",
+		"ENCHANTMENT_OVERLOAD_3": "Overload III",
+		"ENCHANTMENT_OVERLOAD_2": "Overload II",
+		"ENCHANTMENT_OVERLOAD_1": "Overload I",
+		"SECOND_MASTER_STAR": "Second Master Star",
+		"ENCHANTMENT_FIRE_PROTECTION_6": "Fire Protection VI",
+		"ENCHANTMENT_FIRE_PROTECTION_7": "Fire Protection VII",
+		"ENCHANTMENT_HARDENED_MANA_10": "Hardened Mana X",
+		"ENCHANTMENT_ULTIMATE_JERRY_2": "Ultimate Jerry II",
+		"ENCHANTMENT_ULTIMATE_REND_3": "Rend III",
+		"ENCHANTMENT_ULTIMATE_REND_2": "Rend II",
+		"ENCHANTMENT_ULTIMATE_JERRY_1": "Ultimate Jerry I",
+		"ENCHANTMENT_ULTIMATE_REND_1": "Rend I",
+		"ENCHANTMENT_ULTIMATE_JERRY_5": "Ultimate Jerry V",
+		"ENCHANTMENT_ULTIMATE_REND_5": "Rend V",
+		"ENCHANTMENT_ULTIMATE_JERRY_4": "Ultimate Jerry IV",
+		"ENCHANTMENT_ULTIMATE_JERRY_3": "Ultimate Jerry III",
+		"ENCHANTMENT_ULTIMATE_REND_4": "Rend IV",
+		"ENCHANTMENT_HARVESTING_6": "Harvesting VI",
+		"FOURTH_MASTER_STAR": "Fourth Master Star",
+		"ENCHANTMENT_ULTIMATE_WISE_2": "Ultimate Wise II",
+		"ENCHANTMENT_ULTIMATE_WISE_1": "Ultimate Wise I",
+		"ENCHANTMENT_ULTIMATE_WISE_4": "Ultimate Wise IV",
+		"ENCHANTMENT_ULTIMATE_WISE_3": "Ultimate Wise III",
+		"ENCHANTMENT_TRUE_PROTECTION_1": "True Protection I",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_6": "Luck of the Sea VI",
+		"ENCHANTMENT_SMARTY_PANTS_3": "Smarty Pants III",
+		"ENCHANTMENT_ULTIMATE_WISE_5": "Ultimate Wise V",
+		"ENCHANTMENT_SMARTY_PANTS_2": "Smarty Pants II",
+		"ENCHANTMENT_SMARTY_PANTS_5": "Smarty Pants V",
+		"ENCHANTMENT_SMARTY_PANTS_4": "Smarty Pants IV",
+		"ENCHANTMENT_SMARTY_PANTS_1": "Smarty Pants I",
+		"THE_ART_OF_WAR": "The Art of War",
+		"ENCHANTMENT_LURE_6": "Lure VI",
+		"ENCHANTMENT_FEROCIOUS_MANA_8": "Ferocious Mana VIII",
+		"ENCHANTMENT_FEROCIOUS_MANA_9": "Ferocious Mana IX",
+		"ENCHANTMENT_FEROCIOUS_MANA_4": "Ferocious Mana IV",
+		"ENCHANTMENT_FEROCIOUS_MANA_5": "Ferocious Mana V",
+		"ENCHANTMENT_FEROCIOUS_MANA_6": "Ferocious Mana VI",
+		"ENCHANTMENT_FEROCIOUS_MANA_7": "Ferocious Mana VII",
+		"ENCHANTMENT_MAGNET_6": "Magnet VI",
+		"ENCHANTMENT_FEROCIOUS_MANA_1": "Ferocious Mana I",
+		"ENCHANTMENT_FEROCIOUS_MANA_2": "Ferocious Mana II",
+		"ENCHANTMENT_FEROCIOUS_MANA_3": "Ferocious Mana III",
+		"ENCHANTMENT_CHAMPION_10": "Champion X",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_7": "Projectile Protection VII",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_6": "Projectile Protection VI",
+		"ENCHANTMENT_DRAGON_HUNTER_4": "Dragon Hunter IV",
+		"ENCHANTMENT_DRAGON_HUNTER_3": "Dragon Hunter III",
+		"ENCHANTMENT_DRAGON_HUNTER_5": "Dragon Hunter V",
+		"ENCHANTMENT_DRAGON_HUNTER_2": "Dragon Hunter II",
+		"ENCHANTMENT_DRAGON_HUNTER_1": "Dragon Hunter I",
+		"ESSENCE_WITHER": "Wither Essence",
+		"ENCHANTMENT_CHARM_2": "Charm II",
+		"ENCHANTMENT_CHARM_3": "Charm III",
+		"ENCHANTMENT_CHARM_1": "Charm I",
+		"ENCHANTMENT_CHARM_4": "Charm IV",
+		"ENCHANTMENT_CHARM_5": "Charm V",
+		"ENCHANTMENT_REPLENISH_1": "Replenish I",
+		"ENCHANTMENT_ULTIMATE_SWARM_5": "Swarm V",
+		"ENCHANTMENT_TURBO_WHEAT_3": "Turbo-Wheat III",
+		"ENCHANTMENT_TURBO_WHEAT_4": "Turbo-Wheat IV",
+		"ENCHANTMENT_TURBO_WHEAT_1": "Turbo-Wheat I",
+		"ENCHANTMENT_TURBO_WHEAT_2": "Turbo-Wheat II",
+		"ENCHANTMENT_ULTIMATE_SWARM_3": "Swarm III",
+		"ENCHANTMENT_ULTIMATE_SWARM_4": "Swarm IV",
+		"ENCHANTMENT_ULTIMATE_SWARM_1": "Swarm I",
+		"ENCHANTMENT_TURBO_WHEAT_5": "Turbo-Wheat V",
+		"ENCHANTMENT_ULTIMATE_SWARM_2": "Swarm II",
+		"ENCHANTMENT_SUGAR_RUSH_3": "Sugar Rush III",
+		"ENCHANTMENT_SUGAR_RUSH_2": "Sugar Rush II",
+		"ENCHANTMENT_SUGAR_RUSH_1": "Sugar Rush I",
+		"ENCHANTMENT_GROWTH_6": "Growth VI",
+		"ENCHANTMENT_GROWTH_7": "Growth VII",
+		"ESSENCE_UNDEAD": "Undead Essence",
+		"ENCHANTMENT_ULTIMATE_CHIMERA_1": "Chimera I",
+		"ENCHANTMENT_ULTIMATE_LAST_STAND_5": "Last Stand V",
+		"ENCHANTMENT_ULTIMATE_LAST_STAND_4": "Last Stand IV",
+		"ENCHANTMENT_ULTIMATE_CHIMERA_5": "Chimera V",
+		"ENCHANTMENT_ULTIMATE_LAST_STAND_3": "Last Stand III",
+		"ENCHANTMENT_ULTIMATE_CHIMERA_4": "Chimera IV",
+		"ENCHANTMENT_ULTIMATE_LAST_STAND_2": "Last Stand II",
+		"ENCHANTMENT_ULTIMATE_CHIMERA_3": "Chimera III",
+		"ENCHANTMENT_ULTIMATE_LAST_STAND_1": "Last Stand I",
+		"ENCHANTMENT_ULTIMATE_CHIMERA_2": "Chimera II",
+		"ENCHANTMENT_FEATHER_FALLING_10": "Feather Falling X",
+		"ENCHANTMENT_SMOLDERING_5": "Smoldering V",
+		"ENCHANTMENT_SMOLDERING_3": "Smoldering III",
+		"ENCHANTMENT_SMOLDERING_4": "Smoldering IV",
+		"ENCHANTMENT_SMOLDERING_1": "Smoldering I",
+		"FIRST_MASTER_STAR": "First Master Star",
+		"ENCHANTMENT_SMOLDERING_2": "Smoldering II",
+		"BOOK_OF_STATS": "Book of Stats",
+		"ENCHANTMENT_CRITICAL_6": "Critical VI",
+		"ENCHANTMENT_CRITICAL_7": "Critical VII",
+		"FARMING_FOR_DUMMIES": "Farming for Dummies",
+		"SHADOW_WARP_SCROLL": "Shadow Warp",
+		"ENCHANTMENT_ULTIMATE_HABANERO_TACTICS_4": "Habanero Tactics IV",
+		"ENCHANTMENT_THUNDERBOLT_6": "Thunderbolt VI",
+		"ENCHANTMENT_BLAST_PROTECTION_7": "Blast Protection VII",
+		"ENCHANTMENT_ULTIMATE_HABANERO_TACTICS_5": "Habanero Tactics V",
+		"ENCHANTMENT_ULTIMATE_REITERATE_1": "Duplex I",
+		"ENCHANTMENT_ULTIMATE_REITERATE_4": "Duplex IV",
+		"ENCHANTMENT_ULTIMATE_REITERATE_5": "Duplex V",
+		"ENCHANTMENT_ULTIMATE_REITERATE_2": "Duplex II",
+		"ENCHANTMENT_ULTIMATE_REITERATE_3": "Duplex III",
+		"ENCHANTMENT_VENOMOUS_6": "Venomous VI",
+		"ENCHANTMENT_STRONG_MANA_10": "Strong Mana X",
+		"ENCHANTMENT_FEATHER_FALLING_7": "Feather Falling VII",
+		"WITHER_SHIELD_SCROLL": "Wither Shield",
+		"ENCHANTMENT_FEATHER_FALLING_6": "Feather Falling VI",
+		"ENCHANTMENT_FEATHER_FALLING_9": "Feather Falling IX",
+		"ENCHANTMENT_FEATHER_FALLING_8": "Feather Falling VIII",
+		"ESSENCE_ICE": "Ice Essence",
+		"ENCHANTMENT_COMPACT_1": "Compact I",
+		"ESSENCE_GOLD": "Gold Essence",
+		"ENCHANTMENT_PRISTINE_1": "Prismatic I",
+		"ENCHANTMENT_PRISTINE_2": "Prismatic II",
+		"ENCHANTMENT_BLAST_PROTECTION_6": "Blast Protection VI",
+		"ENCHANTMENT_PRISTINE_5": "Prismatic V",
+		"ENCHANTMENT_PRISTINE_3": "Prismatic III",
+		"ENCHANTMENT_PRISTINE_4": "Prismatic IV",
+		"ENCHANTMENT_FEROCIOUS_MANA_10": "Ferocious Mana X",
+		"ENCHANTMENT_LIFE_STEAL_5": "Life Steal V",
+		"ENCHANTMENT_LIFE_STEAL_4": "Life Steal IV",
+		"ENCHANTMENT_TURBO_MUSHROOMS_5": "Turbo-Mushrooms V",
+		"FIFTH_MASTER_STAR": "Fifth Master Star",
+		"ENCHANTMENT_TABASCO_1": "Tabasco I",
+		"ENCHANTMENT_TABASCO_3": "Tabasco III",
+		"ENCHANTMENT_TABASCO_2": "Tabasco II",
+		"TRANSMISSION_TUNER": "Transmission Tuner",
+		"ENCHANTMENT_TURBO_MUSHROOMS_2": "Turbo-Mushrooms II",
+		"ENCHANTMENT_TURBO_MUSHROOMS_1": "Turbo-Mushrooms I",
+		"ENCHANTMENT_TURBO_MUSHROOMS_4": "Turbo-Mushrooms IV",
+		"ENCHANTMENT_TURBO_MUSHROOMS_3": "Turbo-Mushrooms III",
+		"ENCHANTMENT_MANA_VAMPIRE_2": "Mana Vampire II",
+		"ENCHANTMENT_MANA_VAMPIRE_1": "Mana Vampire I",
+		"ENCHANTMENT_MANA_VAMPIRE_4": "Mana Vampire IV",
+		"ENCHANTMENT_MANA_VAMPIRE_3": "Mana Vampire III",
+		"ENCHANTMENT_MANA_VAMPIRE_6": "Mana Vampire VI",
+		"ENCHANTMENT_MANA_VAMPIRE_5": "Mana Vampire V",
+		"ENCHANTMENT_MANA_VAMPIRE_8": "Mana Vampire VIII",
+		"ENCHANTMENT_MANA_VAMPIRE_7": "Mana Vampire VII",
+		"ENCHANTMENT_MANA_VAMPIRE_9": "Mana Vampire IX",
+		"ENCHANTMENT_TITAN_KILLER_7": "Titan Killer VII",
+		"ENCHANTMENT_TITAN_KILLER_6": "Titan Killer VI",
+		"ENCHANTMENT_POWER_7": "Power VII",
+		"ENCHANTMENT_POWER_6": "Power VI",
+		"ENCHANTMENT_ANGLER_6": "Angler VI",
+		"ENCHANTMENT_VAMPIRISM_6": "Vampirism VI",
+		"ESSENCE_CRIMSON": "Crimson Essence",
+		"ENCHANTMENT_CULTIVATING_1": "Cultivating I",
+		"ENCHANTMENT_ULTIMATE_SOUL_EATER_1": "Soul Eater I",
+		"ENCHANTMENT_ULTIMATE_SOUL_EATER_3": "Soul Eater III",
+		"ENCHANTMENT_ULTIMATE_SOUL_EATER_2": "Soul Eater II",
+		"ENCHANTMENT_ULTIMATE_SOUL_EATER_5": "Soul Eater V",
+		"ENCHANTMENT_ULTIMATE_SOUL_EATER_4": "Soul Eater IV",
+		"ENCHANTMENT_CHANCE_5": "Chance V",
+		"ENCHANTMENT_CHANCE_4": "Chance IV",
+		"ENCHANTMENT_ULTIMATE_FLASH_2": "Flash II",
+		"ENCHANTMENT_ULTIMATE_FLASH_1": "Flash I",
+		"ENCHANTMENT_ULTIMATE_FLASH_4": "Flash IV",
+		"ENCHANTMENT_ULTIMATE_FLASH_3": "Flash III",
+		"ENCHANTMENT_FIRST_STRIKE_5": "First Strike V",
+		"ENCHANTMENT_ULTIMATE_FLASH_5": "Flash V",
+		"ENCHANTMENT_TURBO_PUMPKIN_1": "Turbo-Pumpkin I",
+		"ENCHANTMENT_TURBO_PUMPKIN_2": "Turbo-Pumpkin II",
+		"ENCHANTMENT_TURBO_PUMPKIN_3": "Turbo-Pumpkin III",
+		"ENCHANTMENT_TURBO_PUMPKIN_4": "Turbo-Pumpkin IV",
+		"ENCHANTMENT_TURBO_PUMPKIN_5": "Turbo-Pumpkin V",
+		"ENCHANTMENT_ULTIMATE_FATAL_TEMPO_5": "Fatal Tempo V",
+		"ENCHANTMENT_EXPERTISE_1": "Expertise I",
+		"ENCHANTMENT_ULTIMATE_FATAL_TEMPO_3": "Fatal Tempo III",
+		"ENCHANTMENT_ULTIMATE_FATAL_TEMPO_4": "Fatal Tempo IV",
+		"ENCHANTMENT_ULTIMATE_FATAL_TEMPO_1": "Fatal Tempo I",
+		"ENCHANTMENT_ULTIMATE_FATAL_TEMPO_2": "Fatal Tempo II",
+		"ENCHANTMENT_BLESSING_6": "Blessing VI",
+		"ENCHANTMENT_CHAMPION_1": "Champion I",
+		"ENCHANTMENT_CHAMPION_3": "Champion III",
+		"ENCHANTMENT_CHAMPION_2": "Champion II",
+		"ENCHANTMENT_CHAMPION_5": "Champion V",
+		"ENCHANTMENT_CHAMPION_4": "Champion IV",
+		"ENCHANTMENT_CHAMPION_7": "Champion VII",
+		"ENCHANTMENT_CHAMPION_6": "Champion VI",
+		"ENCHANTMENT_CHAMPION_9": "Champion IX",
+		"ENCHANTMENT_CHAMPION_8": "Champion VIII",
+		"ENCHANTMENT_ULTIMATE_ONE_FOR_ALL_1": "One For All I",
+		"ENCHANTMENT_SNIPE_4": "Snipe IV",
+		"ENCHANTMENT_ULTIMATE_BANK_5": "Bank V",
+		"ENCHANTMENT_ULTIMATE_LEGION_1": "Legion I",
+		"ENCHANTMENT_ULTIMATE_BANK_2": "Bank II",
+		"ENCHANTMENT_ULTIMATE_BANK_1": "Bank I",
+		"ENCHANTMENT_ULTIMATE_LEGION_2": "Legion II",
+		"ENCHANTMENT_ULTIMATE_BANK_4": "Bank IV",
+		"ENCHANTMENT_ULTIMATE_BANK_3": "Bank III",
+		"ENCHANTMENT_ULTIMATE_LEGION_5": "Legion V",
+		"ENCHANTMENT_ULTIMATE_LEGION_3": "Legion III",
+		"ENCHANTMENT_ULTIMATE_LEGION_4": "Legion IV",
+		"ENCHANTMENT_HECATOMB_10": "Hecatomb X",
+		"ENCHANTMENT_COUNTER_STRIKE_3": "Counter-Strike III",
+		"ENCHANTMENT_COUNTER_STRIKE_4": "Counter-Strike IV",
+		"ENCHANTMENT_COUNTER_STRIKE_5": "Counter-Strike V",
+		"ENCHANTMENT_SPIKED_HOOK_6": "Spiked Hook VI",
+		"ESSENCE_DIAMOND": "Diamond Essence",
+		"ENCHANTMENT_LETHALITY_6": "Lethality VI",
+		"ENCHANTMENT_REJUVENATE_1": "Rejuvenate I",
+		"ENCHANTMENT_CLEAVE_6": "Cleave VI",
+		"ENCHANTMENT_REJUVENATE_5": "Rejuvenate V",
+		"ENCHANTMENT_VICIOUS_3": "Vicious III",
+		"ENCHANTMENT_VICIOUS_4": "Vicious IV",
+		"ENCHANTMENT_REJUVENATE_4": "Rejuvenate IV",
+		"ENCHANTMENT_REJUVENATE_3": "Rejuvenate III",
+		"ENCHANTMENT_VICIOUS_5": "Vicious V",
+		"ENCHANTMENT_REJUVENATE_2": "Rejuvenate II",
+		"ENCHANTMENT_TURBO_CARROT_2": "Turbo-Carrot II",
+		"ENCHANTMENT_TURBO_CARROT_1": "Turbo-Carrot I",
+		"ENCHANTMENT_GIANT_KILLER_6": "Giant Killer VI",
+		"ENCHANTMENT_GIANT_KILLER_7": "Giant Killer VII",
+		"ENCHANTMENT_TRIPLE_STRIKE_5": "Triple-Strike V",
+		"ENCHANTMENT_ULTIMATE_INFERNO_1": "Inferno I",
+		"ENCHANTMENT_ULTIMATE_INFERNO_3": "Inferno III",
+		"ENCHANTMENT_ULTIMATE_INFERNO_2": "Inferno II",
+		"ENCHANTMENT_ULTIMATE_INFERNO_5": "Inferno V",
+		"ENCHANTMENT_ULTIMATE_INFERNO_4": "Inferno IV",
+		"ENCHANTMENT_TURBO_CARROT_4": "Turbo-Carrot IV",
+		"ENCHANTMENT_TURBO_CARROT_3": "Turbo-Carrot III",
+		"ENCHANTMENT_TURBO_CARROT_5": "Turbo-Carrot V",
+		"ENCHANTMENT_TURBO_CANE_4": "Turbo-Cane IV",
+		"ENCHANTMENT_TURBO_CANE_3": "Turbo-Cane III",
+		"ENCHANTMENT_TURBO_CANE_2": "Turbo-Cane II",
+		"ENCHANTMENT_TURBO_CANE_1": "Turbo-Cane I",
+		"ENCHANTMENT_TURBO_CANE_5": "Turbo-Cane V",
+		"THIRD_MASTER_STAR": "Third Master Star",
+		"ENCHANTMENT_FORTUNE_4": "Fortune IV",
+		"WOOD_SINGULARITY": "Wood Singularity",
+		"ENCHANTMENT_FRAIL_6": "Frail VI",
+		"ENCHANTMENT_SYPHON_5": "Syphon V",
+		"ENCHANTMENT_SYPHON_4": "Syphon IV",
+		"ENCHANTMENT_EXECUTE_6": "Execute VI",
+		"ENCHANTMENT_INFINITE_QUIVER_10": "Infinite Quiver X",
+		"ENCHANTMENT_LOOTING_4": "Looting IV",
+		"ENCHANTMENT_SMITE_7": "Smite VII",
+		"ENCHANTMENT_SCAVENGER_4": "Scavenger IV",
+		"ENCHANTMENT_SCAVENGER_5": "Scavenger V",
+		"ENCHANTMENT_LOOTING_5": "Looting V",
+		"ENCHANTMENT_CUBISM_6": "Cubism VI",
+		"ENCHANTMENT_SMITE_6": "Smite VI",
+		"ENCHANTMENT_HECATOMB_2": "Hecatomb II",
+		"ENCHANTMENT_HECATOMB_3": "Hecatomb III",
+		"ENCHANTMENT_HECATOMB_1": "Hecatomb I",
+		"ENCHANTMENT_HECATOMB_6": "Hecatomb VI",
+		"ENCHANTMENT_HECATOMB_7": "Hecatomb VII",
+		"ENCHANTMENT_HECATOMB_4": "Hecatomb IV",
+		"ENCHANTMENT_HECATOMB_5": "Hecatomb V",
+		"ENCHANTMENT_HECATOMB_8": "Hecatomb VIII",
+		"ENCHANTMENT_HECATOMB_9": "Hecatomb IX",
+		"ENCHANTMENT_LUCK_6": "Luck VI",
+		"ENCHANTMENT_LUCK_7": "Luck VII",
+		"ENCHANTMENT_INFINITE_QUIVER_8": "Infinite Quiver VIII",
+		"ENCHANTMENT_INFINITE_QUIVER_9": "Infinite Quiver IX",
+		"ENCHANTMENT_INFINITE_QUIVER_6": "Infinite Quiver VI",
+		"ENCHANTMENT_INFINITE_QUIVER_7": "Infinite Quiver VII",
+		"ENCHANTMENT_ULTIMATE_WISDOM_4": "Wisdom IV",
+		"ENCHANTMENT_TURBO_POTATO_3": "Turbo-Potato III",
+		"ENCHANTMENT_ULTIMATE_WISDOM_5": "Wisdom V",
+		"ENCHANTMENT_TURBO_POTATO_4": "Turbo-Potato IV",
+		"ENCHANTMENT_TURBO_POTATO_5": "Turbo-Potato V",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_6": "Bane of Arthropods VI",
+		"ENCHANTMENT_ULTIMATE_WISDOM_1": "Wisdom I",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_7": "Bane of Arthropods VII",
+		"ENCHANTMENT_TURBO_POTATO_1": "Turbo-Potato I",
+		"ENCHANTMENT_ULTIMATE_WISDOM_2": "Wisdom II",
+		"ENCHANTMENT_ULTIMATE_WISDOM_3": "Wisdom III",
+		"ENCHANTMENT_TURBO_POTATO_2": "Turbo-Potato II",
+		"LAVA_WATER_ORB": "Lava Water Orb",
+		"WATER_ORB": "Water Orb",
+		"BOBBIN_SCRIPTURES": "Bobbin' Scriptures",
+		"SPOOKY_WATER_ORB": "Spooky Water Orb",
+		"GLOWY_CHUM_BAIT": "Glowy Chum Bait",
+		"PITCHIN_KOI": "Pitchin' Koi",
+		"BLUE_ICE_HUNK": "Hunk of Blue Ice",
+		"ENCHANTMENT_PISCARY_6": "Piscary VI",
+		"SHARK_WATER_ORB": "Shark Water Orb",
+		"ENCHANTMENT_ULTIMATE_BOBBIN_TIME_3": "Bobbin' Time III",
+		"ENCHANTMENT_ULTIMATE_BOBBIN_TIME_4": "Bobbin' Time IV",
+		"ENCHANTMENT_ULTIMATE_BOBBIN_TIME_5": "Bobbin' Time V",
+		"ICE_HUNK": "Hunk of Ice",
+		"DIVER_FRAGMENT": "Emperor's Skull",
+		"WINTER_WATER_ORB": "Winter Water Orb",
+		"RITUAL_RESIDUE": "Ritual Residue",
+		"MITE_GEL": "Mite Gel",
+		"SALT_CUBE": "Salt Cube",
+		"ENCHANTMENT_EXPERIENCE_5": "Experience V",
+		"RUSTY_ANCHOR": "Rusty Anchor",
+		"GLACIAL_FRAGMENT": "Glacial Fragment",
+		"ENCHANTMENT_PROSPERITY_1": "Prosperity I",
+		"ENCHANTMENT_PROSPERITY_3": "Prosperity III",
+		"ENCHANTMENT_PROSPERITY_2": "Prosperity II",
+		"ENCHANTMENT_PROSPERITY_5": "Prosperity V",
+		"ENCHANTMENT_PROSPERITY_4": "Prosperity IV",
+		"CROPIE": "Cropie",
+		"COMPOST": "Compost",
+		"ENCHANTED_COMPOST": "Compost Bundle",
+		"FERMENTO": "Fermento",
+		"CONDENSED_FERMENTO": "Condensed Fermento",
+		"SQUASH": "Squash",
+		"ENCHANTMENT_SUNDER_1": "Sunder I",
+		"ENCHANTMENT_SUNDER_4": "Sunder IV",
+		"ENCHANTMENT_SUNDER_5": "Sunder V",
+		"ENCHANTMENT_SUNDER_2": "Sunder II",
+		"ENCHANTMENT_SUNDER_3": "Sunder III",
+		"ENCHANTMENT_PROTECTION_1": "Protection I",
+		"ENCHANTMENT_PROTECTION_5": "Protection V",
+		"ENCHANTMENT_PROTECTION_4": "Protection IV",
+		"ENCHANTMENT_PROTECTION_3": "Protection III",
+		"ENCHANTMENT_PROTECTION_2": "Protection II",
+		"ENCHANTMENT_ENDER_SLAYER_1": "Ender Slayer I",
+		"ENCHANTMENT_FIRE_ASPECT_1": "Fire Aspect I",
+		"ENCHANTMENT_FIRE_ASPECT_2": "Fire Aspect II",
+		"ENCHANTMENT_ENDER_SLAYER_5": "Ender Slayer V",
+		"ENCHANTMENT_ENDER_SLAYER_4": "Ender Slayer IV",
+		"ENCHANTMENT_ENDER_SLAYER_3": "Ender Slayer III",
+		"ENCHANTMENT_ENDER_SLAYER_2": "Ender Slayer II",
+		"ENCHANTMENT_SHARPNESS_1": "Sharpness I",
+		"ENCHANTMENT_SHARPNESS_5": "Sharpness V",
+		"ENCHANTMENT_SHARPNESS_4": "Sharpness IV",
+		"ENCHANTMENT_SHARPNESS_3": "Sharpness III",
+		"ENCHANTMENT_SHARPNESS_2": "Sharpness II",
+		"ENCHANTMENT_THUNDERLORD_3": "Thunderlord III",
+		"ENCHANTMENT_THUNDERLORD_2": "Thunderlord II",
+		"ENCHANTMENT_THUNDERLORD_5": "Thunderlord V",
+		"ENCHANTMENT_THUNDERLORD_4": "Thunderlord IV",
+		"ENCHANTMENT_THUNDERLORD_1": "Thunderlord I",
+		"ENCHANTMENT_EXPERIENCE_2": "Experience II",
+		"ENCHANTMENT_EXPERIENCE_1": "Experience I",
+		"ENCHANTMENT_EXPERIENCE_3": "Experience III",
+		"ENCHANTMENT_CASTER_1": "Caster I",
+		"ENCHANTMENT_PROSECUTE_5": "Prosecute V",
+		"ENCHANTMENT_CASTER_2": "Caster II",
+		"ENCHANTMENT_CASTER_3": "Caster III",
+		"ENCHANTMENT_CASTER_4": "Caster IV",
+		"ENCHANTMENT_CASTER_5": "Caster V",
+		"ENCHANTMENT_PROSECUTE_4": "Prosecute IV",
+		"ENCHANTMENT_PROSECUTE_3": "Prosecute III",
+		"ENCHANTMENT_PROSECUTE_2": "Prosecute II",
+		"ENCHANTMENT_PROSECUTE_1": "Prosecute I",
+		"ENCHANTMENT_FIRE_PROTECTION_5": "Fire Protection V",
+		"ENCHANTMENT_FIRE_PROTECTION_2": "Fire Protection II",
+		"ENCHANTMENT_FIRE_PROTECTION_1": "Fire Protection I",
+		"ENCHANTMENT_FIRE_PROTECTION_4": "Fire Protection IV",
+		"ENCHANTMENT_FIRE_PROTECTION_3": "Fire Protection III",
+		"ENCHANTMENT_HARVESTING_5": "Harvesting V",
+		"ENCHANTMENT_HARVESTING_4": "Harvesting IV",
+		"ENCHANTMENT_HARVESTING_3": "Harvesting III",
+		"ENCHANTMENT_HARVESTING_2": "Harvesting II",
+		"ENCHANTMENT_HARVESTING_1": "Harvesting I",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_4": "Luck of the Sea IV",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_5": "Luck of the Sea V",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_1": "Luck of the Sea I",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_2": "Luck of the Sea II",
+		"ENCHANTMENT_LUCK_OF_THE_SEA_3": "Luck of the Sea III",
+		"ENCHANTMENT_LURE_2": "Lure II",
+		"ENCHANTMENT_LURE_1": "Lure I",
+		"ENCHANTMENT_LURE_5": "Lure V",
+		"ENCHANTMENT_LURE_4": "Lure IV",
+		"ENCHANTMENT_LURE_3": "Lure III",
+		"ENCHANTMENT_MAGNET_2": "Magnet II",
+		"ENCHANTMENT_MAGNET_1": "Magnet I",
+		"ENCHANTMENT_MAGNET_4": "Magnet IV",
+		"ENCHANTMENT_MAGNET_3": "Magnet III",
+		"ENCHANTMENT_MAGNET_5": "Magnet V",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_5": "Projectile Protection V",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_4": "Projectile Protection IV",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_3": "Projectile Protection III",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_2": "Projectile Protection II",
+		"ENCHANTMENT_PROJECTILE_PROTECTION_1": "Projectile Protection I",
+		"ENCHANTMENT_IMPALING_3": "Impaling III",
+		"ENCHANTMENT_IMPALING_2": "Impaling II",
+		"ENCHANTMENT_IMPALING_1": "Impaling I",
+		"ENCHANTMENT_SILK_TOUCH_1": "Silk Touch I",
+		"ENCHANTMENT_GROWTH_1": "Growth I",
+		"ENCHANTMENT_GROWTH_2": "Growth II",
+		"ENCHANTMENT_GROWTH_3": "Growth III",
+		"ENCHANTMENT_GROWTH_4": "Growth IV",
+		"ENCHANTMENT_GROWTH_5": "Growth V",
+		"ENCHANTMENT_EFFICIENCY_5": "Efficiency V",
+		"ENCHANTMENT_EFFICIENCY_4": "Efficiency IV",
+		"ENCHANTMENT_EFFICIENCY_3": "Efficiency III",
+		"ENCHANTMENT_EFFICIENCY_2": "Efficiency II",
+		"ENCHANTMENT_EFFICIENCY_1": "Efficiency I",
+		"ENCHANTMENT_EFFICIENCY_9": "Efficiency IX",
+		"ENCHANTMENT_EFFICIENCY_8": "Efficiency VIII",
+		"ENCHANTMENT_EFFICIENCY_7": "Efficiency VII",
+		"ENCHANTMENT_EFFICIENCY_6": "Efficiency VI",
+		"ENCHANTMENT_FEATHER_FALLING_20": "Feather Falling XX",
+		"ENCHANTMENT_CRITICAL_4": "Critical IV",
+		"ENCHANTMENT_CRITICAL_5": "Critical V",
+		"ENCHANTMENT_CRITICAL_2": "Critical II",
+		"ENCHANTMENT_CRITICAL_3": "Critical III",
+		"ENCHANTMENT_CRITICAL_1": "Critical I",
+		"ENCHANTMENT_AIMING_1": "Aiming I",
+		"ENCHANTMENT_AIMING_2": "Aiming II",
+		"ENCHANTMENT_AIMING_3": "Aiming III",
+		"ENCHANTMENT_AIMING_4": "Aiming IV",
+		"ENCHANTMENT_AIMING_5": "Aiming V",
+		"ENCHANTMENT_FROST_WALKER_2": "Frost Walker II",
+		"ENCHANTMENT_FROST_WALKER_1": "Frost Walker I",
+		"ENCHANTMENT_THUNDERBOLT_1": "Thunderbolt I",
+		"ENCHANTMENT_THUNDERBOLT_4": "Thunderbolt IV",
+		"ENCHANTMENT_THUNDERBOLT_5": "Thunderbolt V",
+		"ENCHANTMENT_THUNDERBOLT_2": "Thunderbolt II",
+		"ENCHANTMENT_THUNDERBOLT_3": "Thunderbolt III",
+		"ENCHANTMENT_COMPACT_10": "Compact X",
+		"ENCHANTMENT_VENOMOUS_3": "Venomous III",
+		"ENCHANTMENT_VENOMOUS_4": "Venomous IV",
+		"ENCHANTMENT_VENOMOUS_5": "Venomous V",
+		"ENCHANTMENT_VENOMOUS_1": "Venomous I",
+		"ENCHANTMENT_VENOMOUS_2": "Venomous II",
+		"ENCHANTMENT_FEATHER_FALLING_3": "Feather Falling III",
+		"ENCHANTMENT_FEATHER_FALLING_2": "Feather Falling II",
+		"ENCHANTMENT_FEATHER_FALLING_1": "Feather Falling I",
+		"ENCHANTMENT_FEATHER_FALLING_5": "Feather Falling V",
+		"ENCHANTMENT_FEATHER_FALLING_4": "Feather Falling IV",
+		"ENCHANTMENT_COMPACT_2": "Compact II",
+		"ENCHANTMENT_COMPACT_3": "Compact III",
+		"ENCHANTMENT_COMPACT_6": "Compact VI",
+		"ENCHANTMENT_BLAST_PROTECTION_4": "Blast Protection IV",
+		"ENCHANTMENT_COMPACT_7": "Compact VII",
+		"ENCHANTMENT_BLAST_PROTECTION_3": "Blast Protection III",
+		"ENCHANTMENT_COMPACT_4": "Compact IV",
+		"ENCHANTMENT_BLAST_PROTECTION_5": "Blast Protection V",
+		"ENCHANTMENT_COMPACT_5": "Compact V",
+		"ENCHANTMENT_COMPACT_8": "Compact VIII",
+		"ENCHANTMENT_BLAST_PROTECTION_2": "Blast Protection II",
+		"ENCHANTMENT_COMPACT_9": "Compact IX",
+		"ENCHANTMENT_BLAST_PROTECTION_1": "Blast Protection I",
+		"ENCHANTMENT_LIFE_STEAL_1": "Life Steal I",
+		"ENCHANTMENT_LIFE_STEAL_2": "Life Steal II",
+		"ENCHANTMENT_SMELTING_TOUCH_1": "Smelting Touch I",
+		"ENCHANTMENT_LIFE_STEAL_3": "Life Steal III",
+		"ENCHANTMENT_PISCARY_1": "Piscary I",
+		"ENCHANTMENT_PISCARY_3": "Piscary III",
+		"ENCHANTMENT_PISCARY_2": "Piscary II",
+		"ENCHANTMENT_PISCARY_5": "Piscary V",
+		"ENCHANTMENT_PISCARY_4": "Piscary IV",
+		"ENCHANTMENT_PUNCH_1": "Punch I",
+		"ENCHANTMENT_PUNCH_2": "Punch II",
+		"ENCHANTMENT_PIERCING_1": "Piercing I",
+		"ENCHANTMENT_TITAN_KILLER_5": "Titan Killer V",
+		"ENCHANTMENT_TITAN_KILLER_4": "Titan Killer IV",
+		"ENCHANTMENT_TITAN_KILLER_3": "Titan Killer III",
+		"ENCHANTMENT_TITAN_KILLER_2": "Titan Killer II",
+		"ENCHANTMENT_TITAN_KILLER_1": "Titan Killer I",
+		"ENCHANTMENT_POWER_1": "Power I",
+		"ENCHANTMENT_ANGLER_1": "Angler I",
+		"ENCHANTMENT_ANGLER_2": "Angler II",
+		"ENCHANTMENT_ANGLER_3": "Angler III",
+		"ENCHANTMENT_POWER_3": "Power III",
+		"ENCHANTMENT_ANGLER_4": "Angler IV",
+		"ENCHANTMENT_ANGLER_5": "Angler V",
+		"ENCHANTMENT_POWER_2": "Power II",
+		"ENCHANTMENT_POWER_5": "Power V",
+		"ENCHANTMENT_POWER_4": "Power IV",
+		"ENCHANTMENT_THORNS_3": "Thorns III",
+		"ENCHANTMENT_THORNS_1": "Thorns I",
+		"ENCHANTMENT_THORNS_2": "Thorns II",
+		"ENCHANTMENT_VAMPIRISM_5": "Vampirism V",
+		"ENCHANTMENT_VAMPIRISM_3": "Vampirism III",
+		"ENCHANTMENT_VAMPIRISM_4": "Vampirism IV",
+		"ENCHANTMENT_CULTIVATING_9": "Cultivating IX",
+		"ENCHANTMENT_EXPERTISE_7": "Expertise VII",
+		"ENCHANTMENT_EXPERTISE_6": "Expertise VI",
+		"ENCHANTMENT_EXPERTISE_9": "Expertise IX",
+		"ENCHANTMENT_CULTIVATING_7": "Cultivating VII",
+		"ENCHANTMENT_EXPERTISE_8": "Expertise VIII",
+		"ENCHANTMENT_CULTIVATING_8": "Cultivating VIII",
+		"ENCHANTMENT_CULTIVATING_5": "Cultivating V",
+		"ENCHANTMENT_CULTIVATING_6": "Cultivating VI",
+		"ENCHANTMENT_CULTIVATING_3": "Cultivating III",
+		"ENCHANTMENT_CULTIVATING_4": "Cultivating IV",
+		"ENCHANTMENT_VAMPIRISM_1": "Vampirism I",
+		"ENCHANTMENT_VAMPIRISM_2": "Vampirism II",
+		"ENCHANTMENT_CULTIVATING_2": "Cultivating II",
+		"ENCHANTMENT_CHANCE_2": "Chance II",
+		"ENCHANTMENT_CHANCE_1": "Chance I",
+		"ENCHANTMENT_CHANCE_3": "Chance III",
+		"ENCHANTMENT_KNOCKBACK_2": "Knockback II",
+		"ENCHANTMENT_KNOCKBACK_1": "Knockback I",
+		"ENCHANTMENT_FIRST_STRIKE_1": "First Strike I",
+		"ENCHANTMENT_FIRST_STRIKE_4": "First Strike IV",
+		"ENCHANTMENT_FIRST_STRIKE_3": "First Strike III",
+		"ENCHANTMENT_FIRST_STRIKE_2": "First Strike II",
+		"ENCHANTMENT_EXPERTISE_3": "Expertise III",
+		"ENCHANTMENT_EXPERTISE_2": "Expertise II",
+		"ENCHANTMENT_EXPERTISE_5": "Expertise V",
+		"ENCHANTMENT_EXPERTISE_4": "Expertise IV",
+		"ENCHANTMENT_DEPTH_STRIDER_2": "Depth Strider II",
+		"ENCHANTMENT_BLESSING_2": "Blessing II",
+		"ENCHANTMENT_DEPTH_STRIDER_3": "Depth Strider III",
+		"ENCHANTMENT_BLESSING_3": "Blessing III",
+		"ENCHANTMENT_BLESSING_1": "Blessing I",
+		"ENCHANTMENT_BLESSING_4": "Blessing IV",
+		"ENCHANTMENT_BLESSING_5": "Blessing V",
+		"ENCHANTMENT_DEPTH_STRIDER_1": "Depth Strider I",
+		"ENCHANTMENT_SNIPE_3": "Snipe III",
+		"ENCHANTMENT_SNIPE_2": "Snipe II",
+		"ENCHANTMENT_SNIPE_1": "Snipe I",
+		"ENCHANTMENT_RESPIRATION_3": "Respiration III",
+		"ENCHANTMENT_RESPIRATION_1": "Respiration I",
+		"ENCHANTMENT_RESPIRATION_2": "Respiration II",
+		"ENCHANTMENT_TRIPLE_STRIKE_1": "Triple Strike I",
+		"ENCHANTMENT_TRIPLE_STRIKE_3": "Triple Strike III",
+		"ENCHANTMENT_TRIPLE_STRIKE_2": "Triple Strike II",
+		"ENCHANTMENT_SPIKED_HOOK_5": "Spiked Hook V",
+		"ENCHANTMENT_SPIKED_HOOK_3": "Spiked Hook III",
+		"ENCHANTMENT_SPIKED_HOOK_4": "Spiked Hook IV",
+		"ENCHANTMENT_LETHALITY_1": "Lethality I",
+		"ENCHANTMENT_LETHALITY_2": "Lethality II",
+		"ENCHANTMENT_LETHALITY_3": "Lethality III",
+		"ENCHANTMENT_LETHALITY_4": "Lethality IV",
+		"ENCHANTMENT_LETHALITY_5": "Lethality V",
+		"ENCHANTMENT_CLEAVE_2": "Cleave II",
+		"ENCHANTMENT_CLEAVE_1": "Cleave I",
+		"ENCHANTMENT_CLEAVE_4": "Cleave IV",
+		"ENCHANTMENT_CLEAVE_3": "Cleave III",
+		"ENCHANTMENT_CLEAVE_5": "Cleave V",
+		"ENCHANTMENT_SPIKED_HOOK_1": "Spiked Hook I",
+		"ENCHANTMENT_SPIKED_HOOK_2": "Spiked Hook II",
+		"ENCHANTMENT_GIANT_KILLER_4": "Giant Killer IV",
+		"ENCHANTMENT_GIANT_KILLER_5": "Giant Killer V",
+		"ENCHANTMENT_GIANT_KILLER_2": "Giant Killer II",
+		"ENCHANTMENT_GIANT_KILLER_3": "Giant Killer III",
+		"ENCHANTMENT_TRIPLE_STRIKE_4": "Triple Strike IV",
+		"ENCHANTMENT_AQUA_AFFINITY_1": "Aqua Affinity I",
+		"ENCHANTMENT_FORTUNE_1": "Fortune I",
+		"ENCHANTMENT_FORTUNE_2": "Fortune II",
+		"ENCHANTMENT_FORTUNE_3": "Fortune III",
+		"ENCHANTMENT_FLAME_2": "Flame II",
+		"ENCHANTMENT_FLAME_1": "Flame I",
+		"ENCHANTMENT_DIVINE_GIFT_3": "Divine Gift III",
+		"ENCHANTMENT_DIVINE_GIFT_2": "Divine Gift II",
+		"ENCHANTMENT_DIVINE_GIFT_1": "Divine Gift I",
+		"ENCHANTMENT_GIANT_KILLER_1": "Giant Killer I",
+		"ENCHANTMENT_FRAIL_2": "Frail II",
+		"ENCHANTMENT_FRAIL_1": "Frail I",
+		"ENCHANTMENT_FRAIL_4": "Frail IV",
+		"ENCHANTMENT_FRAIL_3": "Frail III",
+		"ENCHANTMENT_FRAIL_5": "Frail V",
+		"ENCHANTMENT_EFFICIENCY_10": "Efficiency X",
+		"ENCHANTMENT_SYPHON_3": "Syphon III",
+		"ENCHANTMENT_SYPHON_2": "Syphon II",
+		"ENCHANTMENT_EXECUTE_3": "Execute III",
+		"ENCHANTMENT_EXECUTE_2": "Execute II",
+		"ENCHANTMENT_EXECUTE_5": "Execute V",
+		"ENCHANTMENT_SYPHON_1": "Syphon I",
+		"ENCHANTMENT_EXECUTE_4": "Execute IV",
+		"ENCHANTMENT_SCAVENGER_3": "Scavenger III",
+		"ENCHANTMENT_LOOTING_3": "Looting III",
+		"ENCHANTMENT_SCAVENGER_1": "Scavenger I",
+		"ENCHANTMENT_LOOTING_2": "Looting II",
+		"ENCHANTMENT_EXECUTE_1": "Execute I",
+		"ENCHANTMENT_SCAVENGER_2": "Scavenger II",
+		"ENCHANTMENT_LOOTING_1": "Looting I",
+		"ENCHANTMENT_CUBISM_2": "Cubism II",
+		"ENCHANTMENT_CUBISM_3": "Cubism III",
+		"ENCHANTMENT_CUBISM_1": "Cubism I",
+		"ENCHANTMENT_CUBISM_4": "Cubism IV",
+		"ENCHANTMENT_SMITE_1": "Smite I",
+		"ENCHANTMENT_CUBISM_5": "Cubism V",
+		"ENCHANTMENT_SMITE_2": "Smite II",
+		"ENCHANTMENT_EXPERTISE_10": "Expertise X",
+		"ENCHANTMENT_SMITE_3": "Smite III",
+		"ENCHANTMENT_SMITE_4": "Smite IV",
+		"ENCHANTMENT_SMITE_5": "Smite V",
+		"ENCHANTMENT_LUCK_2": "Luck II",
+		"ENCHANTMENT_LUCK_3": "Luck III",
+		"ENCHANTMENT_LUCK_4": "Luck IV",
+		"ENCHANTMENT_LUCK_5": "Luck V",
+		"ENCHANTMENT_LUCK_1": "Luck I",
+		"ENCHANTMENT_INFINITE_QUIVER_4": "Infinite Quiver IV",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_2": "Bane of Arthropods II",
+		"ENCHANTMENT_INFINITE_QUIVER_5": "Infinite Quiver V",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_3": "Bane of Arthropods III",
+		"ENCHANTMENT_INFINITE_QUIVER_2": "Infinite Quiver II",
+		"ENCHANTMENT_INFINITE_QUIVER_3": "Infinite Quiver III",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_1": "Bane of Arthropods I",
+		"ENCHANTMENT_INFINITE_QUIVER_1": "Infinite Quiver I",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_4": "Bane of Arthropods IV",
+		"ENCHANTMENT_BANE_OF_ARTHROPODS_5": "Bane of Arthropods V",
+		"OVERGROWN_GRASS": "Overgrown Grass",
+		"LARGE_WALNUT": "Large Walnut",
+		"ENCHANTMENT_DEDICATION_2": "Dedication II",
+		"ENCHANTMENT_DEDICATION_1": "Dedication I",
+		"ENCHANTMENT_DEDICATION_4": "Dedication IV",
+		"ENCHANTMENT_DEDICATION_3": "Dedication III",
+		"FLOWERING_BOUQUET": "Flowering Bouquet",
+		"SKYMART_BROCHURE": "SkyMart Brochure",
+		"ENCHANTMENT_CURSE_OF_VANISHING_0": "Curse of Vanishing",
+		"BURROWING_SPORES": "Burrowing Spores",
+		"ENCHANTMENT_GREEN_THUMB_5": "Green Thumb V",
+		"ENCHANTMENT_GREEN_THUMB_1": "Green Thumb I",
+		"ENCHANTMENT_GREEN_THUMB_2": "Green Thumb II",
+		"ENCHANTMENT_GREEN_THUMB_3": "Green Thumb III",
+		"ENCHANTMENT_GREEN_THUMB_4": "Green Thumb IV",
+		"ENCHANTMENT_WITHER_HUNTER_0": "Wither Hunter",
+		"DUNGEON_TRAP": "Trap",
+		"GIANT_FRAGMENT_LASER": "L.A.S.R.'s Eye",
+		"MINION_EXPANDER": "Minion Expander",
+		"KELVIN_INVERTER": "Kelvin Inverter",
+		"ULTIMATE_CARROT_CANDY": "Ultimate Carrot Candy",
+		"SOLAR_PANEL": "Solar Panel",
+		"UNDEAD_CATALYST": "Undead Catalyst",
+		"DUNGEON_DECOY": "Decoy",
+		"FLY_SWATTER": "Fly Swatter",
+		"HYPERGOLIC_IONIZED_CERAMICS": "Hypergolic Ionized Ceramics",
+		"FULL_CHUM_BUCKET": "Full Chum Bucket",
+		"PUMPKIN_BOMB": "Blast o' Lantern",
+		"SOULFLOW_ENGINE": "Soulflow Engine",
+		"PET_ITEM_TOY_JERRY": "Jerry 3D Glasses",
+		"ROBOTRON_REFLECTOR": "Robotron Reflector",
+		"ENCHANTED_BONE_MEAL": "Enchanted Bone Meal",
+		"SMALL_ENCHANTED_CHEST": "Small Storage",
+		"SCORCHED_POWER_CRYSTAL": "Scorched Power Crystal",
+		"SCARF_FRAGMENT": "Scarf Fragment",
+		"REHEATED_GUMMY_POLAR_BEAR": "Re-heated Gummy Polar Bear",
+		"FLYCATCHER_UPGRADE": "Flycatcher",
+		"FTX_3070": "FTX 3070",
+		"PET_ITEM_VAMPIRE_FANG": "Vampire Fang",
+		"GREAT_CARROT_CANDY": "Great Carrot Candy",
+		"GIANT_FRAGMENT_BIGFOOT": "Bigfoot's Lasso",
+		"MAGIC_MUSHROOM_SOUP": "Magical Mushroom Soup",
+		"SUPER_MAGIC_MUSHROOM_SOUP": "Mystical Mushroom Soup",
+		"LESSER_SOULFLOW_ENGINE": "Lesser Soulflow Engine",
+		"BONZO_FRAGMENT": "Bonzo Fragment",
+		"TESSELLATED_ENDER_PEARL": "Tessellated Ender Pearl",
+		"INFERNO_FUEL_BLOCK": "Inferno Fuel Block",
+		"PET_ITEM_EXP_SHARE_DROP": "Exp Share Core",
+		"ENCHANTED_POPPY": "Enchanted Poppy",
+		"HEALING_TISSUE": "Healing Tissue",
+		"GLACITE_JEWEL": "Glacite Jewel",
+		"WEAK_WOLF_CATALYST": "Weak Wolf Catalyst",
+		"BEJEWELED_HANDLE": "Bejeweled Handle",
+		"LARGE_ENCHANTED_CHEST": "Large Storage",
+		"CORRUPT_SOIL": "Corrupt Soil",
+		"THE_ART_OF_PEACE": "The Art of Peace",
+		"VOLTA": "Volta",
+		"SUPERLITE_MOTOR": "Superlite Motor",
+		"BRAIDED_GRIFFIN_FEATHER": "Braided Griffin Feather",
+		"SPIRIT_WING": "Spirit Wing",
+		"ENCHANTED_WOOL": "Enchanted Wool",
+		"SUPERB_CARROT_CANDY": "Superb Carrot Candy",
+		"SORROW": "Sorrow",
+		"CRYSTAL_FRAGMENT": "Crystal Fragment",
+		"GLOWING_MUSHROOM": "Glowing Mushroom",
+		"POISONOUS_POTATO": "Poisonous Potato",
+		"KISMET_FEATHER": "Kismet Feather",
+		"MITHRIL_PLATE": "Mithril Plate",
+		"CHYME": "Chyme",
+		"DIVAN_FRAGMENT": "Divan Fragment",
+		"BAT_FIREWORK": "Bat Firework",
+		"ARROW_BUNDLE_MAGMA": "Bundle of Magma Arrows",
+		"TWILIGHT_ARROW_POISON": "Twilight Arrow Poison",
+		"POTATO_SPREADING": "Potato Spreading",
+		"NULL_EDGE": "Null Edge",
+		"YELLOW_FLOWER": "Dandelion",
+		"REVENANT_CATALYST": "Revenant Catalyst",
+		"WITHER_CATALYST": "Wither Catalyst",
+		"SULPHURIC_COAL": "Sulphuric Coal",
+		"ENCHANTED_HOPPER": "Enchanted Hopper",
+		"GIANT_FRAGMENT_DIAMOND": "Diamante's Handle",
+		"SUPERBOOM_TNT": "Superboom TNT",
+		"SPIRIT_LEAP": "Spirit Leap",
+		"SIMPLE_CARROT_CANDY": "Simple Carrot Candy",
+		"OIL_BARREL": "Oil Barrel",
+		"GOLEM_POPPY": "Ancient Rose",
+		"ENCHANTED_POISONOUS_POTATO": "Enchanted Poisonous Potato",
+		"SYNTHETIC_HEART": "Synthetic Heart",
+		"XXLARGE_ENCHANTED_CHEST": "XX-Large Storage",
+		"FUEL_TANK": "Fuel Canister",
+		"JALAPENO_BOOK": "Jalapeno Book",
+		"ELECTRON_TRANSMITTER": "Electron Transmitter",
+		"STUFFED_CHILI_PEPPER": "Stuffed Chili Pepper",
+		"BUDGET_HOPPER": "Budget Hopper",
+		"TERRY_SNOWGLOBE": "Terry's Snowglobe",
+		"SPIDER_CATALYST": "Spider Catalyst",
+		"MIMIC_FRAGMENT": "Mimic Fragment",
+		"ENCHANTED_DANDELION": "Enchanted Dandelion",
+		"ENDERMAN_CORTEX_REWRITER": "Enderman Cortex Rewriter",
+		"PET_ITEM_LUCKY_CLOVER_DROP": "Lucky Clover Core",
+		"GOLDEN_PLATE": "Golden Plate",
+		"CORLEONITE": "Corleonite",
+		"SUBZERO_INVERTER": "Subzero Inverter",
+		"NULL_BLADE": "Null Blade",
+		"BOB_OMB": "Bob-omb",
+		"MITHRIL_INFUSION": "Mithril Infusion",
+		"LIVID_FRAGMENT": "Livid Fragment",
+		"PLASMA": "Plasma",
+		"CHUM": "Chum",
+		"FEL_PEARL": "Fel Pearl",
+		"HORSEMAN_CANDLE": "Horseman's Candle",
+		"RED_ROSE": "Poppy",
+		"EMPTY_CHUM_BUCKET": "Empty Chum Bucket",
+		"GIANT_FRAGMENT_BOULDER": "Jolly Pink Rock",
+		"FROZEN_BAUBLE": "Frozen Bauble",
+		"RADIOACTIVE_VIAL": "Radioactive Vial",
+		"ENCHANTMENT_ULTIMATE_ONE_FOR_ALL_0": "One For All - BAD",
+		"GREAT_WHITE_TOOTH_MEAL": "Great White Tooth Meal",
+		"CONTROL_SWITCH": "Control Switch",
+		"DIAMOND_SPREADING": "Diamond Spreading",
+		"AUTO_SMELTER": "Auto Smelter",
+		"WOOL": "White Wool",
+		"WHIPPED_MAGMA_CREAM": "Whipped Magma Cream",
+		"DRILL_ENGINE": "Drill Motor",
+		"BOX_OF_SEEDS": "Box of Seeds",
+		"XLARGE_ENCHANTED_CHEST": "X-Large Storage",
+		"PET_ITEM_TIER_BOOST_DROP": "Tier Boost Core",
+		"GEMSTONE_MIXTURE": "Gemstone Mixture",
+		"SPIRIT_BONE": "Spirit Bone",
+		"JUNGLE_KEY": "Jungle Key",
+		"GOLDEN_POWDER": "Golden Powder",
+		"DUNGEON_CHEST_KEY": "Dungeon Chest Key",
+		"INFLATABLE_JERRY": "Inflatable Jerry",
+		"MEDIUM_ENCHANTED_CHEST": "Medium Storage",
+		"TOXIC_ARROW_POISON": "Toxic Arrow Poison",
+		"BUBBA_BLISTER": "Bubba Blister",
+		"DISPLACED_LEECH": "Displaced Leech",
+		"LUSH_BERBERIS": "Lush Berberis",
+		"ENCHANTMENT_QUANTUM_4": "Quantum IV",
+		"ENCHANTMENT_QUANTUM_5": "Quantum V",
+		"ENCHANTMENT_QUANTUM_3": "Quantum III",
+		"EXPORTABLE_CARROTS": "Exportable Carrots",
+		"HEMOVIBE": "Hemovibe",
+		"HEMOBOMB": "Hemobomb",
+		"CHOCOLATE_CHIP": "Fang-tastic Chocolate Chip",
+		"PRESUMED_GALLON_OF_RED_PAINT": "Presumed Gallon of Red Paint",
+		"HEMOGLASS": "Hemoglass",
+		"ENCHANTMENT_ULTIMATE_THE_ONE_5": "The One V",
+		"ENCHANTMENT_ULTIMATE_THE_ONE_4": "The One IV",
+		"AGARIMOO_TONGUE": "Agarimoo Tongue",
+		"ENCHANTED_LUSH_BERBERIS": "Enchanted Lush Berberis",
+		"FULL_JAW_FANGING_KIT": "Full-Jaw Fanging Kit",
+		"ENCHANTMENT_REFLECTION_5": "Reflection V",
+		"ENCHANTMENT_REFLECTION_4": "Reflection IV",
+		"ENCHANTMENT_REFLECTION_1": "Reflection I",
+		"ENCHANTMENT_REFLECTION_3": "Reflection III",
+		"ENCHANTMENT_REFLECTION_2": "Reflection II",
+		"BERBERIS_FUEL_INJECTOR": "Berberis Fuel Injector",
+		"ENCHANTMENT_TRANSYLVANIAN_5": "Transylvanian V",
+		"ENCHANTMENT_TRANSYLVANIAN_4": "Transylvanian IV",
+		"BEADY_EYES": "Beady Eyes",
+		"HONEY_JAR": "Honey Jar",
+		"WISHING_COMPASS": "Wishing Compass",
+		"CAPSAICIN_EYEDROPS_NO_CHARGES": "Capsaicin Eyedrops",
+		"DUNG": "Dung",
+		"ENCHANTMENT_PESTERMINATOR_1": "Pesterminator I",
+		"ENCHANTMENT_PESTERMINATOR_2": "Pesterminator II",
+		"ENCHANTMENT_PESTERMINATOR_3": "Pesterminator III",
+		"ENCHANTMENT_PESTERMINATOR_4": "Pesterminator IV",
+		"ENCHANTMENT_PESTERMINATOR_5": "Pesterminator V",
+		"VOLCANIC_ROCK": "Volcanic Rock",
+		"GUARDIAN_LUCKY_BLOCK": "Guardian Lucky Block",
+		"FROZEN_BAIT": "Frozen Bait",
+		"VERY_CRUDE_GABAGOOL": "Very Crude Gabagool",
+		"THORN_FRAGMENT": "Thorn Fragment",
+		"CLIPPED_WINGS": "Clipped Wings",
+		"PET_ITEM_PURE_MITHRIL_GEM": "Pure Mithril Gem",
+		"JUNGLE_HEART": "Jungle Heart",
+		"METAPHYSICAL_SERUM": "Metaphysical Serum",
+		"EGG": "Egg",
+		"EXPIRED_PUMPKIN": "Expired Pumpkin",
+		"MAGIC_TOP_HAT": "Magic Top Hat",
+		"SLEEPY_HOLLOW": "Sleepy Hollow",
+		"BLACK_WOOLEN_YARN": "Black Woolen Yarn",
+		"WRIGGLING_LARVA": "Wriggling Larva",
+		"BOOKWORM_BOOK": "Bookworm's Favorite Book",
+		"DARK_CANDY": "Dark Candy",
+		"PLANT_MATTER": "Plant Matter",
+		"ENCHANTMENT_ULTIMATE_REFRIGERATE_5": "Refrigerate V",
+		"MAGMA_CORE": "Magma Core",
+		"ENCHANTMENT_ULTIMATE_REFRIGERATE_1": "Refrigerate I",
+		"ENCHANTMENT_ULTIMATE_REFRIGERATE_2": "Refrigerate II",
+		"ENCHANTMENT_ULTIMATE_REFRIGERATE_3": "Refrigerate III",
+		"MIXED_MITE_GEL": "Mixed Mite Gel",
+		"ENCHANTMENT_ULTIMATE_REFRIGERATE_4": "Refrigerate IV",
+		"ASCENSION_ROPE": "Ascension Rope",
+		"WORM_BAIT": "Worm Bait",
+		"ENCHANTMENT_SUNDER_6": "Sunder VI",
+		"REFINED_BOTTLE_OF_JYRRE": "Refined Bottle of Jyrre",
+		"POLARVOID_BOOK": "Polarvoid Book",
+		"POISON_SAMPLE": "Poison Sample",
+		"ARCHITECT_FIRST_DRAFT": "Architect's First Draft",
+		"REFINED_TUNGSTEN": "Refined Tungsten",
+		"ENCHANTED_UMBER": "Enchanted Umber",
+		"ROUGH_AQUAMARINE_GEM": "☂ Rough Aquamarine Gemstone",
+		"ENCHANTMENT_PALEONTOLOGIST_5": "Paleontologist V",
+		"ENCHANTMENT_PALEONTOLOGIST_3": "Paleontologist III",
+		"ENCHANTMENT_PALEONTOLOGIST_4": "Paleontologist IV",
+		"ENCHANTMENT_PALEONTOLOGIST_1": "Paleontologist I",
+		"ENCHANTMENT_PALEONTOLOGIST_2": "Paleontologist II",
+		"ENCHANTED_GLACITE": "Enchanted Glacite",
+		"ROUGH_ONYX_GEM": "☂ Rough Onyx Gemstone",
+		"FLAWLESS_ONYX_GEM": "\u2620 Flawless Onyx Gemstone",
+		"FLAWLESS_PERIDOT_GEM": "\u2618 Flawless Peridot Gemstone",
+		"UMBER": "Umber",
+		"SUSPICIOUS_SCRAP": "Suspicious Scrap",
+		"PERFECT_AQUAMARINE_GEM": "\u2602 Perfect Aquamarine Gemstone",
+		"ARACHNE_FRAGMENT": "Arachne Fragment",
+		"FLAWLESS_CITRINE_GEM": "\u2618 Flawless Citrine Gemstone",
+		"SKELETON_KEY": "Skeleton Key",
+		"FLAWED_ONYX_GEM": "\u2620 Flawed Onyx Gemstone",
+		"UMBER_KEY": "Umber Key",
+		"ENCHANTED_TUNGSTEN": "Enchanted Tungsten",
+		"FLAWED_PERIDOT_GEM": "\u2618 Flawed Peridot Gemstone",
+		"ENCHANTMENT_ICE_COLD_4": "Ice Cold IV",
+		"ENCHANTMENT_ICE_COLD_3": "Ice Cold III",
+		"ENCHANTMENT_ICE_COLD_5": "Ice Cold V",
+		"TUNGSTEN_PLATE": "Tungsten Plate",
+		"ENCHANTMENT_ICE_COLD_2": "Ice Cold II",
+		"ENCHANTMENT_ICE_COLD_1": "Ice Cold I",
+		"PERFECT_PERIDOT_GEM": "\u2618 Perfect Peridot Gemstone",
+		"UMBER_PLATE": "Umber Plate",
+		"FINE_ONYX_GEM": "\u2620 Fine Onyx Gemstone",
+		"PERFECT_ONYX_GEM": "\u2620 Perfect Onyx Gemstone",
+		"REFINED_UMBER": "Refined Umber",
+		"ROUGH_CITRINE_GEM": "\u2618 Rough Citrine Gemstone",
+		"GLACITE_SHARD": "Glacite Shard",
+		"PERFECT_PLATE": "Perfect Plate",
+		"ROUGH_PERIDOT_GEM": "\u2618 Rough Peridot Gemstone",
+		"FLAWLESS_AQUAMARINE_GEM": "\u2602 Flawless Aquamarine Gemstone",
+		"TUNGSTEN_KEY": "Tungsten Key",
+		"FINE_CITRINE_GEM": "\u2618 Fine Citrine Gemstone",
+		"GLACITE": "Glacite",
+		"FRIGID_HUSK": "Frigid Husk",
+		"TUNGSTEN": "Tungsten",
+		"PERFECT_CITRINE_GEM": "\u2618 Perfect Citrine Gemstone",
+		"GLACITE_AMALGAMATION": "Glacite Amalgamation",
+		"FLAWED_AQUAMARINE_GEM": "\u2602 Flawed Aquamarine Gemstone",
+		"ARACHNE_FANG": "Arachne's Fang",
+		"FLAWED_CITRINE_GEM": "\u2618 Flawed Citrine Gemstone",
+		"FINE_AQUAMARINE_GEM": "\u2602 Fine Aquamarine Gemstone",
+		"FINE_PERIDOT_GEM": "\u2618 Fine Peridot Gemstone",
+		"FRESHLY_MINTED_COINS": "Freshly-Minted Coins",
+		"PARTY_GIFT": "Party Gift",
+		"WINTER_FRAGMENT": "Winter Fragment",
+		"PET_CAKE": "Pet Cake",
+		"GLOSSY_GEMSTONE": "Glossy Gemstone",
+		"GLEAMING_CRYSTAL": "Gleaming Crystal",
+		"DIVAN_POWDER_COATING": "Divan's Powder Coating",
+		"BLOOD_SOAKED_COINS": "Blood-Soaked Coins",
+		"REFINED_DARK_CACAO_TRUFFLE": "Refined Dark Cacao Truffle",
+		"FINE_FLOUR": "Fine Flour",
+		"AVARICIOUS_CHALICE": "Avaricious Chalice",
+		"ENCHANTMENT_TOXOPHILITE_1": "Toxophilite I",
+		"GOLDEN_BOUNTY": "Golden Bounty",
+		"BLOOD_STAINED_COINS": "Blood-Stained Coins",
+		"DARK_QUEENS_SOUL_DROP": "Dark Queen's Soul",
+		"GOLDEN_FRAGMENT": "Golden Fragment",
+		"SUPREME_CHOCOLATE_BAR": "Supreme Chocolate Bar",
+		"DWARVEN_OS_ORE_OATS": "Dwarven O's Ore Oats",
+		"TITANIUM_TESSERACT": "Titanium Tesseract",
+		"DWARVEN_OS_GEMSTONE_GRAHAMS": "Dwarven O's Gemstone Grahams",
+		"DWARVEN_OS_BLOCK_BRAN": "Dwarven O's Block Bran",
+		"PET_ITEM_CHOCOLATE_SYRINGE": "Chocolate Syringe",
+		"BLAZEN_SPHERE": "Blazen Sphere",
+		"DWARVEN_OS_METALLIC_MINIS": "Dwarven O's Metallic Minis",
+		"POCKET_ICEBERG": "Pocket Iceberg",
+		"MANA_DISINTEGRATOR": "Mana Disintegrator",
+		"PRECURSOR_APPARATUS": "Precursor Apparatus",
+		"ENCHANTMENT_ULTIMATE_FLOWSTATE_1": "Flowstate I",
+		"ENCHANTMENT_ULTIMATE_FLOWSTATE_3": "Flowstate III",
+		"ENCHANTMENT_ULTIMATE_FLOWSTATE_2": "Flowstate II",
+		"DWARVEN_TREASURE": "Dwarven Treasure",
+		"ENCHANTMENT_LAPIDARY_4": "Lapidary IV",
+		"ENCHANTMENT_LAPIDARY_3": "Lapidary III",
+		"ENCHANTMENT_LAPIDARY_2": "Lapidary II",
+		"ENCHANTMENT_LAPIDARY_1": "Lapidary I",
+		"ENCHANTMENT_LAPIDARY_5": "Lapidary V",
+		"ENCHANTED_HAY_BALE": "Enchanted Hay Bale",
+		"SQUEAKY_TOY": "Squeaky Toy",
+		"PESTHUNTING_GUIDE": "A Beginner's Guide to Pesthunting",
+		"ENCHANTED_WHEAT": "Enchanted Wheat",
+		"MAGMAG": "Magmag",
+		"HORN_OF_TAURUS": "Horn of Taurus",
+		"MAGMA_LORD_FRAGMENT": "Magma Lord Fragment",
+		"X": "X",
+		"Y": "Y",
+		"Z": "Z",
+		"FLAMES": "Flames",
+		"MUTATED_BLAZE_ASHES": "Mutated Blaze Ashes",
+		"THUNDER_SHARDS": "Thunder Shards",
+		"FAKE_SHURIKEN": "Extremely Real Shuriken",
+		"SPOTLITE": "Spotlite",
+		"MILLENIA_OLD_BLAZE_ASHES": "Millennia-Old Blaze Ashes",
+		"CUP_OF_BLOOD": "Cup of Blood",
+		"SPECTRE_DUST": "Spectre Dust",
+		"CORRUPTED_FRAGMENT": "Corrupted Fragment",
+		"MATCH_STICKS": "Match-Sticks",
+		"COMPACT_OOZE": "Compact Ooze",
+		"LUMP_OF_MAGMA": "Lump of Magma",
+		"DIGESTED_MUSHROOMS": "Digested Mushrooms",
+		"BEZOS": "Bezos",
+		"HEAVY_PEARL": "Heavy Pearl",
+		"ORB_OF_ENERGY": "Orb of Energy",
+		"FREE_WILL": "Free Will",
+		"CORRUPTED_NETHER_STAR": "Nether Star",
+		"MOOGMA_PELT": "Moogma Pelt",
+		"GAZING_PEARL": "Gazing Pearl",
+		"REKINDLED_EMBER_FRAGMENT": "Rekindled Ember Fragment",
+		"LEATHER_CLOTH": "Leather Cloth",
+		"KUUDRA_TEETH": "Kuudra Teeth",
+		"WITHER_SOUL": "Wither Soul",
+		"HALLOWED_SKULL": "Hallowed Skull",
+		"BURNING_EYE": "Burning Eye",
+		"LAVA_SHELL": "Lava Shell",
+		"PYROCLASTIC_SCALE": "Pyroclastic Scale",
+		"TENTACLE_MEAT": "Tentacle Meat",
+		"KADA_LEAD": "Kada Lead",
+		"BLAZE_ASHES": "Blaze Ashes",
+		"SPELL_POWDER": "Spell Powder",
+		"LUMINO_FIBER": "Lumino Fiber",
+		"FLAMING_HEART": "Flaming Heart",
+		"HIGHLITE": "Highlite",
+		"MAGMA_CHUNK": "Magma Chunk",
+		"SEA_LUMIES": "Sea Lumies",
+		"SHARD_SALMON": "Salmon",
+		"SHARD_MEGALITH": "Megalith",
+		"SHARD_CARROT_KING": "Carrot King",
+		"SHARD_BAL": "Bal",
+		"SHARD_DODO": "Dodo",
+		"SHARD_BITBUG": "Bitbug",
+		"SHARD_BITBUG": "Bitbug",
+		"OLD_LEATHER_BOOT": "Old Leather Boot",
+		"SHARD_PEST": "Pest",
+		"MANGROVE_LOG": "Mangrove Log",
+		"SHARD_LAVA_FLAME": "Lava Flame",
+		"SHARD_OBSIDIAN_DEFENDER": "Obsidian Defender",
+		"SHARD_TIAMAT": "Tiamat",
+		"SHARD_WITHER_SPECTER": "Wither Specter",
+		"SHARD_PRINCE": "Prince",
+		"MANGCORE": "Mangcore",
+		"SHARD_TROGLOBYTE": "Troglobyte",
+		"SHARD_BOREAL_OWL": "Boreal Owl",
+		"SHARD_GOLDEN_GHOUL": "Golden Ghoul",
+		"BROKEN_RADAR": "Broken Radar",
+		"SHARD_TEMPEST": "Tempest",
+		"SHARD_NIGHT_SQUID": "Night Squid",
+		"ENCHANTMENT_SCUBA_3": "Scuba III",
+		"ENCHANTMENT_SCUBA_4": "Scuba IV",
+		"ENCHANTMENT_SCUBA_5": "Scuba V",
+		"SHARD_WARTYBUG": "Wartybug",
+		"SHARD_GECKO": "Gecko",
+		"SHARD_BASILISK": "Basilisk",
+		"SHARD_PYTHON": "Python",
+		"SHARD_SKELETOR": "Skeletor",
+		"SHARD_THORN": "Thorn",
+		"SHARD_BEZAL": "Bezal",
+		"SHARD_HERON": "Heron",
+		"SHARD_FLARE": "Flare",
+		"RUSTY_COIN": "Rusty Coin",
+		"ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION_5": "First Impression V",
+		"ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION_2": "First Impression II",
+		"ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION_1": "First Impression I",
+		"ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION_4": "First Impression IV",
+		"ENCHANTMENT_ULTIMATE_FIRST_IMPRESSION_3": "First Impression III",
+		"ENCHANTMENT_SMALL_BRAIN_5": "Small Brain V",
+		"SHARD_KING_COBRA": "King Cobra",
+		"ENCHANTMENT_SMALL_BRAIN_3": "Small Brain III",
+		"ENCHANTMENT_SMALL_BRAIN_4": "Small Brain IV",
+		"GENERATOR_UPGRADE_STONE_CLAY_12": "Clay Minion XII Upgrade Stone",
+		"SHARD_VERDANT": "Verdant",
+		"SHARD_SHINYFISH": "Shinyfish",
+		"MOBY_DUCK_COLLECTOR_EDITION": "Moby-Duck: Collector's Edition",
+		"SHARD_ENT": "Ent",
+		"SHARD_AERO": "Aero",
+		"SHARD_HARPY": "Harpy",
+		"SHARD_ALLIGATOR": "Alligator",
+		"SHARD_SEA_SERPENT": "Sea Serpent",
+		"SHARD_PRAYING_MANTIS": "Praying Mantis",
+		"SHARD_DROWNED": "Drowned",
+		"SHARD_HIDEONDRA": "Hideondra",
+		"GENERATOR_UPGRADE_STONE_FISHING_12": "Fishing Minion XII Upgrade Stone",
+		"GOLD_BOTTLE_CAP": "Gold Bottle Cap",
+		"SHARD_IGUANA": "Iguana",
+		"ENCHANTED_MANGROVE_LOG": "Enchanted Mangrove Log",
+		"ENCHANTMENT_QUICK_BITE_4": "Quick Bite IV",
+		"ENCHANTMENT_QUICK_BITE_3": "Quick Bite III",
+		"ENCHANTMENT_QUICK_BITE_2": "Quick Bite II",
+		"ENCHANTMENT_QUICK_BITE_1": "Quick Bite I",
+		"ENCHANTMENT_QUICK_BITE_5": "Quick Bite V",
+		"BOUNCY_BEACH_BALL": "Bouncy Beach Ball",
+		"FIG_LOG": "Fig Log",
+		"SHARD_TIDE": "Tide",
+		"TITANOBOA_SHED": "Titanoboa Shed",
+		"ENCHANTMENT_THUNDERBOLT_7": "Thunderbolt VII",
+		"SHARD_HIDEONLEAF": "Hideonleaf",
+		"SCUTTLER_SHELL": "Scuttler Shell",
+		"SINGED_POWDER": "Singed Powder",
+		"SHARD_BLIZZARD": "Blizzard",
+		"SHARD_EEL": "Eel",
+		"ENCHANTMENT_ABSORB_1": "Absorb I",
+		"SHARD_FENLORD": "Fenlord",
+		"SHARD_HIDEONBOX": "Hideonbox",
+		"SHARD_HIDEONSACK": "Hideonsack",
+		"SHARD_BARBARIAN_DUKE_X": "Barbarian Duke X",
+		"SHARD_WYVERN": "Wyvern",
+		"SHARD_RAIN_SLIME": "Rain Slime",
+		"SHARD_MATCHO": "Matcho",
+		"SHARD_GLACITE_WALKER": "Glacite Walker",
+		"VINESAP": "Vinesap",
+		"SHARD_KADA_KNIGHT": "Kada Knight",
+		"SHARD_SEA_EMPEROR": "Sea Emperor",
+		"SHARD_FLASH": "Flash",
+		"SHARD_MORAY_EEL": "Moray Eel",
+		"SHARD_CASCADE": "Cascade",
+		"SHARD_HELLWISP": "Hellwisp",
+		"HOTSPOT_BAIT": "Hotspot Bait",
+		"SHARD_MUDWORM": "Mudworm",
+		"SHARD_TOAD": "Toad",
+		"WOODEN_BAIT": "Wooden Bait",
+		"FIGSTONE": "Figstone",
+		"SHARD_MOSSYBIT": "Mossybit",
+		"SHARD_MOCHIBEAR": "Mochibear",
+		"SCORCHED_CRAB_STICK": "Scorched Crab Stick",
+		"SHARD_SPIKE": "Spike",
+		"SHARD_FIRE_EEL": "Fire Eel",
+		"SHARD_VORACIOUS_SPIDER": "Voracious Spider",
+		"SHARD_MIMIC": "Mimic",
+		"SHARD_MIST": "Mist",
+		"HOTSPOT_WATER_ORB": "Hotspot Water Orb",
+		"TORN_CLOTH": "Torn Cloth",
+		"BLUE_RING": "Blue Ring",
+		"SHARD_TORTOISE": "Tortoise",
+		"ENCHANTMENT_ARCANE_5": "Arcane V",
+		"ENCHANTMENT_ARCANE_3": "Arcane III",
+		"ENCHANTMENT_ARCANE_4": "Arcane IV",
+		"CAN_OF_WORMS": "Can of Worms",
+		"ENCHANTMENT_ARCANE_1": "Arcane I",
+		"ENCHANTMENT_ARCANE_2": "Arcane II",
+		"SHARD_SHELLWISE": "Shellwise",
+		"SHARD_STAR_SENTRY": "Star Sentry",
+		"SHARD_LUMISQUID": "Lumisquid",
+		"FRIED_FEATHER": "Fried Feather",
+		"ESSENCE_FOREST": "Forest Essence",
+		"SHARD_LIZARD_KING": "Lizard King",
+		"SHARD_CHAMELEON": "Chameleon",
+		"SHARD_SOUL_OF_THE_ALPHA": "Soul of the Alpha",
+		"SHARD_PHANPYRE": "Phanpyre",
+		"SHARD_ANANKE": "Ananke",
+		"ENCHANTED_SEA_LUMIES": "Enchanted Sea Lumies",
+		"SHARD_THYST": "Thyst",
+		"SHARD_CAIMAN": "Caiman",
+		"SHARD_CONDOR": "Condor",
+		"TREASURE_BAIT": "Treasure Bait",
+		"SHARD_VIPER": "Viper",
+		"SHARD_AZURE": "Azure",
+		"SHARD_ENDSTONE_PROTECTOR": "Endstone Protector",
+		"AGATHA_COUPON": "Agatha's Coupon",
+		"SHARD_YOG": "Yog",
+		"SHARD_CROW": "Crow",
+		"SHARD_CHILL": "Chill",
+		"SHARD_BOLT": "Bolt",
+		"SHARD_CORALOT": "Coralot",
+		"SHARD_QUARTZFANG": "Quartzfang",
+		"SHARD_HIDEONCAVE": "Hideoncave",
+		"SHARD_CINDER_BAT": "Cinderbat",
+		"SHARD_WATER_HYDRA": "Water Hydra",
+		"SHARD_DREADWING": "Dreadwing",
+		"SHARD_PIRANHA": "Piranha",
+		"SHARD_LUNAR_MOTH": "Lunar Moth",
+		"BRIMSTONE_HANDLE": "Brimstone Handle",
+		"SHARD_LEATHERBACK": "Leatherback",
+		"SHARD_NEWT": "Newt",
+		"HALF_EATEN_MUSHROOM": "Half-Eaten Mushroom",
+		"SHARD_HIDEONGEON": "Hideongeon",
+		"TROUBLED_BUBBLE": "Troubled Bubble",
+		"SHARD_SUN_FISH": "Sun Fish",
+		"SHARD_DRAGONFLY": "Dragonfly",
+		"SHARD_POWER_DRAGON": "Power Dragon",
+		"SHARD_CROCODILE": "Crocodile",
+		"SHARD_CUBOA": "Cuboa",
+		"SHARD_SALAMANDER": "Salamander",
+		"SHARD_SPARROW": "Sparrow",
+		"SHARD_BRUISER": "Bruiser",
+		"SHARD_PHANFLARE": "Phanflare",
+		"SHARD_DRACONIC": "Draconic",
+		"SHARD_GALAXY_FISH": "Galaxy Fish",
+		"SHARD_BAMBLOOM": "Bambloom",
+		"SHARD_TERMITE": "Termite",
+		"SHARD_REVENANT": "Revenant",
+		"SHARD_CRYO": "Cryo",
+		"OVERFLOWING_TRASH_CAN": "Overflowing Trash Can",
+		"SHARD_INVISIBUG": "Invisibug",
+		"SHARD_BULLFROG": "Bullfrog",
+		"ENCHANTMENT_STEALTH_1": "Stealth I",
+		"SHARD_TENEBRIS": "Tenebris",
+		"ENCHANTED_FIG_LOG": "Enchanted Fig Log",
+		"SHARD_STRIDER_SURFER": "Stridersurfer",
+		"SHARD_ABYSSAL_LANTERN": "Abyssal Lanternfish",
+		"SHARD_BIRRIES": "Birries",
+		"SHARD_DAEMON": "Daemon",
+		"SHARD_INFERNO_KOI": "Inferno Koi",
+		"SHARD_CROPEETLE": "Cropeetle",
+		"SHARD_SEA_ARCHER": "Sea Archer",
+		"SHARD_COD": "Cod",
+		"MOONGLADE_JEWEL": "Moonglade Jewel",
+		"SHARD_XYZ": "Xyz",
+		"SHARD_LORD_JAWBUS": "Lord Jawbus",
+		"SHARD_SYCOPHANT": "Sycophant",
+		"SHARD_SEAGULL": "Seagull",
+		"SHARD_FLAMING_SPIDER": "Flaming Spider",
+		"SHARD_GROVE": "Grove",
+		"SHARD_LAPIS_ZOMBIE": "Lapis Zombie",
+		"CHAIN_END_TIMES": "Chain of the End Times",
+		"SHARD_BURNINGSOUL": "Burningsoul",
+		"SHARD_ARACHNE": "Arachne",
+		"ENCHANTED_VINESAP": "Enchanted Vinesap",
+		"SHARD_BAMBULEAF": "Bambuleaf",
+		"ENCHANTMENT_ULTIMATE_MISSILE_1": "Missile I",
+		"ENCHANTMENT_ULTIMATE_MISSILE_2": "Missile II",
+		"ENCHANTMENT_ULTIMATE_MISSILE_5": "Missile V",
+		"ENCHANTMENT_ULTIMATE_MISSILE_3": "Missile III",
+		"ENCHANTMENT_ULTIMATE_MISSILE_4": "Missile IV",
+		"GIANT_BOUNCY_BEACH_BALL": "Giant Bouncy Beach Ball",
+		"SHARD_ETHERDRAKE": "Etherdrake",
+		"SHARD_JORMUNG": "Jormung",
+		"SHARD_NAGA": "Naga",
+		"SHARD_MOLTENFISH": "Moltenfish",
+		"SHARD_FUNGLOOM": "Fungloom",
+		"SHARD_SEER": "Seer",
+		"WET_BOOK": "Wet Book",
+		"SHARD_FIREFLY": "Firefly",
+		"SHARD_LADYBUG": "Ladybug",
+		"ENCHANTED_CLAY_BLOCK": "Enchanted Clay Block",
+		"SHARD_SILENTDEPTH": "Silentdepth",
+		"SHARD_TERRA": "Terra",
+		"SHARD_TANK_ZOMBIE": "Tank Zombie",
+		"SHARD_LAPIS_SKELETON": "Lapis Skeleton",
+		"MANGROVE_GEM": "Mangrove Gem",
+		"SHARD_PANDARAI": "Pandarai",
+		"SHARD_MOLTHORN": "Molthorn",
+		"SHARD_LAPIS_CREEPER": "Lapis Creeper",
+		"SHARD_STARBORN": "Starborn",
+		"SHARD_JOYDIVE": "Joydive",
+		"BUSTED_BELT_BUCKLE": "Busted Belt Buckle",
+		"SHARD_SYLVAN": "Sylvan",
+		"BRONZE_BOWL": "Bronze Bowl",
+		"ALLIGATOR_SKIN": "Alligator Skin",
+		"SHARD_ZOMBIE_SOLDIER": "Zombie Soldier",
+		"SHARD_TADGANG": "Tadgang",
+		"GOLDEN_BAIT": "Golden Bait",
+		"SHARD_GOLDFIN": "Goldfin",
+		"SHARD_MINER_ZOMBIE": "Miner Zombie",
+		"SEVERED_PINCER": "Severed Pincer",
+		"ENCHANTED_TENDER_WOOD": "Enchanted Tender Wood",
+		"ENCHANTMENT_RESPIRATION_4": "Respiration IV",
+		"SHARD_BEACONMITE": "Beaconmite",
+		"CALCIFIED_HEART": "Calcified Heart",
+		"ENCHANTMENT_FOREST_PLEDGE_5": "Forest Pledge V",
+		"ENCHANTMENT_FOREST_PLEDGE_4": "Forest Pledge IV",
+		"ENCHANTMENT_FOREST_PLEDGE_3": "Forest Pledge III",
+		"SHARD_APEX_DRAGON": "Apex Dragon",
+		"SHARD_TAURUS": "Taurus",
+		"OCTOPUS_TENDRIL": "Octopus Tendril",
+		"SHARD_RANA": "Rana",
+		"SHARD_CAVERNSHADE": "Cavernshade",
+		"SHARD_BRAMBLE": "Bramble",
+		"BAYOU_WATER_ORB": "Bayou Water Orb",
+		"SHARD_KRAKEN": "Kraken",
+		"SHARD_ZEALOT": "Zealot",
+		"SHARD_WITHER": "Wither",
+		"SHARD_MAGMA_SLUG": "Magma Slug",
+		"SHARD_QUAKE": "Quake",
+		"SHARD_HIDEONGIFT": "Hideongift",
+		"SHARD_KIWI": "Kiwi",
+		"SHARD_SNOWFIN": "Snowfin",
+		"SHARD_GHOST": "Ghost",
+		"SHARD_TOUCAN": "Toucan",
+		"SHARD_STALAGMIGHT": "Stalagmight",
+		"SHARD_KOMODO_DRAGON": "Komodo Dragon",
+		"ENCHANTMENT_TIDAL_3": "Tidal III",
+		"ENCHANTMENT_TIDAL_2": "Tidal II",
+		"ENCHANTMENT_TIDAL_1": "Tidal I",
+		"SHARD_FALCON": "Falcon",
+		"SHARD_HIDEONRING": "Hideonring",
+		"SHARD_LEVIATHAN": "Leviathan",
+		"TENDER_WOOD": "Tender Wood"
+	},
+	"enchantCraftingList": {
+		"normal": {},
+		"other": {
+			"ENCHANTED_GHAST_TEAR": {
+				"material": [
+					"GHAST_TEAR",
+					5
+				],
+				"collection": "GHAST_TEAR_4"
+			},
+			"CONCENTRATED_STONE": {
+				"material": [
+					"ENCHANTED_HARD_STONE",
+					576
+				],
+				"collection": "HARD_STONE_6"
+			},
+			"FINE_JADE_GEM": {
+				"material": [
+					"FLAWED_JADE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"NULL_OVOID": {
+				"material": [
+					"NULL_SPHERE",
+					128,
+					"ENCHANTED_OBSIDIAN",
+					32
+				],
+				"collection": "ENDERMAN_4"
+			},
+			"ENCHANTED_BROWN_MUSHROOM": {
+				"material": [
+					"BROWN_MUSHROOM",
+					160
+				],
+				"collection": "MUSHROOM_COLLECTION_6"
+			},
+			"ENCHANTED_SUGAR": {
+				"material": [
+					"SUGAR_CANE",
+					160
+				],
+				"collection": "SUGAR_CANE_4"
+			},
+			"ENCHANTED_SAND": {
+				"material": [
+					"SAND",
+					160
+				],
+				"collection": "SAND_5"
+			},
+			"MAGMA_FISH_DIAMOND": {
+				"material": [
+					"MAGMA_FISH_GOLD",
+					80
+				],
+				"collection": "MAGMA_FISH_10"
+			},
+			"ENCHANTED_PUMPKIN": {
+				"material": [
+					"PUMPKIN",
+					160
+				],
+				"collection": "PUMPKIN_3"
+			},
+			"ENCHANTED_GOLD": {
+				"material": [
+					"GOLD_INGOT",
+					160
+				],
+				"collection": "GOLD_INGOT_4"
+			},
+			"ENCHANTED_REDSTONE_BLOCK": {
+				"material": [
+					"ENCHANTED_REDSTONE",
+					160
+				],
+				"collection": "REDSTONE_8"
+			},
+			"ENCHANTED_HUGE_MUSHROOM_2": {
+				"material": [
+					"HUGE_MUSHROOM_2",
+					576
+				],
+				"collection": "MUSHROOM_COLLECTION_8"
+			},
+			"ENCHANTED_FLINT": {
+				"material": [
+					"FLINT",
+					160
+				],
+				"collection": "GRAVEL_5"
+			},
+			"ENCHANTED_WATER_LILY": {
+				"material": [
+					"WATER_LILY",
+					160
+				],
+				"collection": "WATER_LILY_4"
+			},
+			"ICE_BAIT": {
+				"material": [
+					"ICE",
+					1,
+					"RAW_FISH",
+					1
+				],
+				"collection": "ICE_6"
+			},
+			"ENCHANTED_SULPHUR_CUBE": {
+				"material": [
+					"ENCHANTED_SULPHUR",
+					160
+				],
+				"collection": "SULPHUR_ORE_6"
+			},
+			"SHARK_BAIT": {
+				"material": [
+					"SHARK_FIN",
+					2
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_TITANIUM": {
+				"material": [
+					"TITANIUM_ORE",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_QUARTZ_BLOCK": {
+				"material": [
+					"ENCHANTED_QUARTZ",
+					160
+				],
+				"collection": "QUARTZ_6"
+			},
+			"HAY_BLOCK": {
+				"material": [
+					"WHEAT",
+					9
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_REDSTONE": {
+				"material": [
+					"REDSTONE",
+					160
+				],
+				"collection": "REDSTONE_4"
+			},
+			"ENCHANTED_MYCELIUM_CUBE": {
+				"material": [
+					"ENCHANTED_MYCELIUM",
+					160
+				],
+				"collection": "MYCEL_7"
+			},
+			"MAGMA_FISH_GOLD": {
+				"material": [
+					"MAGMA_FISH_SILVER",
+					80
+				],
+				"collection": "MAGMA_FISH_7"
+			},
+			"ENCHANTED_INK_SACK": {
+				"material": [
+					"INK_SACK",
+					80
+				],
+				"collection": "INK_SACK_3"
+			},
+			"ENCHANTED_BREAD": {
+				"material": [
+					"WHEAT",
+					60
+				],
+				"collection": "WHEAT_5"
+			},
+			"ENCHANTED_RABBIT_FOOT": {
+				"material": [
+					"RABBIT_FOOT",
+					160
+				],
+				"collection": "RABBIT_4"
+			},
+			"AMALGAMATED_CRIMSONITE_NEW": {
+				"material": [
+					"ENCHANTED_GLOWSTONE_DUST",
+					32,
+					"ENCHANTED_MYCELIUM",
+					8,
+					"ENCHANTED_MAGMA_CREAM",
+					32,
+					"ENCHANTED_BLAZE_POWDER",
+					32,
+					"ENCHANTED_RED_SAND",
+					8,
+					"ENCHANTED_NETHER_STALK",
+					32
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_EMERALD_BLOCK": {
+				"material": [
+					"ENCHANTED_EMERALD",
+					160
+				],
+				"collection": "EMERALD_7"
+			},
+			"ENCHANTED_BONE_BLOCK": {
+				"material": [
+					"ENCHANTED_BONE",
+					160
+				],
+				"collection": "BONE_10"
+			},
+			"FINE_OPAL_GEM": {
+				"material": [
+					"FLAWED_OPAL_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_LEATHER": {
+				"material": [
+					"LEATHER",
+					576
+				],
+				"collection": "LEATHER_6"
+			},
+			"ENCHANTED_COAL": {
+				"material": [
+					"COAL",
+					160
+				],
+				"collection": "COAL_4"
+			},
+			"SIL_EX": {
+				"material": [
+					"CONCENTRATED_STONE",
+					9
+				],
+				"collection": "HARD_STONE_7"
+			},
+			"FINE_RUBY_GEM": {
+				"material": [
+					"FLAWED_RUBY_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"ENCHANTED_QUARTZ": {
+				"material": [
+					"QUARTZ",
+					160
+				],
+				"collection": "QUARTZ_4"
+			},
+			"FINE_AMBER_GEM": {
+				"material": [
+					"FLAWED_AMBER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"ENCHANTED_DIAMOND_BLOCK": {
+				"material": [
+					"ENCHANTED_DIAMOND",
+					160
+				],
+				"collection": "DIAMOND_8"
+			},
+			"ENCHANTED_SLIME_BLOCK": {
+				"material": [
+					"ENCHANTED_SLIME_BALL",
+					160
+				],
+				"collection": "SLIME_BALL_8"
+			},
+			"ENCHANTED_SULPHUR": {
+				"material": [
+					"SULPHUR_ORE",
+					160
+				],
+				"collection": "SULPHUR_ORE_2"
+			},
+			"FINE_AMETHYST_GEM": {
+				"material": [
+					"FLAWED_AMETHYST_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"ENCHANTED_BAKED_POTATO": {
+				"material": [
+					"ENCHANTED_POTATO",
+					160
+				],
+				"collection": "POTATO_ITEM_7"
+			},
+			"ENCHANTED_WET_SPONGE": {
+				"material": [
+					"ENCHANTED_SPONGE",
+					40
+				],
+				"collection": "SPONGE_7"
+			},
+			"ENCHANTED_ANCIENT_CLAW": {
+				"material": [
+					"ANCIENT_CLAW",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_REDSTONE_LAMP": {
+				"material": [
+					"ENCHANTED_REDSTONE",
+					128,
+					"ENCHANTED_GLOWSTONE_DUST",
+					32
+				],
+				"collection": "GLOWSTONE_DUST_7"
+			},
+			"ENCHANTED_MUTTON": {
+				"material": [
+					"MUTTON",
+					160
+				],
+				"collection": "MUTTON_5"
+			},
+			"MINNOW_BAIT": {
+				"material": [
+					"RAW_FISH",
+					2
+				],
+				"collection": "RAW_FISH:1_1"
+			},
+			"ENCHANTED_LAPIS_LAZULI_BLOCK": {
+				"material": [
+					"ENCHANTED_LAPIS_LAZULI",
+					160
+				],
+				"collection": "INK_SACK:4_7"
+			},
+			"ENCHANTED_RABBIT": {
+				"material": [
+					"RABBIT",
+					160
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_AMETHYST_GEM": {
+				"material": [
+					"FINE_AMETHYST_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_NETHER_STALK": {
+				"material": [
+					"NETHER_STALK",
+					160
+				],
+				"collection": "NETHER_STALK_4"
+			},
+			"FLAWLESS_JADE_GEM": {
+				"material": [
+					"FINE_JADE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_RAW_CHICKEN": {
+				"material": [
+					"RAW_CHICKEN",
+					160
+				],
+				"collection": "RAW_CHICKEN_4"
+			},
+			"ENCHANTED_BLAZE_POWDER": {
+				"material": [
+					"BLAZE_ROD",
+					160
+				],
+				"collection": "BLAZE_ROD_4"
+			},
+			"ENCHANTED_MELON": {
+				"material": [
+					"MELON",
+					160
+				],
+				"collection": "MELON_4"
+			},
+			"ENCHANTED_ACACIA_LOG": {
+				"material": [
+					"LOG_2",
+					160
+				],
+				"collection": "LOG_2_6"
+			},
+			"ENCHANTED_RAW_BEEF": {
+				"material": [
+					"RAW_BEEF",
+					160
+				],
+				"collection": "LEATHER_4"
+			},
+			"ENCHANTED_RED_MUSHROOM": {
+				"material": [
+					"RED_MUSHROOM",
+					160
+				],
+				"collection": "MUSHROOM_COLLECTION_6"
+			},
+			"WHALE_BAIT": {
+				"material": [
+					"FISH_BAIT",
+					1,
+					"LIGHT_BAIT",
+					1,
+					"DARK_BAIT",
+					1,
+					"BLESSED_BAIT",
+					1
+				],
+				"collection": "WATER_LILY_6"
+			},
+			"ENCHANTED_SUGAR_CANE": {
+				"material": [
+					"ENCHANTED_SUGAR",
+					160
+				],
+				"collection": "SUGAR_CANE_8"
+			},
+			"LIGHT_BAIT": {
+				"material": [
+					"PRISMARINE_CRYSTALS",
+					2,
+					"RAW_FISH",
+					1
+				],
+				"collection": "PRISMARINE_CRYSTALS_2"
+			},
+			"FINE_SAPPHIRE_GEM": {
+				"material": [
+					"FLAWED_SAPPHIRE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"FINE_TOPAZ_GEM": {
+				"material": [
+					"FLAWED_TOPAZ_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"HUGE_MUSHROOM_1": {
+				"material": [
+					"BROWN_MUSHROOM",
+					9
+				],
+				"collection": "MUSHROOM_COLLECTION_5"
+			},
+			"FINE_JASPER_GEM": {
+				"material": [
+					"FLAWED_JASPER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_5"
+			},
+			"ENCHANTED_PORK": {
+				"material": [
+					"PORK",
+					160
+				],
+				"collection": "PORK_4"
+			},
+			"SOULFLOW": {
+				"material": [
+					"RAW_SOULFLOW",
+					160
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_JASPER_GEM": {
+				"material": [
+					"FINE_JASPER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_CACTUS": {
+				"material": [
+					"ENCHANTED_CACTUS_GREEN",
+					160
+				],
+				"collection": "CACTUS_8"
+			},
+			"FLAWLESS_OPAL_GEM": {
+				"material": [
+					"FINE_OPAL_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"PACKED_ICE": {
+				"material": [
+					"ICE",
+					9
+				],
+				"collection": "ICE_3"
+			},
+			"WHEAT": {
+				"material": [
+					"HAY_BLOCK",
+					1
+				],
+				"collection": "NONE"
+			},
+			"SUPER_COMPACTOR_3000": {
+				"material": [
+					"ENCHANTED_COBBLESTONE",
+					448,
+					"ENCHANTED_REDSTONE_BLOCK",
+					1
+				],
+				"collection": "COBBLESTONE_10"
+			},
+			"FLAWLESS_RUBY_GEM": {
+				"material": [
+					"FINE_RUBY_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_ICE": {
+				"material": [
+					"ICE",
+					160
+				],
+				"collection": "ICE_4"
+			},
+			"ENCHANTED_COOKED_FISH": {
+				"material": [
+					"ENCHANTED_RAW_FISH",
+					160
+				],
+				"collection": "RAW_FISH_8"
+			},
+			"FLAWED_OPAL_GEM": {
+				"material": [
+					"ROUGH_OPAL_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_COOKED_MUTTON": {
+				"material": [
+					"ENCHANTED_MUTTON",
+					160
+				],
+				"collection": "MUTTON_8"
+			},
+			"ENCHANTED_PAPER": {
+				"material": [
+					"SUGAR_CANE",
+					192
+				],
+				"collection": "SUGAR_CANE_5"
+			},
+			"MUTANT_NETHER_STALK": {
+				"material": [
+					"ENCHANTED_NETHER_STALK",
+					160
+				],
+				"collection": "NETHER_STALK_12"
+			},
+			"ENCHANTED_ENDER_PEARL": {
+				"material": [
+					"ENDER_PEARL",
+					20
+				],
+				"collection": "ENDER_PEARL_2"
+			},
+			"FLAWED_AMETHYST_GEM": {
+				"material": [
+					"ROUGH_AMETHYST_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_MYCELIUM": {
+				"material": [
+					"MYCEL",
+					160
+				],
+				"collection": "NONE"
+			},
+			"FLAWED_RUBY_GEM": {
+				"material": [
+					"ROUGH_RUBY_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_HUGE_MUSHROOM_1": {
+				"material": [
+					"HUGE_MUSHROOM_1",
+					576
+				],
+				"collection": "MUSHROOM_COLLECTION_8"
+			},
+			"ENCHANTED_LAVA_BUCKET": {
+				"material": [
+					"ENCHANTED_IRON",
+					3,
+					"ENCHANTED_COAL_BLOCK",
+					2
+				],
+				"collection": "COAL_8"
+			},
+			"ENCHANTED_SLIME_BALL": {
+				"material": [
+					"SLIME_BALL",
+					160
+				],
+				"collection": "SLIME_BALL_5"
+			},
+			"ENCHANTED_RAW_FISH": {
+				"material": [
+					"RAW_FISH",
+					160
+				],
+				"collection": "RAW_FISH_6"
+			},
+			"ENCHANTED_FEATHER": {
+				"material": [
+					"FEATHER",
+					160
+				],
+				"collection": "FEATHER_5"
+			},
+			"FLAWED_AMBER_GEM": {
+				"material": [
+					"ROUGH_AMBER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"MOLTEN_POWDER": {
+				"material": [
+					"DERELICT_ASHE",
+					128,
+					"AMALGAMATED_CRIMSONITE_NEW",
+					1
+				],
+				"collection": "BLAZE_2"
+			},
+			"ABSOLUTE_ENDER_PEARL": {
+				"material": [
+					"ENCHANTED_ENDER_PEARL",
+					80
+				],
+				"collection": "ENDER_PEARL_7"
+			},
+			"ENCHANTED_CHARCOAL": {
+				"material": [
+					"COAL",
+					128,
+					"LOG",
+					32
+				],
+				"collection": "COAL_5"
+			},
+			"ENCHANTED_IRON_BLOCK": {
+				"material": [
+					"ENCHANTED_IRON",
+					160
+				],
+				"collection": "IRON_INGOT_7"
+			},
+			"ENCHANTED_PRISMARINE_CRYSTALS": {
+				"material": [
+					"PRISMARINE_CRYSTALS",
+					80
+				],
+				"collection": "PRISMARINE_CRYSTALS_3"
+			},
+			"MAGMA_FISH_SILVER": {
+				"material": [
+					"MAGMA_FISH",
+					80
+				],
+				"collection": "MAGMA_FISH_3"
+			},
+			"ENCHANTED_CLAY_BALL": {
+				"material": [
+					"CLAY_BALL",
+					160
+				],
+				"collection": "CLAY_BALL_2"
+			},
+			"SNOW_BLOCK": {
+				"material": [
+					"SNOW_BALL",
+					4
+				],
+				"collection": "NONE"
+			},
+			"LEATHER": {
+				"material": [
+					"RABBIT_HIDE",
+					4
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_MELON_BLOCK": {
+				"material": [
+					"ENCHANTED_MELON",
+					160
+				],
+				"collection": "MELON_6"
+			},
+			"FLAWED_SAPPHIRE_GEM": {
+				"material": [
+					"ROUGH_SAPPHIRE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_OAK_LOG": {
+				"material": [
+					"LOG",
+					160
+				],
+				"collection": "LOG_6"
+			},
+			"ENCHANTED_PACKED_ICE": {
+				"material": [
+					"ENCHANTED_ICE",
+					160
+				],
+				"collection": "ICE_7"
+			},
+			"COMPACTOR": {
+				"material": [
+					"ENCHANTED_COBBLESTONE",
+					7,
+					"ENCHANTED_REDSTONE",
+					1
+				],
+				"collection": "COBBLESTONE_5"
+			},
+			"ENCHANTED_SPONGE": {
+				"material": [
+					"SPONGE",
+					40
+				],
+				"collection": "SPONGE_3"
+			},
+			"ENCHANTED_IRON": {
+				"material": [
+					"IRON_INGOT",
+					160
+				],
+				"collection": "IRON_INGOT_4"
+			},
+			"ENCHANTED_ROTTEN_FLESH": {
+				"material": [
+					"ROTTEN_FLESH",
+					160
+				],
+				"collection": "ROTTEN_FLESH_4"
+			},
+			"ENCHANTED_COAL_BLOCK": {
+				"material": [
+					"ENCHANTED_COAL",
+					160
+				],
+				"collection": "COAL_7"
+			},
+			"ENCHANTED_GOLD_BLOCK": {
+				"material": [
+					"ENCHANTED_GOLD",
+					160
+				],
+				"collection": "GOLD_INGOT_7"
+			},
+			"ENCHANTED_ENDSTONE": {
+				"material": [
+					"ENDER_STONE",
+					160
+				],
+				"collection": "ENDER_STONE_4"
+			},
+			"MELON_BLOCK": {
+				"material": [
+					"MELON",
+					9
+				],
+				"collection": "NONE"
+			},
+			"CARROT_BAIT": {
+				"material": [
+					"CARROT_ITEM",
+					1,
+					"RAW_FISH",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_PRISMARINE_SHARD": {
+				"material": [
+					"PRISMARINE_SHARD",
+					80
+				],
+				"collection": "PRISMARINE_SHARD_3"
+			},
+			"REVENANT_VISCERA": {
+				"material": [
+					"REVENANT_FLESH",
+					128,
+					"ENCHANTED_STRING",
+					32
+				],
+				"collection": "ZOMBIE_4"
+			},
+			"ENCHANTED_GUNPOWDER": {
+				"material": [
+					"SULPHUR",
+					160
+				],
+				"collection": "SULPHUR_4"
+			},
+			"FLAWED_TOPAZ_GEM": {
+				"material": [
+					"ROUGH_TOPAZ_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_HARD_STONE": {
+				"material": [
+					"HARD_STONE",
+					576
+				],
+				"collection": "HARD_STONE_3"
+			},
+			"ENCHANTED_RABBIT_HIDE": {
+				"material": [
+					"RABBIT_HIDE",
+					576
+				],
+				"collection": "RABBIT_6"
+			},
+			"ENCHANTED_GRILLED_PORK": {
+				"material": [
+					"ENCHANTED_PORK",
+					160
+				],
+				"collection": "PORK_7"
+			},
+			"FLAWED_JADE_GEM": {
+				"material": [
+					"ROUGH_JADE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_EMERALD": {
+				"material": [
+					"EMERALD",
+					160
+				],
+				"collection": "EMERALD_4"
+			},
+			"ENCHANTED_OBSIDIAN": {
+				"material": [
+					"OBSIDIAN",
+					160
+				],
+				"collection": "OBSIDIAN_4"
+			},
+			"ENCHANTED_RED_SAND_CUBE": {
+				"material": [
+					"ENCHANTED_RED_SAND",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_SHARK_FIN": {
+				"material": [
+					"SHARK_FIN",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_CARROT": {
+				"material": [
+					"CARROT_ITEM",
+					160
+				],
+				"collection": "CARROT_ITEM_4"
+			},
+			"ENCHANTED_POTATO": {
+				"material": [
+					"POTATO_ITEM",
+					160
+				],
+				"collection": "POTATO_ITEM_4"
+			},
+			"ENCHANTED_SNOW_BLOCK": {
+				"material": [
+					"SNOW_BLOCK",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_MITHRIL": {
+				"material": [
+					"MITHRIL_ORE",
+					160
+				],
+				"collection": "MITHRIL_ORE_3"
+			},
+			"FLAWLESS_SAPPHIRE_GEM": {
+				"material": [
+					"FINE_SAPPHIRE_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_NETHERRACK": {
+				"material": [
+					"NETHERRACK",
+					160
+				],
+				"collection": "NETHERRACK_4"
+			},
+			"POLISHED_PUMPKIN": {
+				"material": [
+					"ENCHANTED_PUMPKIN",
+					160
+				],
+				"collection": "PUMPKIN_10"
+			},
+			"ENCHANTED_GLOWSTONE": {
+				"material": [
+					"ENCHANTED_GLOWSTONE_DUST",
+					192
+				],
+				"collection": "GLOWSTONE_DUST_6"
+			},
+			"FLAWED_JASPER_GEM": {
+				"material": [
+					"ROUGH_JASPER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_2"
+			},
+			"ENCHANTED_HAY_BLOCK": {
+				"material": [
+					"HAY_BLOCK",
+					144
+				],
+				"collection": "WHEAT_7"
+			},
+			"FLAWLESS_AMBER_GEM": {
+				"material": [
+					"FINE_AMBER_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_STRING": {
+				"material": [
+					"STRING",
+					192
+				],
+				"collection": "STRING_4"
+			},
+			"ENCHANTED_COOKIE": {
+				"material": [
+					"ENCHANTED_COCOA",
+					128,
+					"WHEAT",
+					32
+				],
+				"collection": "INK_SACK:3_6"
+			},
+			"DARK_BAIT": {
+				"material": [
+					"INK_SACK",
+					1,
+					"RAW_FISH",
+					1
+				],
+				"collection": "INK_SACK_2"
+			},
+			"ENCHANTED_COBBLESTONE": {
+				"material": [
+					"COBBLESTONE",
+					160
+				],
+				"collection": "COBBLESTONE_4"
+			},
+			"SPOOKY_BAIT": {
+				"material": [
+					"PUMPKIN",
+					1,
+					"RAW_FISH",
+					1
+				],
+				"collection": "NONE"
+			},
+			"GOLDEN_TOOTH": {
+				"material": [
+					"WOLF_TOOTH",
+					128,
+					"ENCHANTED_GOLD",
+					32
+				],
+				"collection": "WOLF_4"
+			},
+			"TARANTULA_SILK": {
+				"material": [
+					"TARANTULA_WEB",
+					128,
+					"ENCHANTED_FLINT",
+					32
+				],
+				"collection": "SPIDER_4"
+			},
+			"ENCHANTED_SEEDS": {
+				"material": [
+					"SEEDS",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_SPIDER_EYE": {
+				"material": [
+					"SPIDER_EYE",
+					160
+				],
+				"collection": "SPIDER_EYE_4"
+			},
+			"ENCHANTED_COOKED_SALMON": {
+				"material": [
+					"ENCHANTED_RAW_SALMON",
+					160
+				],
+				"collection": "RAW_FISH:1_8"
+			},
+			"ENCHANTED_DIAMOND": {
+				"material": [
+					"DIAMOND",
+					160
+				],
+				"collection": "DIAMOND_4"
+			},
+			"ENCHANTED_MAGMA_CREAM": {
+				"material": [
+					"MAGMA_CREAM",
+					160
+				],
+				"collection": "MAGMA_CREAM_5"
+			},
+			"HUGE_MUSHROOM_2": {
+				"material": [
+					"RED_MUSHROOM",
+					9
+				],
+				"collection": "MUSHROOM_COLLECTION_5"
+			},
+			"ENCHANTED_BLAZE_ROD": {
+				"material": [
+					"ENCHANTED_BLAZE_POWDER",
+					160
+				],
+				"collection": "BLAZE_ROD_7"
+			},
+			"FLAWLESS_TOPAZ_GEM": {
+				"material": [
+					"FINE_TOPAZ_GEM",
+					80
+				],
+				"collection": "GEMSTONE_COLLECTION_9"
+			},
+			"ENCHANTED_BONE": {
+				"material": [
+					"BONE",
+					160
+				],
+				"collection": "BONE_5"
+			},
+			"SUPER_EGG": {
+				"material": [
+					"ENCHANTED_EGG",
+					144
+				],
+				"collection": "RAW_CHICKEN_9"
+			},
+			"ENCHANTED_GLOWSTONE_DUST": {
+				"material": [
+					"GLOWSTONE_DUST",
+					160
+				],
+				"collection": "GLOWSTONE_DUST_4"
+			},
+			"OMEGA_EGG": {
+				"material": [
+					"SUPER_EGG",
+					9
+				],
+				"collection": "RAW_CHICKEN_10"
+			},
+			"TIGHTLY_TIED_HAY_BALE": {
+				"material": [
+					"ENCHANTED_HAY_BLOCK",
+					144
+				],
+				"collection": "WHEAT_11"
+			},
+			"DWARVEN_COMPACTOR": {
+				"material": [
+					"ENCHANTED_MITHRIL",
+					56,
+					"SUPER_COMPACTOR_3000",
+					1,
+					"COBBLESTONE",
+					64,
+					"COAL",
+					1
+				],
+				"collection": "MITHRIL_ORE_6"
+			},
+			"FUEL_GABAGOOL": {
+				"material": [
+					"CRUDE_GABAGOOL",
+					32,
+					"ENCHANTED_COAL",
+					16,
+					"ENCHANTED_SULPHUR",
+					1
+				],
+				"collection": "NONE"
+			},
+			"HEAVY_GABAGOOL": {
+				"material": [
+					"FUEL_GABAGOOL",
+					32,
+					"ENCHANTED_COAL",
+					16,
+					"ENCHANTED_SULPHUR",
+					1
+				],
+				"collection": "NONE"
+			},
+			"HYPERGOLIC_GABAGOOL": {
+				"material": [
+					"HEAVY_GABAGOOL",
+					32,
+					"ENCHANTED_COAL",
+					16,
+					"ENCHANTED_SULPHUR",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_EYE_OF_ENDER": {
+				"material": [
+					"ENCHANTED_ENDER_PEARL",
+					16,
+					"BLAZE_ROD",
+					32
+				],
+				"collection": "ENDER_PEARL_6"
+			},
+			"ENCHANTED_FIREWORK_ROCKET": {
+				"material": [
+					"ENCHANTED_GUNPOWDER",
+					64,
+					"SUGAR_CANE",
+					16
+				],
+				"collection": "SULPHUR_6"
+			},
+			"ENCHANTED_GLISTERING_MELON": {
+				"material": [
+					"GOLD_INGOT",
+					143,
+					"MELON",
+					160
+				],
+				"collection": "MELON_5"
+			},
+			"ENCHANTED_FERMENTED_SPIDER_EYE": {
+				"material": [
+					"SUGAR_CANE",
+					64,
+					"BROWN_MUSHROOM",
+					64,
+					"ENCHANTED_SPIDER_EYE",
+					64
+				],
+				"collection": "SPIDER_EYE_7"
+			},
+			"ENCHANTED_GOLDEN_CARROT": {
+				"material": [
+					"ENCHANTED_CARROT",
+					128,
+					"CARROT_ITEM",
+					32,
+					"GOLD_INGOT",
+					29
+				],
+				"collection": "CARROT_ITEM_7"
+			},
+			"ENCHANTED_CACTUS_GREEN": {
+				"material": [
+					"CACTUS",
+					160,
+					"COAL",
+					1
+				],
+				"collection": "CACTUS_4"
+			},
+			"ENCHANTED_CARROT_STICK": {
+				"material": [
+					"ENCHANTED_CARROT",
+					64,
+					"LOG",
+					1
+				],
+				"collection": "CARROT_ITEM_5"
+			},
+			"EXP_BOTTLE": {
+				"material": [
+					"INK_SACK:4",
+					6,
+					"SAND",
+					3
+				],
+				"collection": "INK_SACK:4_2"
+			},
+			"GRAND_EXP_BOTTLE": {
+				"material": [
+					"ENCHANTED_LAPIS_LAZULI",
+					6,
+					"SAND",
+					3
+				],
+				"collection": "INK_SACK:4_5"
+			},
+			"TITANIC_EXP_BOTTLE": {
+				"material": [
+					"ENCHANTED_LAPIS_LAZULI_BLOCK",
+					6,
+					"SAND",
+					3
+				],
+				"collection": "INK_SACK:4_8"
+			},
+			"HOT_POTATO_BOOK": {
+				"material": [
+					"ENCHANTED_BAKED_POTATO",
+					1,
+					"SUGAR_CANE",
+					3
+				],
+				"collection": "POTATO_ITEM_8"
+			},
+			"FISH_BAIT": {
+				"material": [
+					"RAW_FISH",
+					2,
+					"RAW_FISH:1",
+					1
+				],
+				"collection": "RAW_FISH:1_6"
+			},
+			"SPIKED_BAIT": {
+				"material": [
+					"RAW_FISH:3",
+					1,
+					"RAW_FISH",
+					1
+				],
+				"collection": "RAW_FISH:3_5"
+			},
+			"BLESSED_BAIT": {
+				"material": [
+					"GOLD_INGOT",
+					9,
+					"RAW_FISH",
+					1,
+					"PRISMARINE_CRYSTALS",
+					1
+				],
+				"collection": "PRISMARINE_CRYSTALS_3"
+			},
+			"ENCHANTED_BIRCH_LOG": {
+				"material": [
+					"LOG:2",
+					160
+				],
+				"collection": "LOG:2_7"
+			},
+			"ENCHANTED_RAW_SALMON": {
+				"material": [
+					"RAW_FISH:1",
+					160
+				],
+				"collection": "RAW_FISH:1_4"
+			},
+			"ENCHANTED_PUFFERFISH": {
+				"material": [
+					"RAW_FISH:3",
+					160
+				],
+				"collection": "RAW_FISH:3_2"
+			},
+			"ENCHANTED_LAPIS_LAZULI": {
+				"material": [
+					"INK_SACK:4",
+					160
+				],
+				"collection": "INK_SACK:4_4"
+			},
+			"ENCHANTED_COCOA": {
+				"material": [
+					"INK_SACK:3",
+					160
+				],
+				"collection": "INK_SACK:3_4"
+			},
+			"ENCHANTED_SPRUCE_LOG": {
+				"material": [
+					"LOG:1",
+					160
+				],
+				"collection": "LOG:1_5"
+			},
+			"ENCHANTED_DARK_OAK_LOG": {
+				"material": [
+					"LOG_2:1",
+					160
+				],
+				"collection": "LOG_2:1_5"
+			},
+			"ENCHANTED_CLOWNFISH": {
+				"material": [
+					"RAW_FISH:2",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_JUNGLE_LOG": {
+				"material": [
+					"LOG:3",
+					160
+				],
+				"collection": "LOG:3_6"
+			},
+			"ENCHANTED_COMPOST": {
+				"material": [
+					"COMPOST",
+					160
+				],
+				"collection": "NONE"
+			},
+			"CONDENSED_FERMENTO": {
+				"material": [
+					"FERMENTO",
+					9
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_EGG": {
+				"material": [
+					"SUPER_EGG",
+					144
+				],
+				"collection": "NONE"
+			},
+			"MAGMA_CREAM": {
+				"material": [
+					"ENCHANTED_BLAZE_POWDER",
+					1,
+					"ENCHANTED_SLIME_BALL",
+					1
+				],
+				"collection": "NONE"
+			},
+			"CATALYST": {
+				"material": [
+					"ENDER_STONE",
+					8,
+					"CRYSTAL_FRAGMENT",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_RED_SAND": {
+				"material": [
+					"SAND:1",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ACACIA_BIRDHOUSE": {
+				"material": [
+					"ENCHANTED_ACACIA_LOG",
+					384
+				],
+				"collection": "NONE"
+			},
+			"INFERNO_VERTEX": {
+				"material": [
+					"MOLTEN_POWDER",
+					64,
+					"HYPERGOLIC_IONIZED_CERAMICS",
+					6
+				],
+				"collection": "NONE"
+			},
+			"INFERNO_APEX": {
+				"material": [
+					"INFERNO_VERTEX",
+					64,
+					"MOLTEN_POWDER",
+					64,
+					"HYPERGOLIC_IONIZED_CERAMICS",
+					16
+				],
+				"collection": "NONE"
+			},
+			"OBSIDIAN_TABLET": {
+				"material": [
+					"ENCHANTED_OBSIDIAN",
+					192,
+					"SUMMONING_EYE",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENTROPY_SUPPRESSOR": {
+				"material": [
+					"CHILI_PEPPER",
+					32,
+					"HEAVY_GABAGOOL",
+					16,
+					"KELVIN_INVERTER",
+					4
+				],
+				"collection": "NONE"
+			},
+			"WATER_ORB": {
+				"material": [
+					"ENCHANTED_RAW_FISH",
+					16,
+					"ENCHANTED_WATER_LILY",
+					8,
+					"ENCHANTED_RAW_SALMON",
+					16,
+					"ENCHANTED_PRISMARINE_SHARD",
+					16,
+					"DIVER_FRAGMENT",
+					1,
+					"ENCHANTED_PRISMARINE_CRYSTALS",
+					16,
+					"ENCHANTED_SPONGE",
+					4,
+					"ENCHANTED_PUFFERFISH",
+					16,
+					"ENCHANTED_CLOWNFISH",
+					8
+				],
+				"collection": "NONE"
+			},
+			"SPOOKY_WATER_ORB": {
+				"material": [
+					"PURPLE_CANDY",
+					64,
+					"SOUL_FRAGMENT",
+					1,
+					"WEREWOLF_SKIN",
+					24,
+					"LAVA_WATER_ORB",
+					1
+				],
+				"collection": "NONE"
+			},
+			"SHARK_WATER_ORB": {
+				"material": [
+					"ENCHANTED_SHARK_FIN",
+					4,
+					"GREAT_WHITE_SHARK_TOOTH",
+					1,
+					"BLUE_SHARK_TOOTH",
+					6,
+					"LAVA_WATER_ORB",
+					1,
+					"NURSE_SHARK_TOOTH",
+					12,
+					"TIGER_SHARK_TOOTH",
+					4
+				],
+				"collection": "NONE"
+			},
+			"WINTER_WATER_ORB": {
+				"material": [
+					"BLUE_ICE_HUNK",
+					160,
+					"ENCHANTED_SNOW_BLOCK",
+					64,
+					"WHITE_GIFT",
+					64,
+					"LAVA_WATER_ORB",
+					1,
+					"GREEN_GIFT",
+					16
+				],
+				"collection": "NONE"
+			},
+			"MINION_EXPANDER": {
+				"material": [
+					"ENCHANTED_QUARTZ",
+					16,
+					"ENCHANTED_REDSTONE",
+					2
+				],
+				"collection": "NONE"
+			},
+			"SOLAR_PANEL": {
+				"material": [
+					"HEMOGLASS",
+					3,
+					"ENCHANTED_QUARTZ",
+					192,
+					"HARDENED_WOOD",
+					3
+				],
+				"collection": "NONE"
+			},
+			"PUMPKIN_BOMB": {
+				"material": [
+					"GREEN_CANDY",
+					8,
+					"PUMPKIN_GUTS",
+					1
+				],
+				"collection": "NONE"
+			},
+			"SOULFLOW_ENGINE": {
+				"material": [
+					"NULL_ATOM",
+					2,
+					"LESSER_SOULFLOW_ENGINE",
+					4,
+					"NULL_OVOID",
+					64,
+					"REFINED_TITANIUM",
+					12
+				],
+				"collection": "NONE"
+			},
+			"SMALL_ENCHANTED_CHEST": {
+				"material": [
+					"ENCHANTED_BIRCH_LOG",
+					64
+				],
+				"collection": "NONE"
+			},
+			"REHEATED_GUMMY_POLAR_BEAR": {
+				"material": [
+					"CHILI_PEPPER",
+					4,
+					"ENCHANTED_SLIME_BALL",
+					4,
+					"ENCHANTED_SNOW_BLOCK",
+					4
+				],
+				"collection": "NONE"
+			},
+			"FLYCATCHER_UPGRADE": {
+				"material": [
+					"TARANTULA_SILK",
+					102,
+					"FLY_SWATTER",
+					1
+				],
+				"collection": "NONE"
+			},
+			"GREAT_CARROT_CANDY": {
+				"material": [
+					"ENCHANTED_CARROT",
+					320,
+					"SIMPLE_CARROT_CANDY",
+					1
+				],
+				"collection": "NONE"
+			},
+			"LESSER_SOULFLOW_ENGINE": {
+				"material": [
+					"NULL_OVOID",
+					6,
+					"ENCHANTED_EYE_OF_ENDER",
+					48,
+					"ENCHANTED_IRON_BLOCK",
+					8
+				],
+				"collection": "NONE"
+			},
+			"TESSELLATED_ENDER_PEARL": {
+				"material": [
+					"ENCHANTED_LAPIS_LAZULI_BLOCK",
+					32,
+					"ABSOLUTE_ENDER_PEARL",
+					80
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_POPPY": {
+				"material": [
+					"RED_ROSE",
+					576
+				],
+				"collection": "NONE"
+			},
+			"LARGE_ENCHANTED_CHEST": {
+				"material": [
+					"ENCHANTED_OAK_LOG",
+					256,
+					"MEDIUM_ENCHANTED_CHEST",
+					1
+				],
+				"collection": "NONE"
+			},
+			"BRAIDED_GRIFFIN_FEATHER": {
+				"material": [
+					"GRIFFIN_FEATHER",
+					160,
+					"SOUL_STRING",
+					256
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_WOOL": {
+				"material": [
+					"ENCHANTED_WOOL",
+					160
+				],
+				"collection": "NONE"
+			},
+			"SUPERB_CARROT_CANDY": {
+				"material": [
+					"ENCHANTED_GOLDEN_CARROT",
+					24,
+					"GREAT_CARROT_CANDY",
+					1
+				],
+				"collection": "NONE"
+			},
+			"NULL_EDGE": {
+				"material": [
+					"ENCHANTED_MITHRIL",
+					192,
+					"NULL_ATOM",
+					3
+				],
+				"collection": "NONE"
+			},
+			"SULPHURIC_COAL": {
+				"material": [
+					"ENCHANTED_COAL",
+					16,
+					"ENCHANTED_SULPHUR",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_HOPPER": {
+				"material": [
+					"ENCHANTED_IRON_BLOCK",
+					5,
+					"SMALL_ENCHANTED_CHEST",
+					1
+				],
+				"collection": "NONE"
+			},
+			"SIMPLE_CARROT_CANDY": {
+				"material": [
+					"CARROT_ITEM",
+					576
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_POISONOUS_POTATO": {
+				"material": [
+					"POISONOUS_POTATO",
+					160
+				],
+				"collection": "NONE"
+			},
+			"JALAPENO_BOOK": {
+				"material": [
+					"ENCHANTED_PAPER",
+					3,
+					"STUFFED_CHILI_PEPPER",
+					1
+				],
+				"collection": "NONE"
+			},
+			"STUFFED_CHILI_PEPPER": {
+				"material": [
+					"CHILI_PEPPER",
+					160
+				],
+				"collection": "NONE"
+			},
+			"BUDGET_HOPPER": {
+				"material": [
+					"ENCHANTED_IRON",
+					5,
+					"SMALL_ENCHANTED_CHEST",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_DANDELION": {
+				"material": [
+					"YELLOW_FLOWER",
+					160
+				],
+				"collection": "NONE"
+			},
+			"NULL_BLADE": {
+				"material": [
+					"NULL_OVOID",
+					64,
+					"NULL_EDGE",
+					3,
+					"ENCHANTED_QUARTZ_BLOCK",
+					64
+				],
+				"collection": "NONE"
+			},
+			"MITHRIL_INFUSION": {
+				"material": [
+					"ENCHANTED_MITHRIL",
+					512,
+					"MAGMA_BUCKET",
+					1
+				],
+				"collection": "NONE"
+			},
+			"GREAT_WHITE_TOOTH_MEAL": {
+				"material": [
+					"GREAT_WHITE_SHARK_TOOTH",
+					4,
+					"ENCHANTED_BONE",
+					1
+				],
+				"collection": "NONE"
+			},
+			"AUTO_SMELTER": {
+				"material": [
+					"COBBLESTONE",
+					64,
+					"ENCHANTED_COAL",
+					1
+				],
+				"collection": "NONE"
+			},
+			"WHIPPED_MAGMA_CREAM": {
+				"material": [
+					"ENCHANTED_MAGMA_CREAM",
+					160
+				],
+				"collection": "NONE"
+			},
+			"BOX_OF_SEEDS": {
+				"material": [
+					"ENCHANTED_SEEDS",
+					160
+				],
+				"collection": "NONE"
+			},
+			"MEDIUM_ENCHANTED_CHEST": {
+				"material": [
+					"ENCHANTED_OAK_LOG",
+					8,
+					"SMALL_ENCHANTED_CHEST",
+					1
+				],
+				"collection": "NONE"
+			},
+			"HEMOBOMB": {
+				"material": [
+					"HEMOGLASS",
+					15
+				],
+				"collection": "NONE"
+			},
+			"PRESUMED_GALLON_OF_RED_PAINT": {
+				"material": [
+					"ENCHANTED_COBBLESTONE",
+					32,
+					"HEMOGLASS",
+					32,
+					"ENCHANTED_DARK_OAK_LOG",
+					80
+				],
+				"collection": "NONE"
+			},
+			"HEMOGLASS": {
+				"material": [
+					"HEMOVIBE",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_LUSH_BERBERIS": {
+				"material": [
+					"LUSH_BERBERIS",
+					160
+				],
+				"collection": "NONE"
+			},
+			"VERY_CRUDE_GABAGOOL": {
+				"material": [
+					"CRUDE_GABAGOOL",
+					192
+				],
+				"collection": "NONE"
+			},
+			"MIXED_MITE_GEL": {
+				"material": [
+					"MITE_GEL",
+					160
+				],
+				"collection": "NONE"
+			},
+			"WORM_BAIT": {
+				"material": [
+					"WORM_MEMBRANE",
+					1,
+					"ENCHANTED_CLAY_BALL",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_GLACITE": {
+				"material": [
+					"ENCHANTED_GLACITE",
+					160
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_ONYX_GEM": {
+				"material": [
+					"FINE_ONYX_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_PERIDOT_GEM": {
+				"material": [
+					"FINE_PERIDOT_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_CITRINE_GEM": {
+				"material": [
+					"FINE_CITRINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWED_ONYX_GEM": {
+				"material": [
+					"ROUGH_ONYX_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_TUNGSTEN": {
+				"material": [
+					"REFINED_TUNGSTEN",
+					160
+				],
+				"collection": "NONE"
+			},
+			"FLAWED_PERIDOT_GEM": {
+				"material": [
+					"ROUGH_PERIDOT_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FINE_ONYX_GEM": {
+				"material": [
+					"FLAWED_ONYX_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWLESS_AQUAMARINE_GEM": {
+				"material": [
+					"FINE_AQUAMARINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FINE_CITRINE_GEM": {
+				"material": [
+					"FLAWED_CITRINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWED_AQUAMARINE_GEM": {
+				"material": [
+					"ROUGH_AQUAMARINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FLAWED_CITRINE_GEM": {
+				"material": [
+					"ROUGH_CITRINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FINE_AQUAMARINE_GEM": {
+				"material": [
+					"FLAWED_AQUAMARINE_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"FINE_PERIDOT_GEM": {
+				"material": [
+					"FLAWED_PERIDOT_GEM",
+					80
+				],
+				"collection": "NONE"
+			},
+			"BLOOD_SOAKED_COINS": {
+				"material": [
+					"HEMOGLASS",
+					32,
+					"BLOOD_STAINED_COINS",
+					1
+				],
+				"collection": "NONE"
+			},
+			"BLOOD_STAINED_COINS": {
+				"material": [
+					"HEMOGLASS",
+					4,
+					"FRESHLY_MINTED_COINS",
+					1
+				],
+				"collection": "NONE"
+			},
+			"PRECURSOR_APPARATUS": {
+				"material": [
+					"CONTROL_SWITCH",
+					1,
+					"ELECTRON_TRANSMITTER",
+					1,
+					"FTX_3070",
+					1,
+					"ROBOTRON_REFLECTOR",
+					1,
+					"SUPERLITE_MOTOR",
+					1,
+					"SYNTHETIC_HEART",
+					1
+				],
+				"collection": "NONE"
+			},
+			"FULL_CHUM_BUCKET": {
+				"material": [
+					"CHUM",
+					10,
+					"EMPTY_CHUM_BUCKET",
+					1
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_UMBER": {
+				"material": [
+					"UMBER",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_HAY_BALE": {
+				"material": [
+					"ENCHANTED_WHEAT",
+					160
+				],
+				"collection": "NONE"
+			},
+			"ENCHANTED_WHEAT": {
+				"material": [
+					"WHEAT",
+					160
+				],
+				"collection": "NONE"
+			},
+			"CORRUPTED_BAIT": {
+				"material": [
+					"CORRUPTED_FRAGMENT",
+					1,
+					"MAGMA_FISH",
+					1
+				],
+				"collection": "NONE"
+			},
+			"HORNS_OF_TORMENT": {
+				"material": [
+					"ENCHANTED_MUTTON",
+					192,
+					"HORN_OF_TAURUS",
+					32
+				],
+				"collection": "NONE"
+			},
+			"HOT_BAIT": {
+				"material": [
+					"MUTATED_BLAZE_ASHES",
+					1,
+					"MAGMA_FISH",
+					1
+				],
+				"collection": "NONE"
+			},
+			"SEARING_STONE": {
+				"material": [
+					"ENCHANTED_MAGMA_CREAM",
+					50,
+					"MAGMA_CHUNK",
+					50,
+					"ENCHANTED_NETHERRACK",
+					30
+				],
+				"collection": "NONE"
+			},
+			"BLAZE_WAX": {
+				"material": [
+					"ENCHANTED_BLAZE_POWDER",
+					80,
+					"BEZOS",
+					10
+				],
+				"collection": "NONE"
+			},
+			"SHINY_PRISM": {
+				"material": [
+					"ENCHANTED_GLOWSTONE_DUST",
+					80,
+					"GAZING_PEARL",
+					10
+				],
+				"collection": "NONE"
+			},
+			"LAVA_WATER_ORB": {
+				"material": [
+					"MAGMA_FISH_SILVER",
+					32,
+					"THUNDER_SHARDS",
+					2,
+					"MOOGMA_PELT",
+					64,
+					"LAVA_WATER_ORB",
+					1,
+					"LUMP_OF_MAGMA",
+					64,
+					"CUP_OF_BLOOD",
+					32,
+					"HORN_OF_TAURUS",
+					16,
+					"FLAMING_HEART",
+					32
+				],
+				"collection": "NONE"
+			},
+			"CORRUPT_SOIL": {
+				"material": [
+					"ENCHANTED_MYCELIUM",
+					160,
+					"CORRUPTED_FRAGMENT",
+					20
+				],
+				"collection": "NONE"
+			},
+			"MATCH_STICKS": {
+				"material": [
+					"SULPHUR_ORE",
+					1,
+					"ENCHANTED_CARROT_STICK",
+					1
+				],
+				"collection": "NONE"
+			}
+		}
+	},
+	"invalidBazaarCraftingRecipe": [
+		"HOT_STUFF",
+		"IRON_INGOT",
+		"GOLD_INGOT",
+		"DIAMOND",
+		"EMERALD",
+		"COAL",
+		"REDSTONE",
+		"SLIME_BALL",
+		"INK_SACK:3",
+		"BROWN_MUSHROOM",
+		"LAPIS_BLOCK",
+		"TARANTULA_WEB",
+		"CARROT_ITEM",
+		"LOG:1",
+		"LOG:3",
+		"LOG:2",
+		"LOG",
+		"CACTUS",
+		"GHAST_TEAR",
+		"MILK_BUCKET",
+		"PUMPKIN",
+		"PURPLE_CANDY",
+		"PRISMARINE_SHARD",
+		"RED_MUSHROOM",
+		"MUTTON",
+		"COBBLESTONE",
+		"SPIDER_EYE",
+		"RAW_FISH",
+		"GLOWSTONE_DUST",
+		"POTATO_ITEM",
+		"STOCK_OF_STONKS",
+		"PORK",
+		"PRISMARINE_CRYSTALS",
+		"ICE",
+		"CLAY_BALL",
+		"LOG_2:1",
+		"GREEN_GIFT",
+		"STRING",
+		"WATER_LILY",
+		"RABBIT_FOOT",
+		"LOG_2",
+		"ENDER_PEARL",
+		"ENDER_STONE",
+		"SNOW_BALL",
+		"QUARTZ",
+		"RAW_BEEF",
+		"SAND",
+		"RAW_CHICKEN",
+		"SUGAR_CANE",
+		"RED_GIFT",
+		"SEEDS",
+		"RABBIT_HIDE",
+		"WHITE_GIFT",
+		"INK_SACK",
+		"FLINT",
+		"WOLF_TOOTH",
+		"SULPHUR",
+		"NETHER_STALK",
+		"RABBIT",
+		"GREEN_CANDY",
+		"ROTTEN_FLESH",
+		"OBSIDIAN",
+		"GRAVEL",
+		"MELON",
+		"RAW_FISH:3",
+		"BONE",
+		"RAW_FISH:1",
+		"REVENANT_FLESH",
+		"FEATHER",
+		"NETHERRACK",
+		"SUMMONING_EYE",
+		"SPONGE",
+		"BLAZE_ROD",
+		"WISE_FRAGMENT",
+		"PROTECTOR_FRAGMENT",
+		"STRONG_FRAGMENT",
+		"YOUNG_FRAGMENT",
+		"UNSTABLE_FRAGMENT",
+		"SUPERIOR_FRAGMENT",
+		"OLD_FRAGMENT",
+		"HAMSTER_WHEEL",
+		"FOUL_FLESH",
+		"RECOMBOBULATOR_3000",
+		"HOLY_FRAGMENT",
+		"FUMING_POTATO_BOOK",
+		"RAW_FISH:2",
+		"BOOSTER_COOKIE",
+		"TIGER_SHARK_TOOTH",
+		"BLUE_SHARK_TOOTH",
+		"NURSE_SHARK_TOOTH",
+		"GREAT_WHITE_SHARK_TOOTH",
+		"SHARK_FIN",
+		"BAZAAR_COOKIE",
+		"GRIFFIN_FEATHER",
+		"DAEDALUS_STICK",
+		"ANCIENT_CLAW",
+		"REFINED_MINERAL",
+		"HYPER_CATALYST_UPGRADE",
+		"ECTOPLASM",
+		"PUMPKIN_GUTS",
+		"SPOOKY_SHARD",
+		"WEREWOLF_SKIN",
+		"SOUL_FRAGMENT",
+		"JACOBS_TICKET",
+		"COLOSSAL_EXP_BOTTLE_UPGRADE",
+		"REFINED_MITHRIL",
+		"TITANIUM_ORE",
+		"MITHRIL_ORE",
+		"STARFALL",
+		"REFINED_TITANIUM",
+		"REFINED_DIAMOND",
+		"JERRY_BOX_GOLDEN",
+		"JERRY_BOX_PURPLE",
+		"JERRY_BOX_BLUE",
+		"JERRY_BOX_GREEN",
+		"HEAT_CORE",
+		"HEAT_CORE",
+		"POWER_CRYSTAL",
+		"TREASURITE",
+		"NULL_SPHERE",
+		"NULL_ATOM",
+		"RAW_SOULFLOW",
+		"ROUGH_JADE_GEM",
+		"PERFECT_JADE_GEM",
+		"ROUGH_AMBER_GEM",
+		"PERFECT_AMBER_GEM",
+		"ROUGH_TOPAZ_GEM",
+		"PERFECT_TOPAZ_GEM",
+		"ROUGH_SAPPHIRE_GEM",
+		"PERFECT_SAPPHIRE_GEM",
+		"ROUGH_AMETHYST_GEM",
+		"PERFECT_AMETHYST_GEM",
+		"ROUGH_JASPER_GEM",
+		"PERFECT_JASPER_GEM",
+		"ROUGH_RUBY_GEM",
+		"PERFECT_RUBY_GEM",
+		"ROUGH_OPAL_GEM",
+		"PERFECT_OPAL_GEM",
+		"HARD_STONE",
+		"YOGGIE",
+		"SLUDGE_JUICE",
+		"WORM_MEMBRANE",
+		"GOBLIN_EGG_GREEN",
+		"GOBLIN_EGG_BLUE",
+		"GOBLIN_EGG_RED",
+		"GOBLIN_EGG_YELLOW",
+		"GOBLIN_EGG",
+		"ARACHNE_KEEPER_FRAGMENT",
+		"SOUL_STRING",
+		"CHEESE_FUEL",
+		"MYCEL",
+		"SULPHUR_ORE",
+		"SAND:1",
+		"CORRUPTED_FRAGMENT",
+		"HORN_OF_TAURUS",
+		"DARK_ORB",
+		"ROCK_GEMSTONE",
+		"END_STONE_SHULKER",
+		"ENDER_MONOCLE",
+		"HAZMAT_ENDERMAN",
+		"LUXURIOUS_SPOOL",
+		"KUUDRA_MANDIBLE",
+		"BLAZE_ROD_DISTILLATE",
+		"DERELICT_ASHE",
+		"MOIL_LOG",
+		"AMBER_MATERIAL",
+		"CRUDE_GABAGOOL_DISTILLATE",
+		"SILVER_FANG",
+		"DIAMOND_ATOM",
+		"PRECURSOR_GEAR",
+		"NECROMANCER_BROOCH",
+		"DEEP_SEA_ORB",
+		"PETRIFIED_STARFALL",
+		"RED_SCARF",
+		"SADAN_BROOCH",
+		"ONYX",
+		"MAGMA_CREAM_DISTILLATE",
+		"FURBALL",
+		"GIANT_TOOTH",
+		"ENDSTONE_GEODE",
+		"OPTICAL_LENS",
+		"BLAZE_ASHES",
+		"BEATING_HEART",
+		"AMALGAMATED_CRIMSONITE",
+		"TOIL_LOG",
+		"SALMON_OPAL",
+		"AOTE_STONE",
+		"GOLDEN_BALL",
+		"MAGMA_FISH",
+		"GLOWSTONE_DUST_DISTILLATE",
+		"MANDRAA",
+		"MOLTEN_CUBE",
+		"BULKY_STONE",
+		"REFINED_AMBER",
+		"JADERALD",
+		"NETHER_STALK_DISTILLATE",
+		"RARE_DIAMOND",
+		"CRUDE_GABAGOOL",
+		"DRAGON_SCALE",
+		"DRAGON_HORN",
+		"HARDENED_WOOD",
+		"ECCENTRIC_PAINTING",
+		"REAPER_PEPPER",
+		"DIAMONITE",
+		"SPIRIT_DECOY",
+		"VITAMIN_DEATH",
+		"CANDY_CORN",
+		"MIDAS_JEWEL",
+		"PREMIUM_FLESH",
+		"PURE_MITHRIL",
+		"JERRY_STONE",
+		"ROCK_CANDY",
+		"MAGMA_URCHIN",
+		"MAGMA_CHUNK",
+		"BLESSED_FRUIT",
+		"SUSPICIOUS_VIAL",
+		"DIRT_BOTTLE",
+		"RED_NOSE",
+		"DRAGON_CLAW",
+		"LUCKY_DICE",
+		"PRECIOUS_PEARL",
+		"SCORCHED_BOOKS",
+		"WITHER_BLOOD",
+		"BEZOS",
+		"LAPIS_CRYSTAL",
+		"GAZING_PEARL",
+		"CHILI_PEPPER",
+		"ESSENCE_DRAGON",
+		"ESSENCE_SPIDER",
+		"IMPLOSION_SCROLL",
+		"SECOND_MASTER_STAR",
+		"FOURTH_MASTER_STAR",
+		"THE_ART_OF_WAR",
+		"ESSENCE_WITHER",
+		"ESSENCE_UNDEAD",
+		"FIRST_MASTER_STAR",
+		"BOOK_OF_STATS",
+		"FARMING_FOR_DUMMIES",
+		"SHADOW_WARP_SCROLL",
+		"WITHER_SHIELD_SCROLL",
+		"ESSENCE_ICE",
+		"ESSENCE_GOLD",
+		"FIFTH_MASTER_STAR",
+		"TRANSMISSION_TUNER",
+		"ESSENCE_CRIMSON",
+		"ESSENCE_DIAMOND",
+		"THIRD_MASTER_STAR",
+		"WOOD_SINGULARITY",
+		"THUNDER_SHARDS",
+		"BOBBIN_SCRIPTURES",
+		"GLOWY_CHUM_BAIT",
+		"PITCHIN_KOI",
+		"BLUE_ICE_HUNK",
+		"ICE_HUNK",
+		"DIVER_FRAGMENT",
+		"RITUAL_RESIDUE",
+		"MITE_GEL",
+		"SALT_CUBE",
+		"RUSTY_ANCHOR",
+		"GLACIAL_FRAGMENT",
+		"CROPIE",
+		"COMPOST",
+		"FERMENTO",
+		"SQUASH",
+		"OVERGROWN_GRASS",
+		"LARGE_WALNUT",
+		"FLOWERING_BOUQUET",
+		"SKYMART_BROCHURE",
+		"BURROWING_SPORES",
+		"DUNGEON_TRAP",
+		"GIANT_FRAGMENT_LASER",
+		"KELVIN_INVERTER",
+		"ULTIMATE_CARROT_CANDY_UPGRADE",
+		"UNDEAD_CATALYST",
+		"DUNGEON_DECOY",
+		"FLY_SWATTER",
+		"HYPERGOLIC_IONIZED_CERAMICS",
+		"PET_ITEM_TOY_JERRY",
+		"ROBOTRON_REFLECTOR",
+		"ENCHANTED_BONE_MEAL",
+		"SCORCHED_POWER_CRYSTAL",
+		"SCARF_FRAGMENT",
+		"FTX_3070",
+		"PET_ITEM_VAMPIRE_FANG",
+		"GIANT_FRAGMENT_BIGFOOT",
+		"BOWL",
+		"BOWL",
+		"BONZO_FRAGMENT",
+		"INFERNO_FUEL_BLOCK",
+		"PET_ITEM_EXP_SHARE_DROP",
+		"HEALING_TISSUE",
+		"GLACITE_JEWEL",
+		"WEAK_WOLF_CATALYST",
+		"BEJEWELED_HANDLE",
+		"CORRUPTED_FRAGMENT",
+		"THE_ART_OF_PEACE",
+		"VOLTA",
+		"SUPERLITE_MOTOR",
+		"SPIRIT_WING",
+		"SORROW",
+		"CRYSTAL_FRAGMENT",
+		"GLOWING_MUSHROOM",
+		"POISONOUS_POTATO",
+		"KISMET_FEATHER",
+		"MITHRIL_PLATE",
+		"CHYME",
+		"DIVAN_FRAGMENT",
+		"BAT_FIREWORK",
+		"ARROW_BUNDLE_MAGMA",
+		"TWILIGHT_ARROW_POISON",
+		"POTATO_SPREADING",
+		"YELLOW_FLOWER",
+		"REVENANT_CATALYST",
+		"WITHER_CATALYST",
+		"GIANT_FRAGMENT_DIAMOND",
+		"SUPERBOOM_TNT",
+		"SPIRIT_LEAP",
+		"OIL_BARREL",
+		"GOLEM_POPPY",
+		"SYNTHETIC_HEART",
+		"MINION_STORAGE_EXPANDER",
+		"FUEL_TANK",
+		"ELECTRON_TRANSMITTER",
+		"TERRY_SNOWGLOBE",
+		"SPIDER_CATALYST",
+		"MIMIC_FRAGMENT",
+		"ENDERMAN_CORTEX_REWRITER",
+		"PET_ITEM_LUCKY_CLOVER_DROP",
+		"GOLDEN_PLATE",
+		"CORLEONITE",
+		"SUBZERO_INVERTER",
+		"BOB_OMB",
+		"LIVID_FRAGMENT",
+		"PLASMA",
+		"CHUM",
+		"FEL_PEARL",
+		"HORSEMAN_CANDLE",
+		"RED_ROSE",
+		"EMPTY_CHUM_BUCKET",
+		"GIANT_FRAGMENT_BOULDER",
+		"FROZEN_BAUBLE",
+		"RADIOACTIVE_VIAL",
+		"CONTROL_SWITCH",
+		"VINE",
+		"INK_SACK:15",
+		"DRILL_ENGINE",
+		"MINION_STORAGE_EXPANDER",
+		"PET_ITEM_TIER_BOOST_DROP",
+		"GEMSTONE_MIXTURE",
+		"SPIRIT_BONE",
+		"JUNGLE_KEY",
+		"GOLDEN_POWDER",
+		"DUNGEON_CHEST_KEY",
+		"INFLATABLE_JERRY",
+		"TOXIC_ARROW_POISON",
+		"BUBBA_BLISTER",
+		"DISPLACED_LEECH",
+		"LUSH_BERBERIS",
+		"VOLT_CRUX",
+		"HEMOVIBE",
+		"CHOCOLATE_CHIP",
+		"AGARIMOO_TONGUE",
+		"FULL_JAW_FANGING_KIT",
+		"WILTED_BERBERIS",
+		"BEADY_EYES",
+		"HONEY_JAR",
+		"WISHING_COMPASS",
+		"WATER_HYDRA_HEAD",
+		"DUNG",
+		"VOLCANIC_ROCK",
+		"GUARDIAN_LUCKY_BLOCK",
+		"FROZEN_BAIT",
+		"THORN_FRAGMENT",
+		"CLIPPED_WINGS",
+		"PET_ITEM_PURE_MITHRIL_GEM",
+		"JUNGLE_HEART",
+		"METAPHYSICAL_SERUM",
+		"EGG",
+		"EXPIRED_PUMPKIN",
+		"MAGIC_TOP_HAT",
+		"SLEEPY_HOLLOW",
+		"BLACK_WOOLEN_YARN",
+		"WRIGGLING_LARVA",
+		"BOOKWORM_BOOK",
+		"DARK_CANDY",
+		"PLANT_MATTER",
+		"MAGMA_CORE",
+		"ASCENSION_ROPE",
+		"REFINED_BOTTLE_OF_JYRRE",
+		"FROSTY_CRUX",
+		"POISON_SAMPLE",
+		"ARCHITECT_FIRST_DRAFT",
+		"REFINED_TUNGSTEN",
+		"ROUGH_AQUAMARINE_GEM",
+		"ROUGH_ONYX_GEM",
+		"UMBER",
+		"SUSPICIOUS_SCRAP",
+		"PERFECT_AQUAMARINE_GEM",
+		"ARACHNE_FRAGMENT",
+		"SKELETON_KEY",
+		"UMBER_KEY",
+		"TUNGSTEN_PLATE",
+		"PERFECT_PERIDOT_GEM",
+		"UMBER_PLATE",
+		"PERFECT_ONYX_GEM",
+		"REFINED_UMBER",
+		"ROUGH_CITRINE_GEM",
+		"GLACITE_SHARD",
+		"PERFECT_PLATE",
+		"ROUGH_PERIDOT_GEM",
+		"TUNGSTEN_KEY",
+		"GLACITE",
+		"FRIGID_HUSK",
+		"TUNGSTEN",
+		"PERFECT_CITRINE_GEM",
+		"GLACITE_AMALGAMATION",
+		"ARACHNE_FANG",
+		"FRESHLY_MINTED_COINS",
+		"PARTY_GIFT",
+		"WINTER_FRAGMENT",
+		"PET_CAKE",
+		"GLOSSY_GEMSTONE",
+		"GLEAMING_CRYSTAL",
+		"DIVAN_POWDER_COATING",
+		"REFINED_DARK_CACAO_TRUFFLE",
+		"FINE_FLOUR",
+		"AVARICIOUS_CHALICE",
+		"GOLDEN_BOUNTY",
+		"DARK_QUEENS_SOUL_DROP",
+		"GOLDEN_FRAGMENT",
+		"SUPREME_CHOCOLATE_BAR",
+		"DWARVEN_OS_ORE_OATS",
+		"TITANIUM_TESSERACT",
+		"DWARVEN_OS_GEMSTONE_GRAHAMS",
+		"DWARVEN_OS_BLOCK_BRAN",
+		"PET_ITEM_CHOCOLATE_SYRINGE",
+		"BLAZEN_SPHERE",
+		"DWARVEN_OS_METALLIC_MINIS",
+		"POCKET_ICEBERG",
+		"MANA_DISINTEGRATOR",
+		"DWARVEN_TREASURE"
+	]
+}

@@ -23,5 +23,6 @@ public abstract class DebugRendererMixin {
         renderers.add(new GreenHitboxRenderer());
         renderers.add(new ProjectilePreviewRenderer());
         renderers.add(new StorageEspRenderer());
+        renderers.add(new pingplus.voicechat.client.etherwarp.EtherwarpRenderer());
     }
 }

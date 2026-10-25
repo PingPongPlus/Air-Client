@@ -44,3 +44,7 @@ is **optional**. See [ADDING_FEATURES.md](ADDING_FEATURES.md) for a short FPS ex
 - One `Entry` id per widget; registering again replaces the previous entry.
 - Buttons stay in local space; `HudEditor` maps them to the editor screen.
 - World/gameplay logic stays out of the renderer.
+
+The Skyblock options also include **Etherwarp helper**, **Self glow**, and the animated
+**AGG** sticker. AGG uses the shared HUD editor (normally **G**) for dragging,
+resizing, and resetting its layout; visibility is saved separately.

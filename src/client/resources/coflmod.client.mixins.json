@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "package": "com.coflnet.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ChatScreenMixin",
+    "ClientPlayerEntityMixin",
+    "FlipperSignFillMixin",
+    "HandledScreenMixin",
+    "InventoryScreenMixin",
+    "ItemHighlightMixin",
+    "ItemTooltipMixin",
+    "NewItemInChestMixin",
+    "ScreenMixin",
+    "ScoreboardMixin",
+    "ScrollableWidgetMixin",
+    "AuctionProtectionMixin",
+    "SellProtectionMixin",
+    "WorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

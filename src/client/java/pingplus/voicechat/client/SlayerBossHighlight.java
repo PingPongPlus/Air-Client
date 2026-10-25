@@ -78,8 +78,7 @@ public final class SlayerBossHighlight {
                 continue;
             }
 
-            String name = entityName(living);
-            if (isSlayerBoss(name)) {
+            if (isSlayerBoss(living)) {
                 try {
                     String scoreName = living.getScoreboardName();
                     if (living.getTeam() != team) {
@@ -106,19 +105,33 @@ public final class SlayerBossHighlight {
 
     public static boolean isSlayerBoss(String name) {
         if (name == null || name.isEmpty()) return false;
-        for (String boss : BOSS_NAMES) {
-            if (name.contains(boss)) return true;
-        }
-        // Minibosse optional mit einbeziehen - gleiche gelbe Outline
-        for (String mini : MINIBOSS_NAMES) {
-            if (name.contains(mini)) return true;
-        }
-        return false;
+        // Strict SkyHanni-style: one tag must match the slayer/basic name format
+        // AND equal a known boss/miniboss name. No substring heuristics.
+        pingplus.voicechat.client.slayer.SlayerMobDetector.TagMatch match =
+                pingplus.voicechat.client.slayer.SlayerMobDetector.matchTag(name);
+        return match.kind() == pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS
+                || match.kind() == pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.MINIBOSS;
     }
 
     public static boolean isSlayerBoss(Entity entity) {
         if (entity == null) return false;
-        return isSlayerBoss(entityName(entity));
+        if (!(entity instanceof LivingEntity living)) return false;
+        if (living.isRemoved() || !living.isAlive()) return false;
+        // Own name tags only (custom name, then display name), plus the exact
+        // slayer mob class - same criteria as SlayerMobDetector.
+        for (String tag : pingplus.voicechat.client.slayer.SlayerMobDetector.nameTags(entity)) {
+            pingplus.voicechat.client.slayer.SlayerMobDetector.TagMatch match =
+                    pingplus.voicechat.client.slayer.SlayerMobDetector.matchTag(tag);
+            if (match.kind() != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS
+                    && match.kind() != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.MINIBOSS) {
+                continue;
+            }
+            if (pingplus.voicechat.client.slayer.SlayerMobDetector.matchesClass(
+                    pingplus.voicechat.client.slayer.SlayerMobDetector.expectedClass(match.name()), entity)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String entityName(LivingEntity living) {
@@ -162,8 +175,7 @@ public final class SlayerBossHighlight {
             // Glow nur entfernen wenn wir es gesetzt haben (Team war unseres)
             if (living.hasGlowingTag()) {
                 // Vorsichtig: nicht fremdes Glow entfernen wenn Entity noch im Kampf ist
-                String name = entityName(living);
-                if (!isSlayerBoss(name)) {
+                if (!isSlayerBoss(living)) {
                     living.setGlowingTag(false);
                 }
             }

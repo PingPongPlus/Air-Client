@@ -95,7 +95,7 @@ final class ClickGuiOptionsGameTest {
             open(context,"Player scale");
             context.runOnClient(client -> {
                 Screen screen=client.gui.screen();
-                EditBox scale=screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).findFirst().orElseThrow();
+                EditBox scale=screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).filter(box -> box.getMessage().getString().equals("Width scale")).findFirst().orElseThrow();
                 scale.setValue("1.75"); check(PlayerSettings.xScale==1.75f,"Scale field did not update");
                 scale.setValue("NaN"); check(PlayerSettings.xScale==1.75f,"Invalid scale was accepted");
                 scale.setValue(Float.toString(originalScale));

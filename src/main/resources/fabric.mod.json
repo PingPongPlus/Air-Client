@@ -13,16 +13,22 @@
       "pingplus.voicechat.client.VoicechatDataGenerator"
     ],
     "client": [
-      "pingplus.voicechat.client.VoicechatClient"
+      "pingplus.voicechat.client.VoicechatClient",
+      "com.coflnet.CoflModClient"
     ],
     "main": [
-      "pingplus.voicechat.Voicechat"
+      "pingplus.voicechat.Voicechat",
+      "com.coflnet.CoflMod"
     ]
   },
   "mixins": [
     "voicechat.mixins.json",
     {
       "config": "voicechat.client.mixins.json",
+      "environment": "client"
+    },
+    {
+      "config": "coflmod.client.mixins.json",
       "environment": "client"
     }
   ],
@@ -31,5 +37,8 @@
     "fabric-api": "*",
     "java": ">=25",
     "minecraft": "${minecraft_version}"
+  },
+  "suggests": {
+    "yet_another_config_lib_v3": "*"
   }
 }

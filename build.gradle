@@ -48,6 +48,17 @@ repositories {
     // for more information about repositories.
     exclusiveContent {
         forRepository {
+            flatDir {
+                name = 'bundledBaritone'
+                dirs 'libs'
+            }
+        }
+        filter { includeModule('local.baritone', 'baritone-api-fabric') }
+    }
+    maven { url 'https://jitpack.io' }
+    maven { url 'https://api.modrinth.com/maven' }
+    exclusiveContent {
+        forRepository {
             maven { url = "https://maven.azureaaron.net/releases" }
         }
         filter {
@@ -65,6 +76,15 @@ dependencies {
     // Clean glowing outline wie SkyHanni (CustomGlowCallback)
     implementation "net.azureaaron:render-chest:1.0.3+26.2"
     include "net.azureaaron:render-chest:1.0.3+26.2"
+    // SkyCofl (sky.coflnet.com auction house frontend)
+    implementation include("com.github.Coflnet:CoflSkyCore:3406a83b4a")
+    implementation include("org.greenrobot:eventbus-java:3.3.1")
+    implementation include("org.java-websocket:Java-WebSocket:1.5.2")
+    implementation include("com.google.code.gson:gson:2.10.1")
+    implementation include("com.neovisionaries:nv-websocket-client:2.14")
+    implementation include("maven.modrinth:yacl:3.9.4+26.2-fabric")
+    // Keep Baritone's own Fabric metadata and nested native runtime intact.
+    implementation include('local.baritone:baritone-api-fabric:1.19.0')
 }
 
 processResources {
@@ -162,6 +182,7 @@ tasks.named('check') { dependsOn 'hudMetricsTest' }
 
 
 jar {
+    from("LICENSE_SkyCofl")
     from("LICENSE.txt") {
         rename { "${it}_${project.archives_base_name}" }
     }

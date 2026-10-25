@@ -143,7 +143,8 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             PlayerSettings.handSwap = false;
             client.gui.screen().mouseScrolled(100, 100, 0, 3);
             var box = client.gui.screen().children().stream().filter(c -> c instanceof net.minecraft.client.gui.components.EditBox)
-                .map(c -> (net.minecraft.client.gui.components.EditBox)c).findFirst().orElseThrow();
+                .map(c -> (net.minecraft.client.gui.components.EditBox)c)
+                .filter(field -> field.getMessage().getString().equals("Width scale")).findFirst().orElseThrow();
             box.setValue("1.75");
             if (PlayerSettings.xScale != 1.75f) throw new AssertionError("Scale input failed");
             box.setValue("NaN");
@@ -163,13 +164,15 @@ public final class GlassRenderingTest implements FabricClientGameTest {
         context.runOnClient(client -> GlassGpuTiming.finish("ClickGUI 1440x900"));
         clickCompactButton(context, "Player scale");
         context.runOnClient(client -> {
-            if(client.gui.screen().children().stream().anyMatch(c -> c instanceof net.minecraft.client.gui.components.EditBox))
+            if(client.gui.screen().children().stream().anyMatch(c -> c instanceof net.minecraft.client.gui.components.EditBox box
+                    && box.getMessage().getString().endsWith(" scale")))
                 throw new AssertionError("Settings did not collapse");
         });
         clickCompactButton(context, "Player scale");
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            if(screen.children().stream().filter(c -> c instanceof net.minecraft.client.gui.components.EditBox).count()!=4)
+            if(screen.children().stream().filter(c -> c instanceof net.minecraft.client.gui.components.EditBox box
+                    && box.getMessage().getString().endsWith(" scale")).count()!=4)
                 throw new AssertionError("Settings did not expand");
             screen.keyPressed(new net.minecraft.client.input.KeyEvent(256,0,0));
         });
@@ -187,7 +190,9 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             var first=screen.children().stream().filter(c -> c instanceof Button).map(c -> (Button)c)
                 .filter(b -> b.getMessage().getString().equals("Frame rate")).findFirst().orElseThrow();
             int oldX=first.getX();
-            var down=new net.minecraft.client.input.MouseButtonEvent((oldX+5)*0.60,(first.getY()-15)*0.60,new net.minecraft.client.input.MouseButtonInfo(0,0));
+            var top=screen.children().stream().filter(c -> c instanceof Button).map(c -> (Button)c)
+                .filter(b -> b.getMessage().getString().equals("Crosshair")).findFirst().orElseThrow();
+            var down=new net.minecraft.client.input.MouseButtonEvent((oldX+5)*0.60,(top.getY()-15)*0.60,new net.minecraft.client.input.MouseButtonInfo(0,0));
             screen.mouseClicked(down,false);
             var moved=new net.minecraft.client.input.MouseButtonEvent(down.x()+7.2,down.y()+9,down.buttonInfo());
             screen.mouseDragged(moved,7.2,9);screen.mouseReleased(moved);
@@ -253,6 +258,9 @@ public final class GlassRenderingTest implements FabricClientGameTest {
         try (var world = context.worldBuilder().create()) {
             context.waitFor(client -> client.player != null && client.gui.overlay() == null);
             context.runOnClient(client -> {
+                // Keep the media card from intercepting scoreboard editor gestures.
+                if (pingplus.voicechat.client.spotify.SpotifySettings.enabled())
+                    pingplus.voicechat.client.spotify.SpotifySettings.toggle();
                 var board = client.level.getScoreboard();
                 var objective = board.addObjective("widget-test", ObjectiveCriteria.DUMMY,
                         Component.literal("SERVER SCOREBOARD").withStyle(net.minecraft.ChatFormatting.GOLD),
@@ -279,7 +287,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 Screen editor = client.gui.screen();
                 var before = pingplus.voicechat.client.hud.editor.HudEditor.bounds("scoreboard", editor.width, editor.height);
-                var down = new net.minecraft.client.input.MouseButtonEvent(before.x()+10, before.y()+10,
+                var down = new net.minecraft.client.input.MouseButtonEvent(before.x()+10, before.y()+before.height()/2,
                         new net.minecraft.client.input.MouseButtonInfo(0,0));
                 editor.mouseClicked(down,false);
                 var moved = new net.minecraft.client.input.MouseButtonEvent(before.x()<150 ? 220 : 100, 140, down.buttonInfo());
@@ -288,11 +296,11 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 editor.mouseReleased(moved);
                 var after = pingplus.voicechat.client.hud.editor.HudEditor.bounds("scoreboard", editor.width, editor.height);
                 if (before.x()==after.x() && before.y()==after.y()) throw new AssertionError("Scoreboard did not move");
-                editor.mouseScrolled(after.x()+10,after.y()+10,0,1);
+                editor.mouseScrolled(after.x()+10,after.y()+after.height()/2,0,1);
                 var scaled = pingplus.voicechat.client.hud.editor.HudEditor.bounds("scoreboard", editor.width, editor.height);
                 if (scaled.scale()<=after.scale()) throw new AssertionError("Scoreboard resize failed");
                 // Restore default placement so later runs start consistently.
-                editor.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(scaled.x()+10,scaled.y()+10,
+                editor.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(scaled.x()+10,scaled.y()+scaled.height()/2,
                         new net.minecraft.client.input.MouseButtonInfo(1,0)),false);
             });
             context.setScreen(() -> new pingplus.voicechat.client.gui.ClickGuiScreen(fps,key,coords,arraylist));
@@ -327,6 +335,9 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             });
             context.setScreen(() -> null);
             // Slayer outline end-to-end: spawn a named boss and check the glow pipeline.
+            boolean oldOutline = PlayerSettings.slayerOutline, oldBoss = PlayerSettings.slayerBoss;
+            boolean oldMini = PlayerSettings.slayerMiniboss, oldSelf = PlayerSettings.selfOutline;
+            boolean oldHighlight = PlayerSettings.slayerBossHighlight;
             var bossId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var plainId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var wolfId = new java.util.concurrent.atomic.AtomicInteger(-1);
@@ -334,6 +345,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             var foreignBossId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var minibossId = new java.util.concurrent.atomic.AtomicInteger(-1);
             var dianaId = new java.util.concurrent.atomic.AtomicInteger(-1);
+            var bossNoTierId = new java.util.concurrent.atomic.AtomicInteger(-1);
             context.runOnClient(client -> {
                 var server = client.getSingleplayerServer();
                 var serverWorld = server.overworld();
@@ -341,7 +353,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 var base = client.player.position().add(look.x * 3, look.y * 3, look.z * 3);
                 var boss = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                boss.setCustomName(Component.literal("Revenant Horror"));
+                boss.setCustomName(Component.literal("☠ Revenant Horror IV 20❤"));
                 boss.setCustomNameVisible(true);
                 boss.setPos(base.x, base.y, base.z);
                 serverWorld.addFreshEntity(boss);
@@ -359,7 +371,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 wolfId.set(wolf.getId());
                 var wolfStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                wolfStand.setCustomName(Component.literal("Sven Packmaster"));
+                wolfStand.setCustomName(Component.literal("☠ Sven Packmaster III 500k❤"));
                 wolfStand.setCustomNameVisible(true);
                 wolfStand.setInvisible(true);
                 wolfStand.setPos(base.x + 5, base.y + 2, base.z);
@@ -372,7 +384,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 wrongZombieId.set(wrong.getId());
                 var wrongStand = net.minecraft.world.entity.EntityTypes.ARMOR_STAND.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                wrongStand.setCustomName(Component.literal("Sven Packmaster"));
+                wrongStand.setCustomName(Component.literal("☠ Sven Packmaster III 500k❤"));
                 wrongStand.setCustomNameVisible(true);
                 wrongStand.setInvisible(true);
                 wrongStand.setPos(base.x + 8, base.y + 2, base.z);
@@ -380,7 +392,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Boss spawned by ANOTHER player must not glow.
                 var foreign = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                foreign.setCustomName(Component.literal("Revenant Horror Spawned by: SomebodyElse"));
+                foreign.setCustomName(Component.literal("☠ Revenant Horror IV 20❤ Spawned by: SomebodyElse"));
                 foreign.setCustomNameVisible(true);
                 foreign.setPos(base.x + 11, base.y, base.z);
                 serverWorld.addFreshEntity(foreign);
@@ -388,7 +400,7 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Miniboss: red outline, always glows.
                 var mini = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                mini.setCustomName(Component.literal("Revenant Champion"));
+                mini.setCustomName(Component.literal("☠ Revenant Champion II 900k❤"));
                 mini.setCustomNameVisible(true);
                 mini.setPos(base.x + 14, base.y, base.z);
                 serverWorld.addFreshEntity(mini);
@@ -396,11 +408,19 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 // Diana mob: health bar target, no glow.
                 var diana = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
                         serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
-                diana.setCustomName(Component.literal("Gaia Construct"));
+                diana.setCustomName(Component.literal("[Lv120] Gaia Construct 1.5M❤"));
                 diana.setCustomNameVisible(true);
                 diana.setPos(base.x + 17, base.y, base.z);
                 serverWorld.addFreshEntity(diana);
                 dianaId.set(diana.getId());
+                // Tier-less boss tag (no roman numeral) must still count as boss.
+                var bossNoTier = net.minecraft.world.entity.EntityTypes.ZOMBIE.create(
+                        serverWorld, net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+                bossNoTier.setCustomName(Component.literal("☠ Revenant Horror 20❤"));
+                bossNoTier.setCustomNameVisible(true);
+                bossNoTier.setPos(base.x + 20, base.y, base.z);
+                serverWorld.addFreshEntity(bossNoTier);
+                bossNoTierId.set(bossNoTier.getId());
                 // Wall between player and the boss: the outline must stay visible
                 // through it (vanilla outline pass). The screenshot proves it.
                 // Block placement must run on the server thread.
@@ -418,6 +438,12 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 PlayerSettings.hideMobNames = true;
                 PlayerSettings.mobHealthBar = true;
                 PlayerSettings.slayerLine = true;
+                PlayerSettings.slayerOutline = true;
+                PlayerSettings.slayerBossHighlight = true;
+                PlayerSettings.slayerBoss = true;
+                PlayerSettings.slayerMiniboss = true;
+                PlayerSettings.selfOutline = true;
+                VoicechatClient.syncSlayerCfg();
             });
             context.waitTicks(30);
             context.takeScreenshot("slayer-boss");
@@ -457,11 +483,19 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(bossId.get())
                         != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS)
                     throw new AssertionError("Boss missing from health bar targets");
+                // Tier-less boss tag must still count as boss (exact name + HP + class).
+                int bossNoTierColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(bossNoTierId.get());
+                if (bossNoTierColour != (PlayerSettings.slayerBossColor & 0xFFFFFF))
+                    throw new AssertionError("Tier-less boss not highlighted, colour="
+                            + Integer.toHexString(bossNoTierColour));
+                if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(bossNoTierId.get())
+                        != pingplus.voicechat.client.slayer.SlayerMobDetector.Kind.BOSS)
+                    throw new AssertionError("Tier-less boss missing from health bar targets");
                 if (pingplus.voicechat.client.slayer.SlayerOutlineRenderer.targetKindFor(client.player.getId()) != null)
                     throw new AssertionError("Player must never be a health bar target");
-                int playerColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(client.player.getId());
-                if (playerColour != -1)
-                    throw new AssertionError("Player must never glow, colour=" + Integer.toHexString(playerColour));
+                int selfColour = pingplus.voicechat.client.slayer.SlayerOutlineRenderer.colorFor(client.player.getId());
+                if (selfColour != (PlayerSettings.selfOutlineColor & 0xFFFFFF))
+                    throw new AssertionError("Own player must glow pink, colour=" + Integer.toHexString(selfColour));
                 // Perspective scaling: full close up, smaller far away, hidden beyond 20.
                 double near = pingplus.voicechat.client.hud.MobHealthBarRenderer.scaleFor(3 * 3);
                 double mid = pingplus.voicechat.client.hud.MobHealthBarRenderer.scaleFor(7 * 7);
@@ -474,12 +508,14 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                     throw new AssertionError("No health bar targets for bar/line rendering");
             });
             // Damage the boss: the bar fill must shrink with the mob's HP.
+            // Like on Hypixel, the name tag updates to the new current HP.
             context.runOnClient(client -> {
                 var server = client.getSingleplayerServer();
                 server.execute(() -> {
                     var boss = server.overworld().getEntity(bossId.get());
                     if (boss instanceof net.minecraft.world.entity.LivingEntity living) {
                         living.hurt(server.overworld().damageSources().generic(), 8.0F);
+                        living.setCustomName(Component.literal("☠ Revenant Horror IV 12❤"));
                     }
                 });
             });
@@ -496,6 +532,12 @@ public final class GlassRenderingTest implements FabricClientGameTest {
                 PlayerSettings.hideMobNames = false;
                 PlayerSettings.mobHealthBar = false;
                 PlayerSettings.slayerLine = false;
+                PlayerSettings.slayerOutline = oldOutline;
+                PlayerSettings.slayerBossHighlight = oldHighlight;
+                PlayerSettings.slayerBoss = oldBoss;
+                PlayerSettings.slayerMiniboss = oldMini;
+                PlayerSettings.selfOutline = oldSelf;
+                VoicechatClient.syncSlayerCfg();
             });
             context.runOnClient(client -> {
                 if (!pingplus.voicechat.client.spotify.SpotifySettings.enabled()) pingplus.voicechat.client.spotify.SpotifySettings.toggle();

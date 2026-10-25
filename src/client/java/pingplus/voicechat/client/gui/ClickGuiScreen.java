@@ -340,6 +340,9 @@ public final class ClickGuiScreen extends Screen {
                 VoicechatClient.syncSlayerCfg();
             });
             toggle(skyblock,"Boss lines",()->PlayerSettings.slayerLine,()->PlayerSettings.slayerLine=!PlayerSettings.slayerLine);
+            toggle(skyblock,"Etherwarp helper",()->PlayerSettings.etherwarpHelper,()->PlayerSettings.etherwarpHelper=!PlayerSettings.etherwarpHelper);
+            toggle(skyblock,"Self glow",()->PlayerSettings.selfOutline,()->PlayerSettings.selfOutline=!PlayerSettings.selfOutline);
+            toggle(skyblock,"AGG",()->pingplus.voicechat.client.hud.AggSettings.isEnabled(),()->pingplus.voicechat.client.hud.AggSettings.setEnabled(!pingplus.voicechat.client.hud.AggSettings.isEnabled()));
             toggle(skyblock,"Player outline",()->PlayerSettings.playerOutline,()->PlayerSettings.playerOutline=!PlayerSettings.playerOutline);
         });
         Category keys = category("KEYS", "Hotkeys, click then press");

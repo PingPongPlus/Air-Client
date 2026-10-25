@@ -82,7 +82,7 @@ public final class GlassButtonRenderer {
         GlassBackdrop.request();
         Matrix3x2f pose = new Matrix3x2f(graphics.pose());
         ScreenRectangle scissor = graphics.scissorStack.peek();
-        int padding = GlassPipelines.isButton(pipeline) ? Math.max(1, (int)Math.ceil(SHADOW_PADDING * GlassEffectSettings.shadowScale())) : SHADOW_PADDING;
+        int padding = pipeline == GlassPipelines.BOSS_BAR ? 8 : GlassPipelines.isButton(pipeline) ? Math.max(1, (int)Math.ceil(SHADOW_PADDING * GlassEffectSettings.shadowScale())) : SHADOW_PADDING;
         ScreenRectangle bounds = new ScreenRectangle(x - padding, y - padding,
                 width + 2 * padding, height + 2 * padding).transformMaxBounds(pose);
         if (scissor != null) bounds = bounds.intersection(scissor);
