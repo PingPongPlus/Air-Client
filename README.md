@@ -5,3 +5,5 @@ A Minecraft client with voice chat, Spotify, and a customizable liquid glass int
 ![Menu screen](docs/readme/menu.png)
 ![Settings screen](docs/readme/settings.png)
 ![Landing screen](docs/readme/landing.png)
+
+Licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0-only)](LICENSE).

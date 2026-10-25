@@ -182,10 +182,7 @@ tasks.named('check') { dependsOn 'hudMetricsTest' }
 
 
 jar {
-    from("LICENSE_SkyCofl")
-    from("LICENSE.txt") {
-        rename { "${it}_${project.archives_base_name}" }
-    }
+    from("LICENSE")
 }
 
 // configure the maven publication

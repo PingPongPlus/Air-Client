@@ -6,7 +6,7 @@
   "description": "LabyMod-compatible proximity voice chat with push-to-talk and volume controls for Minecraft 26.2.",
   "authors": [],
   "contact": {},
-  "license": "All-Rights-Reserved",
+  "license": "AGPL-3.0-only",
   "environment": "client",
   "entrypoints": {
     "fabric-datagen": [
