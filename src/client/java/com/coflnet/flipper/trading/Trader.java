@@ -101,6 +101,7 @@ public class Trader {
     private void supervise() {
         while (!stopRequested) {
             ScreenUtil.sleep(10_000);
+            if (stopRequested) return;
             long idle = System.currentTimeMillis() - heartbeat;
             if (idle > 45_000L) {
                 log("SUPERVISOR: Trader seit " + idle + "ms ohne Herzschlag. screen="
@@ -125,11 +126,9 @@ public class Trader {
         stopRequested = true;
         ahPriorityActive = false;
         ahPriorityUntil = 0;
-        if (thread != null) {
-            Thread t = thread;
-            ScreenUtil.sleep(3000);
-            t.interrupt();
-        }
+        // Stop requests also come from the GUI; never sleep on the render thread.
+        if (thread != null) thread.interrupt();
+        if (supervisor != null) supervisor.interrupt();
     }
 
     public void setPaused(boolean value) {

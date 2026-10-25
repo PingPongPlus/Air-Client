@@ -43,3 +43,10 @@ For sneaking while inventories and other screens are open, see [FORCE_SNEAK.md](
 The Skyblock options also include **Etherwarp helper**, **Self glow**, and the animated
 **AGG** sticker. AGG uses the shared HUD editor (normally **G**) for dragging,
 resizing, and resetting its layout; visibility is saved separately.
+
+**SKYBLOCK → Auction Flipper / Bazaar Flipper** starts or stops the corresponding
+flipper. Both retain their Hypixel SkyBlock requirement. **All off** stops both.
+Under **KEYS**, click **Auction Flipper** or **Bazaar Flipper**, then press a key
+or mouse button to bind it. **Escape** cancels binding; changes save immediately
+and also appear in Minecraft's Controls menu. **Reset keys** restores **F9** for
+the Auction Flipper and **F8** for the Bazaar Flipper.

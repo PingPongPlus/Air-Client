@@ -49,6 +49,15 @@ public class FlipperMod {
         return ledger;
     }
 
+    public static KeyMapping toggleKey() {
+        return toggleKey;
+    }
+
+    public static boolean isRunning() {
+        Trader trader = Trader.get();
+        return trader != null && trader.isRunning();
+    }
+
     private static void registerKeybinding() {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("coflnet", "flipper"));
@@ -89,7 +98,7 @@ public class FlipperMod {
         return toggle();
     }
 
-    private static int toggle() {
+    public static int toggle() {
         if (Trader.get().isRunning()) {
             stop(null);
         } else {

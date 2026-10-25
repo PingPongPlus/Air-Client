@@ -51,6 +51,7 @@ final class ClickGuiOptionsGameTest {
             HudMetricsGameTest.run(context);
             KeystrokesGameTest.run(context);
             MiddleClickVoiceVolumeGameTest.run(context);
+            FlipperControlsGameTest.run(context);
             captureHud(context);
             context.setScreen(() -> new ClickGuiScreen(fps,VoicechatClient.openGuiKey(),coordinates,new ArraylistHud(fps,coordinates)));
             context.waitTicks(10);

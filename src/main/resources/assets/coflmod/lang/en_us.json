@@ -2,7 +2,12 @@
   "keybinding.coflmod.bestflips": "Open Best/Next Flip",
   "keybinding.coflmod.uploaditem": "Upload Selected Item",
   "keybinding.coflmod.opensettings": "Open Settings Menu",
-
   "key.category.coflnet.skycofl": "SkyCofl keys",
-  "key.category.coflnet.skycofl_unchangeable": "SkyCofl keys"
+  "key.category.coflnet.skycofl_unchangeable": "SkyCofl keys",
+  "keybinding.coflmod.flipper": "Bazaar Flipper on/off",
+  "keybinding.coflmod.ahflipper": "Auction House Flipper on/off",
+  "keybinding.coflmod.lowballing": "Cofl: Lowballing on/off",
+  "key.category.coflnet.lowballing": "SkyCofl Lowballing",
+  "key.category.coflnet.flipper": "SkyCofl Flipper",
+  "key.category.coflnet.ahflipper": "SkyCofl AH Flipper"
 }

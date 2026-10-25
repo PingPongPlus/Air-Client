@@ -11,6 +11,8 @@ import pingplus.voicechat.client.hud.KeystrokesHud;
 import pingplus.voicechat.client.hud.PingHud;
 import pingplus.voicechat.client.hud.ScoreboardHud;
 
+import com.coflnet.ahflipper.AhFlipperMod;
+import com.coflnet.flipper.FlipperMod;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -315,6 +317,8 @@ public final class ClickGuiScreen extends Screen {
             add(automation,new SpeedSlider(panelWidth-20),26);
         });
         Category skyblock = category("SKYBLOCK", "Hypixel skyblock helpers");
+        toggle(skyblock,"Auction Flipper",AhFlipperMod::isRunning,AhFlipperMod::toggle);
+        toggle(skyblock,"Bazaar Flipper",FlipperMod::isRunning,FlipperMod::toggle);
         options(skyblock,"General", null,()-> {
             toggle(skyblock,"No particles",()->PlayerSettings.hideParticles,()->PlayerSettings.hideParticles=!PlayerSettings.hideParticles);
             toggle(skyblock,"No mob names",()->PlayerSettings.hideMobNames,()->{
@@ -354,6 +358,8 @@ public final class ClickGuiScreen extends Screen {
         keyButton(keys, "Zoom", VoicechatClient.zoomKey());
         keyButton(keys, "Shoulder cam", VoicechatClient.shoulderCamKey());
         keyButton(keys, "Killaura", VoicechatClient.killAuraKey());
+        keyButton(keys, "Auction Flipper", AhFlipperMod.toggleKey());
+        keyButton(keys, "Bazaar Flipper", FlipperMod.toggleKey());
         add(keys, new Button(0,0,panelWidth-20,18,Component.literal("Reset keys"),b->{resetKeys();rebuildWidgets();},supplier->supplier.get()) {
             @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
                 if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
@@ -559,6 +565,8 @@ public final class ClickGuiScreen extends Screen {
         if (VoicechatClient.zoomKey() != null) VoicechatClient.zoomKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_C));
         if (VoicechatClient.shoulderCamKey() != null) VoicechatClient.shoulderCamKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R));
         if (VoicechatClient.killAuraKey() != null) VoicechatClient.killAuraKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_Z));
+        if (AhFlipperMod.toggleKey() != null) AhFlipperMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F9));
+        if (FlipperMod.toggleKey() != null) FlipperMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F8));
         pendingKey = null;
         saveKeys();
     }
