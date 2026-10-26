@@ -25,6 +25,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.client.renderer.RenderPipelines;
 import org.lwjgl.glfw.GLFW;
 import pingplus.voicechat.client.PlayerSettings;
+import pingplus.voicechat.client.MobEspFeature;
 import pingplus.voicechat.client.VoicechatClient;
 import pingplus.voicechat.client.gui.glass.*;
 import java.util.*;
@@ -47,6 +48,7 @@ public final class ClickGuiScreen extends Screen {
     private static final int OPTIONS_WIDTH = 220;
     private OptionsPanel buildingOptions;
     private String openOptions;
+    private String mobEspInput = "", mobEspMessage = "";
     private Button optionsClose;
     private Button allOff;
     private int optionsX, optionsY, optionsWidth, optionsHeight, optionsScroll, optionsMaxScroll;
@@ -218,6 +220,18 @@ public final class ClickGuiScreen extends Screen {
         toggle(render,"Hitboxes",()->PlayerSettings.hitboxes,()->PlayerSettings.hitboxes=!PlayerSettings.hitboxes);
         toggle(render,"Projectile preview",()->PlayerSettings.projectilePreview,()->PlayerSettings.projectilePreview=!PlayerSettings.projectilePreview);
         toggle(render,"Fullbright",()->PlayerSettings.fullbright,()->PlayerSettings.fullbright=!PlayerSettings.fullbright);
+        toggle(render,"MobESP",()->PlayerSettings.mobEsp,MobEspFeature::toggle);
+        options(render,"MobESP options",()-> {
+            mobEspLabel(render,"Add mob names (comma separated)");
+            add(render,new MobNameBox(),22);
+            mobEspButton(render,"Add mob(s)",this::addMobEspNames);
+            mobEspLabel(render,mobEspMessage.isEmpty() ? "e.g. zombie, skeleton, iron_golem" : mobEspMessage);
+            if (MobEspFeature.selected().isEmpty()) mobEspLabel(render,"No mobs selected.");
+            for (Identifier id : MobEspFeature.selected()) {
+                String name = id.getNamespace().equals("minecraft") ? id.getPath() : id.toString();
+                mobEspButton(render,"Remove: "+name,()-> { MobEspFeature.remove(id); rebuildWidgets(); });
+            }
+        });
         toggle(render,"Storage ESP",()->PlayerSettings.storageEsp,pingplus.voicechat.client.StorageEspFeature::toggle);
         options(render,"Storage ESP options",()-> {
             for (var kind : pingplus.voicechat.client.StorageEspFeature.Kind.values())
@@ -465,7 +479,7 @@ public final class ClickGuiScreen extends Screen {
         for (Entry e : entries) e.widget.active = false;
         allOff.active = false;
         for (OptionEntry e : panel.entries) {
-            if (!(e.widget instanceof EditBox)) e.widget.setWidth(optionsWidth-20);
+            if (!(e.widget instanceof EditBox) || e.widget instanceof MobNameBox) e.widget.setWidth(optionsWidth-20);
             addRenderableWidget(e.widget);
         }
         optionsClose = addRenderableWidget(new Button(0,0,18,18,Component.literal("Close "+panel.title),
@@ -482,7 +496,7 @@ public final class ClickGuiScreen extends Screen {
         OptionsPanel panel = optionPanels.get(openOptions);
         if (panel == null) return;
         for (OptionEntry e : panel.entries) {
-            e.widget.setX(optionsX+(e.widget instanceof EditBox?optionsWidth-65:10));
+            e.widget.setX(optionsX+(e.widget instanceof EditBox && !(e.widget instanceof MobNameBox)?optionsWidth-65:10));
             e.widget.setY(optionsY+26+e.row-optionsScroll);
         }
         optionsClose.setPosition(optionsX+optionsWidth-23,optionsY+3);
@@ -545,6 +559,47 @@ public final class ClickGuiScreen extends Screen {
         box.setBordered(false);box.setTextShadow(false);box.setTextColor(GlassStyle.TEXT);box.setMaxLength(16);box.setValue(getter.get());
         box.setResponder(setter);
         add(c,box,20);
+    }
+    private void mobEspLabel(Category c,String label) {
+        var button = mobEspButton(c,label,()->{});
+        button.active = false;
+    }
+    private void addMobEspNames() {
+        String error = MobEspFeature.add(mobEspInput);
+        mobEspMessage = error == null ? "Added. Click a mob below to remove." : error;
+        if (error == null) mobEspInput = "";
+        rebuildWidgets();
+    }
+    private Button mobEspButton(Category c,String label,Runnable action) {
+        var button = new Button(0,0,OPTIONS_WIDTH-20,18,Component.literal(label),b->action.run(),supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(active && isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                GlassStyle.line(g,label,getX()+4,getY()+4,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
+            }
+        };
+        button.setTooltip(Tooltip.create(Component.literal(label)));
+        add(c,button,18);
+        return button;
+    }
+    private final class MobNameBox extends EditBox {
+        MobNameBox() {
+            super(ClickGuiScreen.this.font,0,0,OPTIONS_WIDTH-20,18,Component.literal("Mob names"));
+            addFormatter((value,index)->net.minecraft.util.FormattedCharSequence.forward(value,GlassStyle.FONT));
+            setBordered(false);setTextShadow(false);setTextColor(GlassStyle.TEXT);setMaxLength(512);
+            setHint(Component.literal("zombie, skeleton"));
+            setValue(mobEspInput);
+            setResponder(value->mobEspInput=value);
+        }
+        @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
+            GlassButtonRenderer.control(g,getX()-2,getY()-2,getWidth()+4,20,GlassStyle.alpha(isFocused()?0xFF555555:0xFF303030,opacity));
+            g.nextStratum();super.extractWidgetRenderState(g,mx,my,dt);
+        }
+        @Override public boolean keyPressed(KeyEvent event) {
+            if (event.key()==GLFW.GLFW_KEY_ENTER || event.key()==GLFW.GLFW_KEY_KP_ENTER) {
+                addMobEspNames();return true;
+            }
+            return super.keyPressed(event);
+        }
     }
     private void keyButton(Category c, String name, KeyMapping mapping) {
         String label = mapping == null ? name + ": -"

@@ -17,6 +17,7 @@ public final class PlayerSettings {
     public static boolean hitboxes = false;
     public static boolean projectilePreview = false;
     public static boolean storageEsp = false;
+    public static boolean mobEsp = false;
     public static boolean storageEspChests = true;
     public static boolean storageEspBarrels = true;
     public static boolean storageEspShulkers = true;

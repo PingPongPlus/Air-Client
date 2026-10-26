@@ -1,0 +1,10 @@
+allprojects {
+    afterEvaluate {
+        loom.runs.configureEach {
+            programArguments.set(programArguments.get().findAll { !['--quickPlayMultiplayer', 'hypixel.net'].contains(it) })
+        }
+    }
+    tasks.configureEach {
+        if (name == 'runClientGameTest') jvmArgs '-Dvoicechat.mobEspTest=true'
+    }
+}

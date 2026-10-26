@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import pingplus.voicechat.client.slayer.SlayerOutlineRenderer;
+import pingplus.voicechat.client.MobEspFeature;
 
 // Forces the vanilla entity outline (through walls, ESP style) onto
 // slayer bosses/minibosses by setting the render state's outline color.
@@ -19,6 +20,8 @@ public class SlayerOutlineMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void slayerOutline(Entity entity, EntityRenderState state, float tickDelta, CallbackInfo ci) {
         int rgb = SlayerOutlineRenderer.colorFor(entity.getId());
+        // Keep specialized slayer colours when both features select the same mob.
+        if (rgb < 0) rgb = MobEspFeature.colorFor(entity);
         if (rgb >= 0) {
             state.outlineColor = ARGB.opaque(rgb);
         }

@@ -21,6 +21,17 @@ their existing session lifetime; this redesign does not add disk persistence or
 change gameplay logic. Panel positions survive resizing and settings expansion
 within the current screen. Closing and reopening starts with the responsive layout.
 
+In **RENDER > MobESP**, enable the toggle and open its gear. Enter Minecraft mob
+names such as `zombie, skeleton, iron_golem`, then press Enter or **Add mob(s)**.
+Names ignore case; `minecraft:zombie` and `iron golem` also work. Add as many types
+as needed and click **Remove: name** to remove one. Selected living mobs receive
+a green glow through walls, including mobs with custom name tags. Specialized
+slayer colors take priority. The selection lasts for the current client session
+and remains available while MobESP is disabled. No mobs glow until names are added.
+
+`./gradlew runClientGameTest --offline -I tools/mob-esp-test.gradle` checks MobESP
+against actual entity render states and menu input in a local world.
+
 ## Implementation
 
 - `ClickGuiScreen`: category layout, dragging, custom controls, input and animations.
