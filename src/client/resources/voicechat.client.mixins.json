@@ -59,6 +59,7 @@
     "GlassLoadingTextMixin",
     "GlassMessageTextMixin",
     "GlassRainToggleMixin",
+    "MenuThemeToggleMixin",
     "ParticleHideMixin",
     "MobNameHideMixin",
     "SlayerOutlineMixin",

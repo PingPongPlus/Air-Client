@@ -3,46 +3,48 @@ package pingplus.voicechat.mixin.client;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.LogoRenderer;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
 
-            @Mixin(LogoRenderer.class)
+@Mixin(LogoRenderer.class)
+public abstract class LogoRendererMixin {
+    @Shadow
+    public abstract boolean keepLogoThroughFade();
 
-            public abstract class LogoRendererMixin {
-        private static final Identifier VOICECHAT_LOGO = Identifier.fromNamespaceAndPath("voicechat", "textures/gui/img_7.png");
-        @Shadow
-        public abstract boolean keepLogoThroughFade();
-        @Inject(
-                method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IFI)V",
-                at = @At("HEAD"),
-                cancellable = true
-        )
-        private void drawCustomLogo(
-                GuiGraphicsExtractor graphics,
-        int width,
-        float alpha,
+    @Inject(
+            method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IFI)V",
+            at = @At("HEAD"),
+            cancellable = true
+    )
+    private void drawCustomLogo(
+            GuiGraphicsExtractor graphics,
+            int width,
+            float alpha,
             int heightOffset,
             CallbackInfo ci
     ) {
-        // img_7 is square; do not stretch it using the previous logo's proportions.
-        int textureWidth = 1254;
-        int textureHeight = 1254;
+        var logo = MenuThemeSettings.logo();
+        int textureWidth = logo.width();
+        int textureHeight = logo.height();
 
-        // Display width in GUI pixels; height preserves the aspect ratio.
-        int y = heightOffset - 30;
-        int headerSpace = graphics.guiHeight() / 4 + 40 - y;
-        int logoWidth = Math.max(0, Math.min(216, Math.min(width - 24, headerSpace)));
-        int logoHeight = logoWidth;
+        // Fit the supplied artwork above the menu without changing its proportions.
+        int y = Math.max(0, heightOffset - 30);
+        int headerSpace = Math.max(0, graphics.guiHeight() / 4 + 40 - y);
+        int maxWidth = MenuThemeSettings.isDarkMode() ? 360 : 216;
+        double scale = Math.min(Math.min(maxWidth, Math.max(0, width - 24)) / (double) textureWidth,
+                headerSpace / (double) textureHeight);
+        int logoWidth = (int) Math.round(textureWidth * scale);
+        int logoHeight = (int) Math.round(textureHeight * scale);
 
         int x = (width - logoWidth) / 2;
         float effectiveAlpha = keepLogoThroughFade() ? 1.0F : alpha;
         if (logoWidth > 0 && logoHeight > 0 && effectiveAlpha > 0) {
-            graphics.blit(RenderPipelines.GUI_TEXTURED, VOICECHAT_LOGO, x, y, 0, 0, logoWidth, logoHeight,
+            graphics.blit(RenderPipelines.GUI_TEXTURED, logo.id(), x, y, 0, 0, logoWidth, logoHeight,
                     textureWidth, textureHeight, textureWidth, textureHeight, ARGB.white(effectiveAlpha));
         }
 

@@ -1,5 +1,13 @@
 # Glass client UI
 
+Use **Mode: Light/Dark** in the top-left of the main menu to switch themes.
+Light mode is the default and retains the mountain wallpaper and original square AIR logo.
+Dark mode uses the extended monochrome streetlamp wallpaper and the wide Air Client title.
+Both retain smooth cursor parallax and the existing glass raindrops toggle. The theme also
+applies to the other menu wallpapers and is saved in `config/voicechat-menu-theme.properties`.
+Run `./gradlew -I tools/menu-theme-test.gradle runClientGameTest --offline` to check
+switching, persistence, parallax in both themes, small layouts and resource reloads.
+
 Use **Glass drops: ON/OFF** in the top-right of the main menu to toggle animated
 glass raindrops globally. Glass buttons and panels stay unchanged. The preference
 is saved in `config/voicechat-glass-rain.properties`.
@@ -85,7 +93,7 @@ scene as a second sampler. `glass_logo.fsh` transmits and refracts that live bac
 through the ribbon, with thickness absorption, Fresnel reflection, slight dispersion and
 broad specular highlights. Display-resolution filtering softens the source alpha halo.
 The logo shares the existing scene capture; no additional render target is allocated.
-`LogoRendererMixin` preserves the actual 1707x924 aspect ratio and the title fade.
+`LogoRendererMixin` preserves each theme's logo proportions and the title fade.
 
 `GlassRain` and `glass_rain.fsh` render two procedural droplet layers in one full-screen
 pass plus stationary condensation. Moving drops vary in size, asymmetry, aspect and speed;

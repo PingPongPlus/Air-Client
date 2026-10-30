@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.struct.InjectionInfo;
+import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
 
 @Mixin(SplashRenderer.class)
 public abstract class SplashRendererMixin {
@@ -33,6 +34,10 @@ public abstract class SplashRendererMixin {
             CallbackInfo ci
     ){
 
+        if (MenuThemeSettings.isDarkMode()) {
+            ci.cancel();
+            return;
+        }
         int textWidth = font.width(customSplash);
         ActiveTextCollector textRenderer = graphics.textRenderer();
         float textPhase = 1.8F - Mth.abs(Mth.sin((double)((float)(Util.getMillis() % 1000L) / 1000.0F * ((float)Math.PI * 2F))) * 0.1F);

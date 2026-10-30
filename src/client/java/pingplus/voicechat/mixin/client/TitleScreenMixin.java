@@ -7,18 +7,15 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
 
 @Mixin(TitleScreen.class)
 public abstract class TitleScreenMixin extends Screen {
-    @Unique
-    private static final Identifier voicechat$background = Identifier.fromNamespaceAndPath(
-            "voicechat", "textures/gui/title_background.png");
     @Unique
     private static final double BACKGROUND_ZOOM = 1.04;
     @Unique
@@ -60,8 +57,9 @@ public abstract class TitleScreenMixin extends Screen {
     private void drawCustomBackground(
             TitleScreen screen, GuiGraphicsExtractor graphics, float delta, Operation<Void> original
     ) {
-        int imageWidth = 1672;
-        int imageHeight = 941;
+        var background = MenuThemeSettings.background();
+        int imageWidth = background.width();
+        int imageHeight = background.height();
         // Extra coverage allows mouse movement without exposing the texture edges.
         double scale = Math.max(width / (double) imageWidth, height / (double) imageHeight)
                 * BACKGROUND_ZOOM;
@@ -75,7 +73,7 @@ public abstract class TitleScreenMixin extends Screen {
         graphics.pose().pushMatrix();
         try {
             graphics.pose().translate((float) (-marginX + offsetX), (float) (-marginY + offsetY));
-            graphics.blit(RenderPipelines.GUI_TEXTURED, voicechat$background,
+            graphics.blit(RenderPipelines.GUI_TEXTURED, background.id(),
                     0, 0, 0.0F, 0.0F, drawWidth, drawHeight,
                     imageWidth, imageHeight, imageWidth, imageHeight);
         } finally {

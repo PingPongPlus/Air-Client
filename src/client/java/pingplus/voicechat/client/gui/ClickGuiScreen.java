@@ -59,7 +59,6 @@ public final class ClickGuiScreen extends Screen {
     private Category dragging;
     private double dragX, dragY;
     private KeyMapping pendingKey;
-    private static final Identifier WALLPAPER = Identifier.fromNamespaceAndPath("voicechat", "textures/gui/title_background.png");
 
     public ClickGuiScreen(FpsHud fpsHud, KeyMapping openGuiKey, CoordinatesHud coordinatesHud, ArraylistHud arraylistHud) {
         super(Component.literal("Client controls"));
@@ -641,8 +640,10 @@ public final class ClickGuiScreen extends Screen {
     }
     @Override public void extractBackground(GuiGraphicsExtractor g,int mx,int my,float dt) {
         if(minecraft.level==null){
-            double s=Math.max(width/1672.0,height/941.0);int w=(int)Math.ceil(1672*s),h=(int)Math.ceil(941*s);
-            g.blit(RenderPipelines.GUI_TEXTURED,WALLPAPER,(width-w)/2,(height-h)/2,0,0,w,h,1672,941,1672,941);
+            var background=MenuThemeSettings.background();
+            int iw=background.width(),ih=background.height();
+            double s=Math.max(width/(double)iw,height/(double)ih);int w=(int)Math.ceil(iw*s),h=(int)Math.ceil(ih*s);
+            g.blit(RenderPipelines.GUI_TEXTURED,background.id(),(width-w)/2,(height-h)/2,0,0,w,h,iw,ih,iw,ih);
         }
         g.fill(0,0,width,height,GlassStyle.alpha(0x50000000,opacity));
         pingplus.voicechat.client.gui.glass.GlassRain.draw(g);

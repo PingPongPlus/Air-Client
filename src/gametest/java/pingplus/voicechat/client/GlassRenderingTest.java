@@ -21,6 +21,10 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             MobEspGameTest.run(context);
             return;
         }
+        if (Boolean.getBoolean("voicechat.menuThemeTest")) {
+            MenuThemeGameTest.run(context);
+            return;
+        }
         if (Boolean.getBoolean("voicechat.forceSneakTest")) {
             ForceSneakGameTest.run(context);
             if (Boolean.getBoolean("voicechat.crosshairTest")) CustomCrosshairGameTest.run(context);
