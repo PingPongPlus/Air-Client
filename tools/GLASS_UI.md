@@ -5,8 +5,11 @@ Light mode is the default and retains the mountain wallpaper and original square
 Dark mode uses the extended monochrome streetlamp wallpaper and the wide Air Client title.
 Both retain smooth cursor parallax and the existing glass raindrops toggle. The theme also
 applies to the other menu wallpapers and is saved in `config/voicechat-menu-theme.properties`.
+Singleplayer, Multiplayer, Options, world creation and loading screens share the title
+menu's moving wallpaper. Scrolling lists and tab headers use translucent shading,
+so the wallpaper stays visible instead of being covered by tiled dirt textures.
 Run `./gradlew -I tools/menu-theme-test.gradle runClientGameTest --offline` to check
-switching, persistence, parallax in both themes, small layouts and resource reloads.
+switching, persistence, parallax across menus in both themes, small layouts and resource reloads.
 
 Use **Glass drops: ON/OFF** in the top-right of the main menu to toggle animated
 glass raindrops globally. Glass buttons and panels stay unchanged. The preference
@@ -104,8 +107,11 @@ The effect is an optical approximation, not a fluid simulation. Its cost does no
 with an accumulating particle count. Text and controls draw in the following stratum;
 glass panels sample the wet background. Rain is skipped while resource packs reload.
 
-`GlassMenuBackgroundMixin` covers the common menu background used by pause, world
-selection/creation, multiplayer and options. Title and ClickGUI have explicit hooks.
+`MenuBackground` shares continuous cursor parallax across the title, other menus,
+ClickGUI and loading screens. `GlassMenuBackgroundMixin` handles both full-screen
+and bounded backgrounds and keeps menu wallpapers sharp. `GlassMenuTextureMixin`
+replaces vanilla tiled list/header backgrounds and separators with translucent fills.
+Pause and in-world menus keep the world view and its blur beneath the glass rain.
 Inventory and chat do not receive the rain overlay during gameplay.
 
 `GlassFontMixin` routes the default font to `voicechat:ui`, keeping both measurement and
