@@ -22,7 +22,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.client.renderer.RenderPipelines;
 import org.lwjgl.glfw.GLFW;
 import pingplus.voicechat.client.PlayerSettings;
 import pingplus.voicechat.client.MobEspFeature;
@@ -640,17 +639,13 @@ public final class ClickGuiScreen extends Screen {
     }
     @Override public void extractBackground(GuiGraphicsExtractor g,int mx,int my,float dt) {
         if(minecraft.level==null){
-            var background=MenuThemeSettings.background();
-            int iw=background.width(),ih=background.height();
-            double s=Math.max(width/(double)iw,height/(double)ih);int w=(int)Math.ceil(iw*s),h=(int)Math.ceil(ih*s);
-            g.blit(RenderPipelines.GUI_TEXTURED,background.id(),(width-w)/2,(height-h)/2,0,0,w,h,iw,ih,iw,ih);
+            MenuBackground.drawWallpaper(g);
         }
         g.fill(0,0,width,height,GlassStyle.alpha(0x50000000,opacity));
         pingplus.voicechat.client.gui.glass.GlassRain.draw(g);
     }
     @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
         opacity=closing==0?Math.clamp((System.nanoTime()-opened)/220_000_000f,0,1):1-Math.clamp((System.nanoTime()-closing)/160_000_000f,0,1);
-        extractBackground(g,mx,my,dt);
         g.pose().pushMatrix();
         g.pose().scale(UI_SCALE);
         mx = (int)(mx / UI_SCALE);
