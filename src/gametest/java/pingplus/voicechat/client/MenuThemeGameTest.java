@@ -4,10 +4,22 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.GenericMessageScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.ProgressScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
+import net.minecraft.client.gui.screens.options.LanguageSelectScreen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
+import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
+import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
+import net.minecraft.network.chat.Component;
+import pingplus.voicechat.client.gui.ClickGuiScreen;
 import pingplus.voicechat.client.gui.glass.GlassRainSettings;
 import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
+import pingplus.voicechat.client.hud.ArraylistHud;
+import pingplus.voicechat.client.hud.CoordinatesHud;
+import pingplus.voicechat.client.hud.FpsHud;
 
 import javax.imageio.ImageIO;
 import java.io.IOException;
@@ -34,6 +46,7 @@ final class MenuThemeGameTest {
             context.waitTicks(20);
             context.takeScreenshot("menu-light");
             checkParallax(context, "light");
+            checkSubmenus(context, "light");
 
             context.clickScreenButton("Mode: Light");
             context.runOnClient(client -> {
@@ -47,6 +60,7 @@ final class MenuThemeGameTest {
             context.waitTicks(15);
             context.takeScreenshot("menu-dark");
             checkParallax(context, "dark");
+            checkSubmenus(context, "dark");
 
             context.setScreen(TitleScreen::new);
             context.waitTicks(10);
@@ -91,7 +105,18 @@ final class MenuThemeGameTest {
             });
             context.waitTicks(15);
             context.takeScreenshot("menu-light-rain");
-            System.out.println("PASS: menu themes, real toggle clicks, artwork sizes, persistence, both parallax modes, rain, compact layout and reload");
+            try (var world = context.worldBuilder().create()) {
+                context.waitFor(client -> client.player != null && client.gui.overlay() == null);
+                context.setScreen(() -> new PauseScreen(true));
+                context.waitTicks(20);
+                context.takeScreenshot("menu-world-pause");
+                context.waitTicks(20);
+                context.takeScreenshot("menu-world-pause-rain-motion");
+                context.runOnClient(client -> client.gui.setScreen(new OptionsScreen(client.gui.screen(), client.options, false)));
+                context.waitTicks(10);
+                context.takeScreenshot("menu-world-options");
+            }
+            System.out.println("PASS: menu themes, persistence, parallax across menus and loading screens, rain, in-world menus, compact layout and reload");
         } finally {
             context.runOnClient(client -> {
                 MenuThemeSettings.setDarkMode(originalDark);
@@ -99,6 +124,42 @@ final class MenuThemeGameTest {
             });
             context.setScreen(TitleScreen::new);
         }
+    }
+
+    private static void checkSubmenus(ClientGameTestContext context, String theme) {
+        context.setScreen(() -> new SelectWorldScreen(new TitleScreen()));
+        context.waitTicks(20);
+        checkParallax(context, theme + "-singleplayer");
+        context.setScreen(() -> new JoinMultiplayerScreen(new TitleScreen()));
+        context.waitTicks(20);
+        checkParallax(context, theme + "-multiplayer");
+        context.runOnClient(client -> client.gui.setScreen(new OptionsScreen(new TitleScreen(), client.options, false)));
+        context.waitTicks(10);
+        checkParallax(context, theme + "-options");
+        context.runOnClient(client -> client.gui.setScreen(new LanguageSelectScreen(new TitleScreen(),
+                client.options, client.getLanguageManager())));
+        context.waitTicks(10);
+        checkParallax(context, theme + "-language");
+        context.setScreen(() -> new GenericMessageScreen(Component.literal("Preparing world")));
+        context.waitTicks(10);
+        checkParallax(context, theme + "-message");
+        context.setScreen(() -> new ProgressScreen(false));
+        context.waitTicks(10);
+        checkParallax(context, theme + "-progress");
+        context.runOnClient(client -> CreateWorldScreen.openFresh(client,
+                () -> client.gui.setScreen(new TitleScreen())));
+        context.waitForScreen(CreateWorldScreen.class);
+        context.waitTicks(10);
+        checkParallax(context, theme + "-create-world");
+        context.runOnClient(client -> client.gui.screen().onClose());
+        context.waitForScreen(TitleScreen.class);
+        var fps = new FpsHud();
+        var coordinates = new CoordinatesHud();
+        context.setScreen(() -> new ClickGuiScreen(fps, VoicechatClient.openGuiKey(), coordinates,
+                new ArraylistHud(fps, coordinates)));
+        context.waitTicks(15);
+        checkParallax(context, theme + "-clickgui");
+        context.setScreen(TitleScreen::new);
     }
 
     private static void checkParallax(ClientGameTestContext context, String theme) {
