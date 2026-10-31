@@ -3,17 +3,13 @@
 Use **Mode: Light/Dark** in the top-left of the main menu to switch themes.
 Light mode is the default and retains the mountain wallpaper and original square AIR logo.
 Dark mode uses the extended monochrome streetlamp wallpaper and the wide Air Client title.
-Both retain smooth cursor parallax and the existing glass raindrops toggle. The theme also
+Both retain smooth cursor parallax. The theme also
 applies to the other menu wallpapers and is saved in `config/voicechat-menu-theme.properties`.
 Singleplayer, Multiplayer, Options, world creation and loading screens share the title
 menu's moving wallpaper. Scrolling lists and tab headers use translucent shading,
 so the wallpaper stays visible instead of being covered by tiled dirt textures.
 Run `./gradlew -I tools/menu-theme-test.gradle runClientGameTest --offline` to check
 switching, persistence, parallax across menus in both themes, small layouts and resource reloads.
-
-Use **Glass drops: ON/OFF** in the top-right of the main menu to toggle animated
-glass raindrops globally. Glass buttons and panels stay unchanged. The preference
-is saved in `config/voicechat-glass-rain.properties`.
 
 Open the ClickGUI with the existing client-controls key (Right Shift by default).
 The interface renders at 60% of its logical size, including text and hit targets,
@@ -48,8 +44,8 @@ against actual entity render states and menu input in a local world.
 - `ClickGuiScreen`: category layout, dragging, custom controls, input and animations.
 - `GlassStyle`: palette, UI font, and resource-independent rounded geometry.
 - `GlassButtonRenderer`: extracts antialiased GPU geometry for glass and tinted controls.
-- `GlassBackdrop` / `GlassGuiRendererMixin`: capture the dry background for rain, then
-  capture the wet scene for panels. One shared half-resolution separable blur is reused
+- `GlassBackdrop` / `GlassGuiRendererMixin`: capture the background before glass surfaces.
+  One shared half-resolution separable blur is reused
   across controls. Targets resize with the framebuffer and are released outside menus.
 - `glass_button.fsh`: rounded glass, screen-space refraction, frosted sampling, rim lighting.
 - `glass_control.fsh`: antialiased switches, slider tracks/thumbs, and input surfaces.
@@ -73,46 +69,26 @@ focus, resizing and GUI scales, and performs a resource reload in a temporary wo
 It also checks the close key and captures screenshots in
 `build/run/clientGameTest/screenshots`. The test mod is not included in the production JAR.
 
-The Mountain Air update is verified on Windows/OpenGL (NVIDIA Quadro P5000), at
-854x480 and 1440x900, including GUI scales 2 and 3, resource reloads and menu transitions.
 The test captures title, options, survival/world selection, multiplayer, pause and ClickGUI
-screens. A default-font assertion checks that measurements match the ClickGUI and differ
+screens at different sizes and GUI scales. It checks that the removed glass drops toggle
+is absent. A default-font assertion checks that measurements match the ClickGUI and differ
 from vanilla. Test-only asynchronous GPU timestamps measure the entire GUI render pass;
-they do not measure the world renderer or whole-frame latency. Other GPU backends remain
-unverified. On this machine, the final 1440x900 run recorded:
-
-| Screen | Samples | Mean GUI GPU time | Maximum |
-| --- | ---: | ---: | ---: |
-| ClickGUI | 235 | 1.002 ms | 1.574 ms |
-| Pause | 237 | 1.007 ms | 1.660 ms |
-
-These are hardware-specific timings for the whole GUI pass, not an isolated rain cost.
-Two pause captures also confirmed rain motion while the world was paused.
+they do not measure the world renderer or whole-frame latency.
 
 ## Mountain Air materials
 
-`GlassLogoRenderer` binds the original mark as a silhouette/relief texture and the wet
+`GlassLogoRenderer` binds the original mark as a silhouette/relief texture and the captured
 scene as a second sampler. `glass_logo.fsh` transmits and refracts that live background
 through the ribbon, with thickness absorption, Fresnel reflection, slight dispersion and
 broad specular highlights. Display-resolution filtering softens the source alpha halo.
 The logo shares the existing scene capture; no additional render target is allocated.
 `LogoRendererMixin` preserves each theme's logo proportions and the title fade.
 
-`GlassRain` and `glass_rain.fsh` render two procedural droplet layers in one full-screen
-pass plus stationary condensation. Moving drops vary in size, asymmetry, aspect and speed;
-long refractive trails follow fixed winding paths and leave smaller pearls behind. Adjacent
-cells overlap their wakes so trails continue across cell boundaries. The material includes
-Fresnel rims and sky highlights. Motion uses wall time so it continues on the pause menu.
-The effect is an optical approximation, not a fluid simulation. Its cost does not increase
-with an accumulating particle count. Text and controls draw in the following stratum;
-glass panels sample the wet background. Rain is skipped while resource packs reload.
-
 `MenuBackground` shares continuous cursor parallax across the title, other menus,
 ClickGUI and loading screens. `GlassMenuBackgroundMixin` handles both full-screen
 and bounded backgrounds and keeps menu wallpapers sharp. `GlassMenuTextureMixin`
 replaces vanilla tiled list/header backgrounds and separators with translucent fills.
-Pause and in-world menus keep the world view and its blur beneath the glass rain.
-Inventory and chat do not receive the rain overlay during gameplay.
+Pause and in-world menus keep the world view and its blur.
 
 `GlassFontMixin` routes the default font to `voicechat:ui`, keeping both measurement and
 rendering consistent. The existing Rajdhani SemiBold asset, size 11 and oversample 3 are

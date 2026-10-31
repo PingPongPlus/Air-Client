@@ -15,7 +15,6 @@ import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.network.chat.Component;
 import pingplus.voicechat.client.gui.ClickGuiScreen;
-import pingplus.voicechat.client.gui.glass.GlassRainSettings;
 import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
 import pingplus.voicechat.client.hud.ArraylistHud;
 import pingplus.voicechat.client.hud.CoordinatesHud;
@@ -30,14 +29,12 @@ import java.nio.file.Path;
 final class MenuThemeGameTest {
     static void run(ClientGameTestContext context) {
         boolean originalDark = context.computeOnClient(client -> MenuThemeSettings.isDarkMode());
-        boolean originalRain = context.computeOnClient(client -> GlassRainSettings.isEnabled());
         try {
             context.getInput().resizeWindow(1440, 900);
             context.runOnClient(client -> {
                 client.options.guiScale().set(2);
                 client.resizeGui();
                 check(MenuThemeSettings.setDarkMode(false), "Could not select light mode");
-                check(GlassRainSettings.setEnabled(false), "Could not disable rain for parallax checks");
                 checkArtwork(client, MenuThemeSettings.background());
                 checkArtwork(client, MenuThemeSettings.logo());
                 check(MenuThemeSettings.logo().id().getPath().endsWith("img_7.png"), "Light mode must use the original logo");
@@ -67,11 +64,6 @@ final class MenuThemeGameTest {
             context.runOnClient(client -> check(client.gui.screen().children().stream()
                     .anyMatch(c -> c instanceof Button b && b.getMessage().getString().equals("Mode: Dark")),
                     "Theme label did not survive reopening the title screen"));
-            context.clickScreenButton("Glass drops: OFF");
-            context.waitTicks(25);
-            context.takeScreenshot("menu-dark-rain");
-            context.waitTicks(20);
-            context.takeScreenshot("menu-dark-rain-motion");
             context.clickScreenButton("menu.options");
             context.waitForScreen(OptionsScreen.class);
             context.waitTicks(10);
@@ -83,8 +75,7 @@ final class MenuThemeGameTest {
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
                 for (var child : screen.children()) {
-                    if (child instanceof Button b && (b.getMessage().getString().startsWith("Mode: ")
-                            || b.getMessage().getString().startsWith("Glass drops: "))) {
+                    if (child instanceof Button b && b.getMessage().getString().startsWith("Mode: ")) {
                         check(b.getX() >= 0 && b.getRight() <= screen.width && b.getY() >= 0
                                 && b.getBottom() <= screen.height, "Menu toggle outside the small viewport");
                     }
@@ -100,27 +91,23 @@ final class MenuThemeGameTest {
             context.runOnClient(client -> {
                 var file = FabricLoader.getInstance().getConfigDir().resolve("voicechat-menu-theme.properties");
                 check(!MenuThemeSettings.isDarkMode() && !MenuThemeSettings.read(file), "Light mode was not restored and saved");
-                check(GlassRainSettings.isEnabled(), "Changing theme must preserve the rain preference");
                 checkDefaults(file.getParent());
             });
             context.waitTicks(15);
-            context.takeScreenshot("menu-light-rain");
+            context.takeScreenshot("menu-light-restored");
             try (var world = context.worldBuilder().create()) {
                 context.waitFor(client -> client.player != null && client.gui.overlay() == null);
                 context.setScreen(() -> new PauseScreen(true));
                 context.waitTicks(20);
                 context.takeScreenshot("menu-world-pause");
-                context.waitTicks(20);
-                context.takeScreenshot("menu-world-pause-rain-motion");
                 context.runOnClient(client -> client.gui.setScreen(new OptionsScreen(client.gui.screen(), client.options, false)));
                 context.waitTicks(10);
                 context.takeScreenshot("menu-world-options");
             }
-            System.out.println("PASS: menu themes, persistence, parallax across menus and loading screens, rain, in-world menus, compact layout and reload");
+            System.out.println("PASS: menu themes, persistence, parallax across menus and loading screens, in-world menus, compact layout and reload");
         } finally {
             context.runOnClient(client -> {
                 MenuThemeSettings.setDarkMode(originalDark);
-                GlassRainSettings.setEnabled(originalRain);
             });
             context.setScreen(TitleScreen::new);
         }
@@ -163,6 +150,10 @@ final class MenuThemeGameTest {
     }
 
     private static void checkParallax(ClientGameTestContext context, String theme) {
+        context.runOnClient(client -> check(client.gui.screen().children().stream()
+                .noneMatch(child -> child instanceof Button button
+                        && button.getMessage().getString().startsWith("Glass drops:")),
+                "Removed glass drops toggle is still present in " + theme));
         context.getInput().setCursorPos(20, 450);
         context.waitTicks(25);
         Path left = context.takeScreenshot("menu-" + theme + "-parallax-left");
@@ -173,7 +164,7 @@ final class MenuThemeGameTest {
             var a = ImageIO.read(left.toFile());
             var b = ImageIO.read(right.toFile());
             int changed = 0;
-            // Outside all menu widgets: with rain disabled, only the wallpaper can move here.
+            // Outside all menu widgets, only the wallpaper can move here.
             for (int y = a.getHeight() / 3; y < a.getHeight() * 9 / 10; y++) {
                 for (int x = 0; x < a.getWidth() / 4; x++) {
                     if (a.getRGB(x, y) != b.getRGB(x, y)) changed++;

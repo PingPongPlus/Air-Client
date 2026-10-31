@@ -48,13 +48,12 @@ public final class GlassBackdrop {
         captured = true;
     }
 
-    /** Rain samples the dry scene. Panels subsequently capture the wet scene and blur it once. */
-    public static void captureScene(RenderTarget target) {
+    private static void captureScene(RenderTarget target) {
         RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
                 target.getColorTexture(), scene.getColorTexture(), 0, 0, 0, 0, 0, target.width, target.height);
     }
 
-    public static TextureSetup rainTexture() {
+    public static TextureSetup sceneTexture() {
         return TextureSetup.singleTexture(scene.getColorTextureView(),
                 RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
     }

@@ -36,7 +36,7 @@ final class ClickGuiAllOffGameTest {
         ArraylistHud arraylist = new ArraylistHud(fps,coordinates);
         List<SavedToggle> toggles = new ArrayList<>();
         Map<Field,Boolean> player = new LinkedHashMap<>();
-        boolean xray = XrayFeature.enabled(), rain = GlassRainSettings.isEnabled();
+        boolean xray = XrayFeature.enabled();
         boolean[] minerals = new boolean[XrayFeature.Mineral.values().length];
         for (var mineral : XrayFeature.Mineral.values()) minerals[mineral.ordinal()] = XrayFeature.selected(mineral);
         context.runOnClient(client -> {
@@ -102,7 +102,6 @@ final class ClickGuiAllOffGameTest {
                 for (SavedToggle toggle : toggles) if (!toggle.state.getAsBoolean()) toggle.action.run();
                 XrayFeature.setEnabled(true);
                 for (var mineral : XrayFeature.Mineral.values()) if (!XrayFeature.selected(mineral)) XrayFeature.toggle(mineral);
-                GlassRainSettings.setEnabled(true);
             });
             float scale = PlayerSettings.xScale, range = PlayerSettings.killAuraRange;
             int blur = GlassEffectSettings.blurStep(), color = GlassEffectSettings.tintColor();
@@ -116,7 +115,6 @@ final class ClickGuiAllOffGameTest {
                 for (SavedToggle toggle : toggles) check(!toggle.state.getAsBoolean(),"All off left a HUD/effect option on");
                 check(!XrayFeature.enabled(),"Xray remained active");
                 for (var mineral : XrayFeature.Mineral.values()) check(!XrayFeature.selected(mineral),"Xray filter remained selected");
-                check(!GlassRainSettings.isEnabled(),"Glass drops remained active");
                 check(PlayerSettings.xScale==scale && PlayerSettings.killAuraRange==range
                         && GlassEffectSettings.blurStep()==blur && GlassEffectSettings.tintColor()==color,"All off changed numeric settings");
                 checkSavedOff("voicechat-spotify-hud.properties","enabled","edges","musicGlass");
@@ -146,7 +144,6 @@ final class ClickGuiAllOffGameTest {
                 for (SavedToggle toggle : toggles) if (toggle.state.getAsBoolean()!=toggle.previous) toggle.action.run();
                 for (var mineral : XrayFeature.Mineral.values()) if (XrayFeature.selected(mineral)!=minerals[mineral.ordinal()]) XrayFeature.toggle(mineral);
                 XrayFeature.setEnabled(xray);
-                GlassRainSettings.setEnabled(rain);
             });
         }
     }

@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import pingplus.voicechat.client.gui.glass.GlassRain;
 import pingplus.voicechat.client.gui.glass.MenuBackground;
 
 @Mixin(Screen.class)
@@ -32,7 +31,7 @@ public abstract class GlassMenuBackgroundMixin {
 
     @Inject(method = "extractMenuBackground(Lnet/minecraft/client/gui/GuiGraphicsExtractor;)V",
             at = @At("HEAD"), cancellable = true)
-    private void rainBackground(GuiGraphicsExtractor g, CallbackInfo ci) {
+    private void menuBackground(GuiGraphicsExtractor g, CallbackInfo ci) {
         menuShade(g, 0, 0, g.guiWidth(), g.guiHeight());
         ci.cancel();
     }
@@ -50,7 +49,5 @@ public abstract class GlassMenuBackgroundMixin {
         boolean inWorld = Minecraft.getInstance().level != null;
         g.fillGradient(x, y, x + width, y + height,
                 inWorld ? 0x40101920 : 0x18101920, inWorld ? 0x70101920 : 0x48101920);
-        // Outside a world the panorama hook already drew rain over the wallpaper.
-        if (inWorld) GlassRain.draw(g);
     }
 }

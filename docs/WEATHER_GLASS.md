@@ -15,9 +15,7 @@ persist in `config/voicechat-weather-glass.properties`.
 - **Intensity:** 0–100%, default 65%. Mode changes, wetting, drying, freezing and
   thawing blend smoothly. Turning the feature off also fades the material away.
 
-This is a new surface material, independent of the old full-screen menu droplets.
-While Weather Glass is enabled, that legacy overlay is suppressed so rain does
-not appear over a selected frost effect. Its saved preference is preserved.
+This material is bounded to individual glass surfaces.
 
 Rain has varied convex beads, softly merging pairs, gliding lenses, winding thin
 trails, refracted background detail and directional highlights. Frost develops

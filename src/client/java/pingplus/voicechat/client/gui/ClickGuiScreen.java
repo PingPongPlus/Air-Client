@@ -406,7 +406,6 @@ public final class ClickGuiScreen extends Screen {
         PlayerSettings.mobHealthBar = false;
         PlayerSettings.slayerBossHighlight = false;
         VoicechatClient.syncSlayerCfg();
-        if (GlassRainSettings.isEnabled()) GlassRainSettings.setEnabled(false);
         rebuildWidgets();
     }
     private Category category(String name,String subtitle) { Category c=new Category(name,subtitle);categories.add(c);return c; }
@@ -642,7 +641,6 @@ public final class ClickGuiScreen extends Screen {
             MenuBackground.drawWallpaper(g);
         }
         g.fill(0,0,width,height,GlassStyle.alpha(0x50000000,opacity));
-        pingplus.voicechat.client.gui.glass.GlassRain.draw(g);
     }
     @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
         opacity=closing==0?Math.clamp((System.nanoTime()-opened)/220_000_000f,0,1):1-Math.clamp((System.nanoTime()-closing)/160_000_000f,0,1);

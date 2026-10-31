@@ -73,26 +73,10 @@ public final class GlassRenderingTest implements FabricClientGameTest {
         context.setScreen(TitleScreen::new);
         context.waitTicks(30);
         context.takeScreenshot("glass-title");
-        boolean initialGlass = pingplus.voicechat.client.gui.glass.GlassRainSettings.isEnabled();
-        context.clickScreenButton("Glass drops: " + (initialGlass ? "ON" : "OFF"));
         context.runOnClient(client -> {
-            if (pingplus.voicechat.client.gui.glass.GlassRainSettings.isEnabled() == initialGlass)
-                throw new AssertionError("Glass toggle did not change state");
-            var saved = new java.util.Properties();
-            try (var reader = java.nio.file.Files.newBufferedReader(net.fabricmc.loader.api.FabricLoader.getInstance()
-                    .getConfigDir().resolve("voicechat-glass-rain.properties"))) { saved.load(reader); }
-            catch (java.io.IOException e) { throw new AssertionError("Cannot read saved glass preference", e); }
-            if (Boolean.parseBoolean(saved.getProperty("enabled")) == initialGlass)
-                throw new AssertionError("Glass preference was not saved");
-        });
-        context.waitTicks(10);
-        context.takeScreenshot("glass-toggled");
-        context.setScreen(TitleScreen::new);
-        context.waitTicks(5);
-        context.clickScreenButton("Glass drops: " + (initialGlass ? "OFF" : "ON"));
-        context.runOnClient(client -> {
-            if (pingplus.voicechat.client.gui.glass.GlassRainSettings.isEnabled() != initialGlass)
-                throw new AssertionError("Glass toggle did not restore state");
+            if (client.gui.screen().children().stream().anyMatch(child -> child instanceof Button button
+                    && button.getMessage().getString().startsWith("Glass drops:")))
+                throw new AssertionError("Removed glass drops toggle is still present");
         });
 
         context.runOnClient(client -> {
@@ -633,8 +617,6 @@ public final class GlassRenderingTest implements FabricClientGameTest {
             context.runOnClient(client -> GlassGpuTiming.begin());
             context.waitTicks(80);
             context.runOnClient(client -> GlassGpuTiming.finish("Pause 1440x900"));
-            context.waitTicks(20);
-            context.takeScreenshot("glass-pause-rain-motion");
             context.setScreen(() -> new pingplus.voicechat.client.gui.ClickGuiScreen(fps,key,coords,new pingplus.voicechat.client.hud.ArraylistHud(fps,coords)));
             context.waitTicks(20);
             context.takeScreenshot("clickgui-world");

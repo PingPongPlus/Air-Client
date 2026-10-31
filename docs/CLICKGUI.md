@@ -7,7 +7,7 @@ category. Groups such as **Bars**, **Player scale**, and **Glass style** have th
 own gear.
 
 The **All off** button in the top bar switches off every toggle across all
-categories and gear windows, including glass drops. It applies each feature's
+categories and gear windows. It applies each feature's
 normal shutdown and saved preferences. Slider values, colors, layouts, and
 keybinds remain available for later use. Repeated clicks keep everything off.
 

@@ -59,7 +59,7 @@ public final class WeatherGlass {
     private record Material(Matrix3x2f pose, int x, int y, int width, int height, int color, float seconds,
                             int shape, ScreenRectangle scissorArea, ScreenRectangle bounds) implements GuiElementRenderState {
         public RenderPipeline pipeline() { return GlassPipelines.WEATHER; }
-        public TextureSetup textureSetup() { return GlassBackdrop.rainTexture(); }
+        public TextureSetup textureSetup() { return GlassBackdrop.sceneTexture(); }
         public void buildVertices(VertexConsumer v) {
             vertex(v, x, y, 0, 0); vertex(v, x, y + height, 0, 1);
             vertex(v, x + width, y + height, 1, 1); vertex(v, x + width, y, 1, 0);
