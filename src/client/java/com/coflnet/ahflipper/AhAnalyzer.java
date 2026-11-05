@@ -46,12 +46,58 @@ public class AhAnalyzer {
         }
     }
 
+    private static Result analyzeRune(AhItem item, long price, long expectedProfit,
+                                      Result result) {
+        if (item.runeLevel <= 0) {
+            result.reasons.add("Rune-Level nicht erkannt");
+            result.buyable = false;
+            return result;
+        }
+        AhMarketData.RuneStats stats = AhMarketData.runeStats(item.tag, item.runeLevel);
+        if (stats == null || stats.sales < 2 || stats.median <= 0) {
+            result.reasons.add("Rune-Level " + item.runeLevel
+                    + " ohne ausreichende VerkÃ¤ufe");
+            result.buyable = false;
+            return result;
+        }
+        result.cleanPrice = stats.median;
+        result.cleanSales = stats.sales;
+        result.overallSales = stats.sales;
+        result.cleanCv = stats.coeffVariation;
+        result.expectedValue = stats.median;
+        result.quality = 1.0;
+        result.cleanScore = 1.0;
+        result.salesScore = 1.0;
+        result.volumeScore = 1.0;
+        result.stabilityScore = 1.0;
+        double feeFraction = AhFlipperMod.CONFIG.ahFeePercent / 100.0;
+        result.profit = Math.round(result.expectedValue * (1.0 - feeFraction)) - price;
+        result.profitPercent = price > 0 ? result.profit * 100.0 / price : -1;
+        result.score = Math.max(0, result.profit);
+        if (price <= 0) {
+            result.reasons.add("Preis <= 0");
+        }
+        if (expectedProfit > 0 && result.profitPercent
+                < AhFlipperMod.CONFIG.minProfitPercent) {
+            result.reasons.add(String.format(Locale.US, "Gewinn %.0f%% (< %.0f%%)",
+                    result.profitPercent, AhFlipperMod.CONFIG.minProfitPercent));
+        }
+        result.buyable = result.reasons.isEmpty();
+        return result;
+    }
+
     public static Result analyze(AhItem item, long price, long expectedProfit) {
         return analyze(item, price, expectedProfit, "");
     }
 
     public static Result analyze(AhItem item, long price, long expectedProfit,
                                  String excludeUuid) {
+        return analyze(item, price, expectedProfit, excludeUuid,
+                AhFlipperMod.CONFIG.minItemCoins);
+    }
+
+    public static Result analyze(AhItem item, long price, long expectedProfit,
+                                 String excludeUuid, long minPriceCoins) {
         Result result = new Result();
         result.tag = item.tag;
         result.price = price;
@@ -60,14 +106,22 @@ public class AhAnalyzer {
             result.buyable = false;
             return result;
         }
-        if (price < AhFlipperMod.CONFIG.minItemCoins) {
-            result.reasons.add("Preis unter " + AhFlipperMod.CONFIG.minItemCoins / 1_000_000 + "M");
+        if (AhFlipperMod.CONFIG.isBlockedItem(item.tag, item.displayName)) {
+            result.reasons.add("Blocked item");
+            result.buyable = false;
+            return result;
+        }
+        if (minPriceCoins > 0 && price < minPriceCoins) {
+            result.reasons.add("Preis unter " + minPriceCoins / 1_000_000 + "M");
+        }
+        if (item.isRune()) {
+            return analyzeRune(item, price, expectedProfit, result);
         }
 
         boolean pet = item.isPet();
         String petFilter = pet ? item.petFilter() : "";
         if (pet && petFilter.isBlank()) {
-            result.reasons.add("Pet-Level/Rarität nicht erkannt");
+            result.reasons.add("Pet-Level/RaritÃ¤t nicht erkannt");
         }
 
         AhMarketData.Analysis clean;
@@ -76,13 +130,13 @@ public class AhAnalyzer {
             AhMarketData.Analysis level1 = AhMarketData.analysis(item.tag, "&PetLevel=1");
             long level1Sales = level1 == null ? 0 : level1.totalSales;
             if (level1 == null || level1.totalSales <= AhFlipperMod.CONFIG.petLevel1MinSales) {
-                result.reasons.add("Zu wenig Level-1-Verkäufe (" + level1Sales + ")");
+                result.reasons.add("Zu wenig Level-1-VerkÃ¤ufe (" + level1Sales + ")");
             }
             AhMarketData.Analysis level = AhMarketData.analysis(item.tag,
                     "&PetLevel=" + item.petLevel);
             long levelSales = level == null ? 0 : level.totalSales;
             if (level == null || level.totalSales <= AhFlipperMod.CONFIG.petLevelMinSales) {
-                result.reasons.add("Zu wenig Level-" + item.petLevel + "-Verkäufe ("
+                result.reasons.add("Zu wenig Level-" + item.petLevel + "-VerkÃ¤ufe ("
                         + levelSales + ")");
             }
             clean = AhMarketData.analysis(item.tag, petFilter);
@@ -96,14 +150,7 @@ public class AhAnalyzer {
             cleanSales = clean == null ? 0 : clean.totalSales;
         } else {
             clean = AhMarketData.analysis(item.tag, "&Clean=true");
-            if (clean == null || clean.totalSales < 5) {
-                AhMarketData.Analysis fallback = AhMarketData.analysis(item.tag,
-                        "&Enchantment=None&Reforge=None");
-                if (fallback != null && fallback.totalSales > (clean == null ? 0 : clean.totalSales)) {
-                    clean = fallback;
-                }
-            }
-            cleanSales = clean == null ? 0 : clean.totalSales;
+            cleanSales = AhMarketData.cleanSaleCount(item.tag);
         }
         AhMarketData.Analysis overall = AhMarketData.analysis(item.tag, "");
         List<AhMarketData.Sold> sold = AhMarketData.sold(item.tag);
@@ -120,7 +167,12 @@ public class AhAnalyzer {
                 ? Math.round(clean.avgPrice) : clean.medianPrice;
         long cleanAverage = AhMarketData.lowestCleanAverage(item.tag, item.petLevel,
                 item.petRarity, sevenDayAverage);
-        long cleanBin = AhMarketData.binReference(item.tag, excludeUuid);
+        AhMarketData.RuneStats cleanRef = AhMarketData.referenceMedian(item);
+        if (cleanRef != null && cleanRef.median > 0) {
+            cleanAverage = cleanRef.median;
+            cleanSales = Math.max(cleanSales, cleanRef.sales);
+        }
+        long cleanBin = pet ? 0 : AhMarketData.binReference(item.tag, excludeUuid);
         long reference = AhMarketData.lowestReference(cleanAverage, cleanBin);
         if (reference > 0) {
             System.out.println("[AH-Flipper] Referenz " + item.tag + ": CleanAvg="
@@ -138,16 +190,19 @@ public class AhAnalyzer {
         if (robust != null) {
             result.cleanCv = robust.cv;
         }
+        if (cleanRef != null && cleanRef.sales > 0) {
+            result.cleanCv = cleanRef.coeffVariation;
+        }
         result.overallSales = overall.totalSales;
         result.addonValue = AhAddonValues.bazaarValue(item);
 
         if (!pet && overall.totalSales <= AhFlipperMod.CONFIG.minTotalSales) {
-            result.reasons.add("Zu wenig Gesamt-Verkäufe (" + overall.totalSales + ")");
+            result.reasons.add("Zu wenig Gesamt-VerkÃ¤ufe (" + overall.totalSales + ")");
         }
         if (!pet
                 && result.addonValue <= AhFlipperMod.CONFIG.cleanSalesAddonValueCoins
                 && result.cleanSales < AhFlipperMod.CONFIG.minCleanSales) {
-            result.reasons.add("Zu wenig Clean-Verkäufe (" + result.cleanSales + ")");
+            result.reasons.add("Zu wenig Clean-VerkÃ¤ufe (" + result.cleanSales + ")");
         }
         if (result.cleanCv > AhFlipperMod.CONFIG.maxDeviationPercent / 100.0) {
             result.reasons.add(String.format(Locale.US, "%s-Preis schwankt %.1f%% (> %.0f%%)",
@@ -246,6 +301,20 @@ public class AhAnalyzer {
             check.supported = false;
             result.addons.add(check);
         }
+        if (!item.skin.isBlank()) {
+            int sales = countNbtText(sold, "skin", item.skin);
+            if (sold.isEmpty() || sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
+                result.reasons.add("Skin " + item.skin + " nur " + sales
+                        + "x/Woche auf " + item.tag);
+            }
+        }
+        if (!item.dyeItem.isBlank()) {
+            int sales = countNbtText(sold, "dye_item", item.dyeItem);
+            if (sold.isEmpty() || sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
+                result.reasons.add("Dye " + item.dyeItem + " nur " + sales
+                        + "x/Woche auf " + item.tag);
+            }
+        }
 
         result.minAddonSales = Integer.MAX_VALUE;
         int supportedAddons = 0;
@@ -255,10 +324,6 @@ public class AhAnalyzer {
             }
             supportedAddons++;
             result.minAddonSales = Math.min(result.minAddonSales, check.sales);
-            if (check.volume > 0 && check.volume < AhFlipperMod.CONFIG.addonMinBazaarVolume) {
-                result.reasons.add(check.label + " Bazaar-Volumen "
-                        + Math.round(check.volume) + "/Woche");
-            }
             if (!sold.isEmpty()
                     && check.sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
                 result.reasons.add(check.label + " nur " + check.sales + "x/Woche auf "
@@ -269,7 +334,7 @@ public class AhAnalyzer {
             result.minAddonSales = 0;
         }
         if (sold.isEmpty() && supportedAddons > 0) {
-            result.reasons.add("Verkaufsdaten fehlen (Addons nicht prüfbar)");
+            result.reasons.add("Verkaufsdaten fehlen (Addons nicht prÃ¼fbar)");
         }
 
         double feeFraction = AhFlipperMod.CONFIG.ahFeePercent / 100.0;
@@ -295,7 +360,8 @@ public class AhAnalyzer {
                 + " Slots=" + estimate.slotUnlockValue
                 + " Comparable=" + estimate.comparableAverage + " ("
                 + estimate.comparableSales + " Sales, "
-                + estimate.comparableExcluded + " Ausrei\u00dfer) AskSafety="
+                + estimate.comparableExcluded + " Ausrei\u00dfer) Bin="
+                + estimate.comparableBin + " AskSafety="
                 + estimate.askSafetyValue
                 + " Ceiling=" + estimate.ceiling + " -> " + result.expectedValue);
         boolean addonsWorthwhile = result.addonValue >= threshold
@@ -332,6 +398,22 @@ public class AhAnalyzer {
         result.score = Math.max(0, result.profit) * result.quality;
         result.buyable = result.reasons.isEmpty();
         return result;
+    }
+
+    private static int countNbtText(List<AhMarketData.Sold> sold, String key, String value) {
+        if (key == null || key.isBlank() || value == null || value.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (AhMarketData.Sold sale : sold) {
+            if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
+                continue;
+            }
+            if (sale.nbt.get(key).getAsString().equalsIgnoreCase(value)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static int countEnchant(List<AhMarketData.Sold> sold, String type, int level) {
@@ -487,3 +569,4 @@ public class AhAnalyzer {
         return com.coflnet.flipper.trading.ScreenUtil.formatCoins(coins);
     }
 }
+

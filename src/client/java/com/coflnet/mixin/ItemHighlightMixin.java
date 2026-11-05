@@ -2,7 +2,9 @@ package com.coflnet.mixin;
 
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
+import com.coflnet.ahflipper.AhFlipperMod;
 import com.coflnet.gui.RenderUtils;
+import com.coflnet.gui.panel.ItemIconCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -27,10 +29,27 @@ public abstract class ItemHighlightMixin {
     @Shadow protected int imageHeight;
 
     @Shadow @Nullable protected Slot hoveredSlot;
+    private static long lastBulkIconLearnAt;
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void onKeyPressed(KeyEvent input, CallbackInfoReturnable<Boolean> cir) {
         try {
+            if (AhFlipperMod.handleToggleKeys(input)) {
+                cir.setReturnValue(true);
+                return;
+            }
+            AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>)(Object)this;
+            if (AhFlipperMod.blacklistKey() != null
+                    && AhFlipperMod.blacklistKey().matches(input)
+                    && screen.getFocused() == null) {
+                if (hoveredSlot != null && hoveredSlot.hasItem()) {
+                    AhFlipperMod.handleBlacklistKey(hoveredSlot.getItem());
+                } else {
+                    AhFlipperMod.handleBlacklistKey(null);
+                }
+                cir.setReturnValue(true);
+                return;
+            }
             // The keyPressed method now receives a KeyInput record object.
             if (CoflModClient.uploadItemKeyBinding.matches(input)) {
                 if (hoveredSlot != null && hoveredSlot.hasItem()) {
@@ -47,9 +66,26 @@ public abstract class ItemHighlightMixin {
         try {
             if (hoveredSlot != null && hoveredSlot.hasItem()) {
                 CoflModClient.maybeUploadHoveredMapContent(hoveredSlot.getItem());
+                ItemIconCache.learn(hoveredSlot.getItem());
             }
 
             AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>)(Object)this;
+            // Auction/bazaar product GUIs show the relevant item in slot 13.
+            if (screen.getMenu().slots.size() > 13) {
+                Slot center = screen.getMenu().slots.get(13);
+                if (center != null && center.hasItem()) {
+                    ItemIconCache.learn(center.getItem());
+                }
+            }
+            long now = System.currentTimeMillis();
+            if (now - lastBulkIconLearnAt > 500L) {
+                lastBulkIconLearnAt = now;
+                for (Slot slot : screen.getMenu().slots) {
+                    if (slot.hasItem()) {
+                        ItemIconCache.learn(slot.getItem());
+                    }
+                }
+            }
             for (Slot slot : screen.getMenu().slots) {
                 if (!slot.hasItem())
                     continue;

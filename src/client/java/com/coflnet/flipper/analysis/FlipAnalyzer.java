@@ -47,7 +47,15 @@ public class FlipAnalyzer {
     }
 
     public static List<FlipPlan> compute(MarketData data, FlipperConfig cfg, double bankroll, Set<String> existingProductIds, int availableSlots) {
+        return compute(data, cfg, bankroll, existingProductIds, availableSlots, null, 0L);
+    }
+
+    public static List<FlipPlan> compute(MarketData data, FlipperConfig cfg, double bankroll,
+                                         Set<String> existingProductIds, int availableSlots,
+                                         java.util.function.BooleanSupplier cancel,
+                                         long budgetMs) {
         List<FlipPlan> plans = new ArrayList<>();
+        long deadline = budgetMs > 0 ? System.currentTimeMillis() + budgetMs : 0;
         if (data == null || bankroll <= 0 || availableSlots <= 0) {
             return plans;
         }
@@ -60,10 +68,16 @@ public class FlipAnalyzer {
         int inventoryCapacity = Math.max(64, ScreenUtil.freeInventorySlots() * 64);
 
         for (MarketData.Product product : data.products.values()) {
+            if (cancel != null && cancel.getAsBoolean()) {
+                break;
+            }
+            if (deadline > 0 && System.currentTimeMillis() > deadline) {
+                break;
+            }
             if (existingProductIds != null && existingProductIds.contains(product.productId)) {
                 continue;
             }
-            if (cfg.blacklist.contains(product.productId)) {
+            if (cfg.isBlocked(product.productId, ItemNames.displayName(product.productId))) {
                 continue;
             }
             double buyPrice = round1(product.bestBid + 0.1);
@@ -102,6 +116,12 @@ public class FlipAnalyzer {
                 continue;
             }
 
+            if (cancel != null && cancel.getAsBoolean()) {
+                break;
+            }
+            if (deadline > 0 && System.currentTimeMillis() > deadline) {
+                break;
+            }
             BazaarPriceHistory.Snapshot history = BazaarPriceHistory.lookup(product.productId);
             if (cfg.requireHistoricalPrice) {
                 if (history == null || history.volume < cfg.minHistoryVolume) {
@@ -162,6 +182,9 @@ public class FlipAnalyzer {
                 continue;
             }
             double p = realizedFlow * profit;
+            if (cfg.minCoinsPerHour > 0 && p < cfg.minCoinsPerHour) {
+                continue;
+            }
             double u = Math.max(uBuy, uSell);
             double r = 0.5 * (q / flowPerHour) * Math.min(u, 1.0 / checkHours);
             double limitBase = cfg.beta * buyPrice + sellPrice;

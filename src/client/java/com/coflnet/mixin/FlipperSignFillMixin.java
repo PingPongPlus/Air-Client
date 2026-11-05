@@ -19,6 +19,7 @@ public class FlipperSignFillMixin {
         if (text == null) {
             return;
         }
+        long closeDelay = SignInput.closeDelayMs();
         try {
             Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
             lines[0] = Component.literal(text);
@@ -33,7 +34,7 @@ public class FlipperSignFillMixin {
             Minecraft client = Minecraft.getInstance();
             Thread.startVirtualThread(() -> {
                 try {
-                    Thread.sleep(200);
+                    Thread.sleep(closeDelay);
                     client.execute(() -> {
                         if (client.gui.screen() != null) {
                             client.gui.screen().onClose();

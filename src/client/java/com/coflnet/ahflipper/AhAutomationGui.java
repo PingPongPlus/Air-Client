@@ -59,10 +59,30 @@ public final class AhAutomationGui {
                                         })
                                         .build())
                                 .option(Option.<Boolean>createBuilder()
+                                        .name(Component.literal("One-Hit-Modus"))
+                                        .description(OptionDescription.of(Component.literal(
+                                                "Ein Schlag pro Ziel, danach sofort das naechste Ziel suchen.")))
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .binding(false, () -> config.oneHitMode, value -> {
+                                            config.oneHitMode = value;
+                                            config.save();
+                                        })
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
                                         .name(Component.literal("Sprinten erlaubt"))
                                         .controller(TickBoxControllerBuilder::create)
                                         .binding(true, () -> config.allowSprint, value -> {
                                             config.allowSprint = value;
+                                            config.save();
+                                        })
+                                        .build())
+                                .option(Option.<Double>createBuilder()
+                                        .name(Component.literal("Kamera-Drehgeschwindigkeit"))
+                                        .description(OptionDescription.of(Component.literal(
+                                                "Maximale Grad pro Sekunde fuer die weiche Kamera.")))
+                                        .controller(DoubleFieldControllerBuilder::create)
+                                        .binding(240.0, () -> config.cameraTurnSpeed, value -> {
+                                            config.cameraTurnSpeed = value;
                                             config.save();
                                         })
                                         .build())

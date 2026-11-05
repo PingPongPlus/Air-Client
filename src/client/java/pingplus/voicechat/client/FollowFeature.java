@@ -2,7 +2,6 @@ package pingplus.voicechat.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.util.Mth;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -17,6 +16,7 @@ public final class FollowFeature {
     private static double lastTargetX;
     private static double lastTargetY;
     private static double lastTargetZ;
+    private static long lastLookAt;
 
     public static void tick(Minecraft client) {
         var player = client.player;
@@ -70,9 +70,13 @@ public final class FollowFeature {
         if (shouldLook) {
             float targetYaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
             float targetPitch = (float) Math.toDegrees(-Math.atan2(dy, distXZ));
-            float smoothing = 0.2f;
-            player.setYRot(player.getYRot() + Mth.wrapDegrees(targetYaw - player.getYRot()) * smoothing);
-            player.setXRot(player.getXRot() + (Math.clamp(targetPitch, -89f, 89f) - player.getXRot()) * smoothing);
+            long now = System.currentTimeMillis();
+            double dt = lastLookAt == 0 ? 0.05
+                    : Math.min(0.05, (now - lastLookAt) / 1000.0);
+            lastLookAt = now;
+            player.setYRot(AimSmoothing.step(player.getYRot(), targetYaw, 240.0f, dt));
+            player.setXRot(Math.clamp(AimSmoothing.step(player.getXRot(),
+                    targetPitch, 240.0f, dt), -90.0f, 90.0f));
             player.setYHeadRot(player.getYRot());
         }
 
@@ -90,6 +94,7 @@ public final class FollowFeature {
     private static void release(Minecraft client) {
         trackedTargetId = null;
         idleLookTargetId = null;
+        lastLookAt = 0;
         if (!following) return;
         following = false;
         client.options.keyUp.setDown(false);

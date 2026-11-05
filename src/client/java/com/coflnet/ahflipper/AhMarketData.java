@@ -31,11 +31,16 @@ public class AhMarketData {
 
     private static final Map<String, SoldCache> SOLD_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, AnalysisCache> ANALYSIS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, RuneCache> RUNE_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CoflMedianCache> COFL_MEDIAN_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, ActiveCache> ACTIVE_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, AuctionCache> AUCTION_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, CraftCache> CRAFT_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, BreakdownCache> BREAKDOWN_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, Long> BREAKDOWN_SUPPRESSED = new ConcurrentHashMap<>();
+    private static final Map<String, AddonBinCache> ADDON_BIN_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, LbinCountCache> LBIN_COUNT_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, ReforgeValueCache> REFORGE_VALUE_CACHE = new ConcurrentHashMap<>();
     private static final Object HTTP_LOCK = new Object();
     private static long lastRequestAt;
     private static volatile MarketCache marketCache;
@@ -43,7 +48,9 @@ public class AhMarketData {
     public static class Sold {
         public long price;
         public long end;
+        public int count = 1;
         public String itemName = "";
+        public String seller = "";
         public boolean bin;
         public int petLevel;
         public String petRarity = "";
@@ -64,6 +71,16 @@ public class AhMarketData {
         public int level;
     }
 
+    public static class RuneStats {
+        public int level;
+        public int sales;
+        public long median;
+        public long average;
+        public long minPrice;
+        public long maxPrice;
+        public double coeffVariation;
+    }
+
     public static class Analysis {
         public long totalSales;
         public long medianPrice;
@@ -77,6 +94,7 @@ public class AhMarketData {
         public long average;
         public int sample;
         public int excluded;
+        public int candidates;
     }
 
     @FunctionalInterface
@@ -100,6 +118,22 @@ public class AhMarketData {
     public record ActiveBin(String uuid, String seller, String playerName, long price) {
     }
 
+    public static class ActiveAuction {
+        public String uuid = "";
+        public String tag = "";
+        public String itemName = "";
+        public String playerName = "";
+        public long startingBid;
+        public long highestBidAmount;
+        public long price;
+        public long end;
+        public boolean bin;
+
+        public long currentBid() {
+            return Math.max(startingBid, highestBidAmount);
+        }
+    }
+
     public static class AuctionDetails {
         public String uuid = "";
         public String tag = "";
@@ -108,6 +142,9 @@ public class AhMarketData {
         public String tier = "";
         public int count = 1;
         public long startingBid;
+        public long rawStartingBid;
+        public long highestBidAmount;
+        public String highestBidder = "";
         public long end;
         public boolean bin;
         public final Map<String, Integer> enchants = new LinkedHashMap<>();
@@ -148,10 +185,46 @@ public class AhMarketData {
     private record AnalysisCache(Analysis analysis, long at) {
     }
 
+    private record RuneCache(RuneStats stats, long at) {
+    }
+
+    private record CoflMedianCache(long median, long at) {
+    }
+
     private record ActiveCache(List<ActiveBin> bins, long at) {
     }
 
+    private record AddonBinCache(long price, long at) {
+    }
+
+    private record LbinCountCache(int count, long at) {
+    }
+
+    private record ReforgeValueCache(long value, long at) {
+    }
+
     private record MarketCache(Map<String, MarketEntry> entries, long at) {
+    }
+
+    public static void trimInvestmentCaches() {
+        long now = System.currentTimeMillis();
+        ACTIVE_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at() > 60_000L);
+        ADDON_BIN_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at() > 60_000L);
+        LBIN_COUNT_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at() > 60_000L);
+    }
+
+    public static void invalidateAuction(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return;
+        }
+        String key = uuid.replace("-", "").toLowerCase(Locale.ROOT);
+        AUCTION_CACHE.remove(uuid);
+        AUCTION_CACHE.remove(key);
+        if (key.length() == 32) {
+            AUCTION_CACHE.remove(key.substring(0, 8) + "-" + key.substring(8, 12)
+                    + "-" + key.substring(12, 16) + "-" + key.substring(16, 20)
+                    + "-" + key.substring(20));
+        }
     }
 
     public static AuctionDetails auction(String uuid) {
@@ -173,8 +246,25 @@ public class AhMarketData {
             details.reforge = stringValue(json, "reforge");
             details.tier = stringValue(json, "tier");
             details.count = json.has("count") ? json.get("count").getAsInt() : 1;
-            details.startingBid = Math.max(longValue(json, "startingBid"),
-                    longValue(json, "highestBidAmount"));
+            details.rawStartingBid = longValue(json, "startingBid");
+            details.highestBidAmount = longValue(json, "highestBidAmount");
+            details.startingBid = Math.max(details.rawStartingBid, details.highestBidAmount);
+            JsonArray bids = json.getAsJsonArray("bids");
+            if (bids != null) {
+                for (JsonElement element : bids) {
+                    if (!element.isJsonObject()) {
+                        continue;
+                    }
+                    JsonObject bid = element.getAsJsonObject();
+                    String bidder = stringValue(bid, "bidder");
+                    long amount = longValue(bid, "amount");
+                    if (amount >= details.highestBidAmount) {
+                        details.highestBidAmount = amount;
+                        details.highestBidder = bidder;
+                    }
+                }
+            }
+            details.startingBid = Math.max(details.rawStartingBid, details.highestBidAmount);
             details.bin = json.has("bin") && json.get("bin").getAsBoolean();
             details.end = parseTime(stringValue(json, "end"));
             JsonArray enchants = json.getAsJsonArray("enchantments");
@@ -344,6 +434,144 @@ public class AhMarketData {
         }
     }
 
+    public static int exactLbinCount(String tag, long lbin) {
+        if (tag == null || tag.isBlank() || lbin <= 0) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        long tolerance = Math.max(1, Math.round(
+                lbin * Math.max(0, AhFlipperMod.CONFIG.coflLbinMatchPercent) / 100.0));
+        String key = tag.toLowerCase(Locale.ROOT) + "|" + lbin + "|" + tolerance;
+        LbinCountCache cached = LBIN_COUNT_CACHE.get(key);
+        if (cached != null && now - cached.at < 30_000L) {
+            return cached.count;
+        }
+        int count = 0;
+        for (ActiveBin bin : activeBins(tag)) {
+            if (Math.abs(bin.price() - lbin) > tolerance) {
+                continue;
+            }
+            if (AhFlipperMod.isOwnSeller(bin.seller(), bin.playerName())) {
+                continue;
+            }
+            count++;
+        }
+        LBIN_COUNT_CACHE.put(key, new LbinCountCache(count, now));
+        if (LBIN_COUNT_CACHE.size() > 500) {
+            LBIN_COUNT_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at > 60_000L);
+        }
+        return count;
+    }
+
+    public static void ensureLbinCount(AhItem item) {
+        if (item == null || item.coflLbinCount >= 0) {
+            return;
+        }
+        if (!item.needsLbinCountCheck()) {
+            item.applyLbinCount(0);
+            return;
+        }
+        int count = exactLbinCount(item.tag, item.coflLbin);
+        item.applyLbinCount(count);
+        long tolerance = Math.max(1, Math.round(item.coflLbin
+                * Math.max(0, AhFlipperMod.CONFIG.coflLbinMatchPercent) / 100.0));
+        System.out.println("[AH-Flipper] LBin-Check " + item.tag + " @ "
+                + item.coflLbin + " (\u00b1" + tolerance + "): " + count
+                + " Auktion(en), min=" + AhFlipperMod.CONFIG.coflLbinMinCount
+                + " -> " + item.coflPick);
+    }
+
+    public static List<ActiveAuction> activeNonBinEndingSoon(int maxPages, long untilMillis) {
+        return activeNonBinEndingSoon(maxPages, untilMillis, () -> false);
+    }
+
+    public static List<ActiveAuction> activeNonBinEndingSoon(int maxPages, long untilMillis,
+                                                             java.util.function.BooleanSupplier stop) {
+        List<ActiveAuction> result = new ArrayList<>();
+        int pages = Math.max(1, maxPages);
+        for (int page = 0; page < pages; page++) {
+            if (stop.getAsBoolean()) {
+                break;
+            }
+            String body = get(BASE + "/auctions/active/filter?page=" + page
+                    + "&pageSize=100&orderBy=ENDING_SOON");
+            if (body == null) {
+                break;
+            }
+            try {
+                JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+                JsonArray items = root.getAsJsonArray("items");
+                if (items == null || items.isEmpty()) {
+                    break;
+                }
+                boolean reachedEnd = false;
+                for (JsonElement element : items) {
+                    if (!element.isJsonObject()) {
+                        continue;
+                    }
+                    JsonObject json = element.getAsJsonObject();
+                    ActiveAuction auction = new ActiveAuction();
+                    auction.uuid = stringValue(json, "uuid");
+                    auction.tag = stringValue(json, "tag");
+                    auction.itemName = stringValue(json, "itemName");
+                    auction.playerName = stringValue(json, "playerName");
+                    auction.startingBid = longValue(json, "startingBid");
+                    auction.highestBidAmount = longValue(json, "highestBidAmount");
+                    auction.price = longValue(json, "price");
+                    auction.end = parseTime(stringValue(json, "end"));
+                    auction.bin = json.has("bin") && json.get("bin").getAsBoolean();
+                    if (auction.end > untilMillis) {
+                        reachedEnd = true;
+                        break;
+                    }
+                    if (!auction.uuid.isBlank() && !auction.bin && auction.end > 0
+                            && auction.end > System.currentTimeMillis()) {
+                        result.add(auction);
+                    }
+                }
+                if (reachedEnd || items.size() < 100) {
+                    break;
+                }
+                try {
+                    Thread.sleep(400L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            } catch (Exception e) {
+                System.out.println("[AH-Flipper] Active-Filter Fehler (Seite " + page + "): "
+                        + e.getMessage());
+                break;
+            }
+        }
+        result.sort((a, b) -> Long.compare(a.end, b.end));
+        return result;
+    }
+
+    public static int activePlayerAuctionCount(String playerUuid) {
+        if (playerUuid == null || playerUuid.isBlank()) {
+            return -1;
+        }
+        String url = BASE + "/auctions/active/filter?page=0&pageSize=100"
+                + "&orderBy=ENDING_SOON&query%5BSeller%5D=" + enc(playerUuid);
+        String body = get(url);
+        if (body == null) {
+            return -1;
+        }
+        try {
+            JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+            JsonElement total = root.get("totalCount");
+            if (total != null && !total.isJsonNull()) {
+                return total.getAsInt();
+            }
+            JsonArray items = root.getAsJsonArray("items");
+            return items == null ? 0 : items.size();
+        } catch (Exception e) {
+            System.out.println("[AH-Flipper] Aktive-Spieler-Auktionen Fehler: " + e.getMessage());
+            return -1;
+        }
+    }
+
     public static Map<String, MarketEntry> market() {
         long now = System.currentTimeMillis();
         MarketCache cache = marketCache;
@@ -395,11 +623,19 @@ public class AhMarketData {
         return cache != null ? cache.sold : List.of();
     }
 
+    public static List<Sold> soldForInvestment(String tag, int maxPages) {
+        return fetchSold(tag, maxPages);
+    }
+
     private static List<Sold> fetchSold(String tag) {
+        return fetchSold(tag, AhFlipperMod.CONFIG.maxSoldPages);
+    }
+
+    private static List<Sold> fetchSold(String tag, int maxPages) {
         List<Sold> all = new ArrayList<>();
         long cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000;
         try {
-            for (int page = 0; page < Math.max(1, AhFlipperMod.CONFIG.maxSoldPages); page++) {
+            for (int page = 0; page < Math.max(1, maxPages); page++) {
                 String url = BASE + "/auctions/tag/" + enc(tag) + "/sold?page=" + page + "&pageSize=1000";
                 String body = get(url);
                 if (body == null) {
@@ -440,6 +676,15 @@ public class AhMarketData {
         }
         sold.itemName = json.has("itemName") && !json.get("itemName").isJsonNull()
                 ? json.get("itemName").getAsString() : "";
+        sold.count = json.has("count") && !json.get("count").isJsonNull()
+                ? Math.max(1, json.get("count").getAsInt()) : 1;
+        sold.seller = stringValue(json, "auctioneerId");
+        if (sold.seller.isBlank()) {
+            sold.seller = stringValue(json, "seller");
+        }
+        if (sold.seller.isBlank()) {
+            sold.seller = stringValue(json, "sellerUuid");
+        }
         sold.end = parseTime(json.has("end") && !json.get("end").isJsonNull()
                 ? json.get("end").getAsString() : "");
         sold.bin = json.has("bin") && json.get("bin").getAsBoolean();
@@ -491,6 +736,13 @@ public class AhMarketData {
             return 0;
         }
         try {
+            long numeric = Long.parseLong(value.trim());
+            if (numeric > 0) {
+                return numeric < 1_000_000_000_000L ? numeric * 1000L : numeric;
+            }
+        } catch (NumberFormatException ignoredNumeric) {
+        }
+        try {
             return java.time.Instant.parse(value).toEpochMilli();
         } catch (Exception ignored) {
             try {
@@ -534,9 +786,117 @@ public class AhMarketData {
         return analysis == null ? 0 : analysis.medianPrice;
     }
 
+    public static long coflMedian(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        CoflMedianCache cached = COFL_MEDIAN_CACHE.get(tag);
+        if (cached != null && now - cached.at < 2 * 60_000L) {
+            return cached.median;
+        }
+        String body = get(BASE + "/item/price/" + enc(tag));
+        long median = 0;
+        if (body != null) {
+            try {
+                JsonObject json = JsonParser.parseString(body).getAsJsonObject();
+                median = longValue(json, "median");
+            } catch (Exception ignored) {
+            }
+        }
+        COFL_MEDIAN_CACHE.put(tag, new CoflMedianCache(median, now));
+        return median;
+    }
+
+    public static RuneStats referenceMedian(AhItem item) {
+        if (item == null || item.tag == null || item.tag.isBlank()) {
+            return null;
+        }
+        List<Sold> all = sold(item.tag);
+        if (all.isEmpty()) {
+            return null;
+        }
+        List<Sold> primary = new ArrayList<>();
+        for (Sold sale : all) {
+            if (sale.price <= 0) {
+                continue;
+            }
+            if (item.isPet()) {
+                if (sale.petLevel == item.petLevel
+                        && item.petRarity != null
+                        && item.petRarity.equalsIgnoreCase(sale.petRarity)) {
+                    primary.add(sale);
+                }
+            } else if (isCleanSale(item.tag, sale)) {
+                primary.add(sale);
+            }
+        }
+        if (primary.isEmpty()) {
+            for (Sold sale : all) {
+                if (sale.price <= 0) {
+                    continue;
+                }
+                if (!item.isPet()
+                        && soldAddonBaseValue(item.tag, sale)
+                        < AhFlipperMod.CONFIG.cleanSalesAddonValueCoins) {
+                    primary.add(sale);
+                }
+            }
+        }
+        if (primary.isEmpty()) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        long hour = robustMedian(primary, now - 60L * 60_000L);
+        long day = robustMedian(primary, now - 24L * 60L * 60_000L);
+        long week = robustMedian(primary, now - 7L * 24L * 60L * 60_000L);
+        long reference = Long.MAX_VALUE;
+        for (long value : new long[]{hour, day, week}) {
+            if (value > 0) {
+                reference = Math.min(reference, value);
+            }
+        }
+        if (reference == Long.MAX_VALUE) {
+            return null;
+        }
+        List<Long> prices = new ArrayList<>();
+        for (Sold sale : primary) {
+            long base = sale.price - soldCoinValue(sale);
+            if (base > 0 && (sale.end <= 0 || sale.end >= now - 7L * 24L * 60L * 60_000L)) {
+                prices.add(base);
+            }
+        }
+        if (prices.isEmpty()) {
+            return null;
+        }
+        prices.sort(null);
+        RuneStats stats = new RuneStats();
+        stats.sales = prices.size();
+        stats.median = reference;
+        stats.minPrice = prices.get(0);
+        stats.maxPrice = prices.get(prices.size() - 1);
+        double sum = 0;
+        for (long price : prices) {
+            sum += price;
+        }
+        double average = sum / prices.size();
+        stats.average = Math.round(average);
+        double variance = 0;
+        for (long price : prices) {
+            double diff = price - average;
+            variance += diff * diff;
+        }
+        stats.coeffVariation = average <= 0 ? 0
+                : Math.sqrt(variance / prices.size()) / average;
+        return stats;
+    }
+
     public static long lowestCleanAverage(String tag, int petLevel, String petRarity,
                                           long sevenDayAverage) {
-        long lowest = sevenDayAverage > 0 ? sevenDayAverage : Long.MAX_VALUE;
+        long week = cleanAverageWindow(tag, petLevel, petRarity,
+                7L * 24 * 60 * 60 * 1000);
+        long sevenDay = week > 0 ? week : sevenDayAverage;
+        long lowest = sevenDay > 0 ? sevenDay : Long.MAX_VALUE;
         long day = cleanAverageWindow(tag, petLevel, petRarity, 24L * 60 * 60 * 1000);
         if (day > 0) {
             lowest = Math.min(lowest, day);
@@ -546,6 +906,64 @@ public class AhMarketData {
             lowest = Math.min(lowest, hour);
         }
         return lowest == Long.MAX_VALUE ? 0 : lowest;
+    }
+
+    public static long cleanSaleCount(String tag) {
+        long count = 0;
+        for (Sold sale : sold(tag)) {
+            if (isCleanSale(tag, sale)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static RuneStats runeStats(String tag, int level) {
+        if (tag == null || tag.isBlank() || level <= 0) {
+            return null;
+        }
+        String key = tag.toUpperCase(Locale.ROOT) + "#" + level;
+        long now = System.currentTimeMillis();
+        RuneCache cached = RUNE_CACHE.get(key);
+        if (cached != null && now - cached.at
+                < AhFlipperMod.CONFIG.analysisCacheMinutes * 60_000L) {
+            return cached.stats;
+        }
+        List<Long> prices = new ArrayList<>();
+        for (Sold sale : sold(tag)) {
+            if (sale.price <= 0 || AhItem.runeLevel(sale.itemName) != level) {
+                continue;
+            }
+            prices.add(sale.price);
+        }
+        if (prices.isEmpty()) {
+            return null;
+        }
+        prices.sort(null);
+        RuneStats stats = new RuneStats();
+        stats.level = level;
+        stats.sales = prices.size();
+        stats.median = median(prices);
+        stats.minPrice = prices.get(0);
+        stats.maxPrice = prices.get(prices.size() - 1);
+        double sum = 0;
+        for (long price : prices) {
+            sum += price;
+        }
+        double average = sum / prices.size();
+        stats.average = Math.round(average);
+        double variance = 0;
+        for (long price : prices) {
+            double diff = price - average;
+            variance += diff * diff;
+        }
+        stats.coeffVariation = average <= 0 ? 0
+                : Math.sqrt(variance / prices.size()) / average;
+        RUNE_CACHE.put(key, new RuneCache(stats, now));
+        if (RUNE_CACHE.size() > 300) {
+            RUNE_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at > 60_000L);
+        }
+        return stats;
     }
 
     public static long binReference(String tag, String excludeUuid) {
@@ -563,6 +981,286 @@ public class AhMarketData {
             return bin.price();
         }
         return 0;
+    }
+
+    public static long lowestComparableBin(AhItem item, String excludeUuid,
+                                           long minValue, long maxPrice) {
+        if (item == null || item.tag == null || item.tag.isBlank()) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        String cacheKey = item.tag + "|" + addonKey(item) + "|"
+                + (excludeUuid == null ? "" : excludeUuid) + "|" + maxPrice;
+        AddonBinCache cached = ADDON_BIN_CACHE.get(cacheKey);
+        if (cached != null && now - cached.at < 20_000L) {
+            return cached.price;
+        }
+        List<ActiveBin> bins = activeBins(item.tag);
+        int checked = 0;
+        long result = 0;
+        for (ActiveBin bin : bins) {
+            long price = bin.price();
+            if (price <= 0) {
+                continue;
+            }
+            if (maxPrice > 0 && price >= maxPrice) {
+                break;
+            }
+            if (excludeUuid != null && !excludeUuid.isBlank()
+                    && bin.uuid().equalsIgnoreCase(excludeUuid)) {
+                continue;
+            }
+            if (AhFlipperMod.isOwnSeller(bin.seller(), bin.playerName())) {
+                continue;
+            }
+            if (++checked > 8) {
+                break;
+            }
+            AuctionDetails details = auction(bin.uuid());
+            if (details == null) {
+                continue;
+            }
+            if (details.end > 0 && details.end < now) {
+                continue;
+            }
+            AhItem candidate = AhItem.fromAuction(details);
+            if (!item.tag.equalsIgnoreCase(candidate.tag)) {
+                continue;
+            }
+            if (!sameAddons(item, candidate, minValue)) {
+                continue;
+            }
+            result = price;
+            break;
+        }
+        ADDON_BIN_CACHE.put(cacheKey, new AddonBinCache(result, now));
+        if (ADDON_BIN_CACHE.size() > 500) {
+            ADDON_BIN_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at > 60_000L);
+        }
+        return result;
+    }
+
+    private static String addonKey(AhItem item) {
+        return item.count + "|" + item.hpb + "|" + item.fumingHpb + "|"
+                + item.recomb + "|" + item.stars
+                + "|" + item.artOfWar + "|" + item.woodSingularity + "|"
+                + (item.reforge == null ? "" : item.reforge.toLowerCase(Locale.ROOT))
+                + "|" + item.enchants + "|" + item.abilityScrolls + "|"
+                + item.gemstones + "|" + item.unlockedGemSlots + "|"
+                + item.ethermerge + "|" + item.tunedTransmission + "|"
+                + item.dyeItem + "|" + item.skin + "|" + item.petSkin + "|"
+                + item.killKey + ":" + item.kills + "|"
+                + item.petLevel + "|" + item.petRarity + "|"
+                + (item.petItem == null ? "" : item.petItem.toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean sameAddons(AhItem a, AhItem b, long minValue) {
+        if (a.count != b.count) {
+            return false;
+        }
+        if (Math.abs(a.coinValue - b.coinValue) > minValue) {
+            return false;
+        }
+        if (!sameText(a.dyeItem, b.dyeItem)
+                || !sameText(a.skin, b.skin)
+                || !sameText(a.petSkin, b.petSkin)) {
+            return false;
+        }
+        if (a.isPet() || b.isPet()) {
+            if (a.petLevel != b.petLevel
+                    || !a.petRarity.equalsIgnoreCase(b.petRarity)) {
+                return false;
+            }
+            if (b.petCandies > 0) {
+                return false;
+            }
+            if (!a.petItem.equalsIgnoreCase(b.petItem)
+                    && Math.max(petItemValue(a.petItem), petItemValue(b.petItem)) > minValue) {
+                return false;
+            }
+        }
+        Set<String> enchantKeys = new LinkedHashSet<>(a.enchants.keySet());
+        enchantKeys.addAll(b.enchants.keySet());
+        for (String key : enchantKeys) {
+            int aLevel = a.enchants.getOrDefault(key, 0);
+            int bLevel = b.enchants.getOrDefault(key, 0);
+            if (aLevel == bLevel) {
+                continue;
+            }
+            if (AhAddonValues.enchantValue(key, Math.max(aLevel, bLevel)) > minValue) {
+                return false;
+            }
+        }
+        if (a.hpb != b.hpb
+                && AhAddonValues.hpbValue(Math.max(a.hpb, b.hpb)) > minValue) {
+            return false;
+        }
+        if (a.fumingHpb != b.fumingHpb
+                && AhAddonValues.fumingHpbValue(Math.max(a.fumingHpb, b.fumingHpb)) > minValue) {
+            return false;
+        }
+        if (a.recomb != b.recomb && AhAddonValues.recombValue() > minValue) {
+            return false;
+        }
+        if (a.artOfWar != b.artOfWar
+                && AhAddonValues.artOfWarValue(Math.max(a.artOfWar, b.artOfWar)) > minValue) {
+            return false;
+        }
+        if (a.woodSingularity != b.woodSingularity
+                && AhAddonValues.productValue("WOOD_SINGULARITY")
+                * Math.max(a.woodSingularity, b.woodSingularity) > minValue) {
+            return false;
+        }
+        if (a.stars != b.stars
+                || !reforgesMatch(a.tag, a.reforge, b.reforge)) {
+            return false;
+        }
+        if (a.isArmor() && b.isArmor()
+                && (!a.killKey.isBlank() || !b.killKey.isBlank())) {
+            if (!a.killKey.equalsIgnoreCase(b.killKey)
+                    || !killsMatch(a.kills, b.kills)) {
+                return false;
+            }
+        }
+        Set<String> aScrolls = normalizedScrolls(a.abilityScrolls);
+        Set<String> bScrolls = normalizedScrolls(b.abilityScrolls);
+        Set<String> scrolls = new LinkedHashSet<>(aScrolls);
+        scrolls.addAll(bScrolls);
+        for (String scroll : scrolls) {
+            if (!aScrolls.contains(scroll) || !bScrolls.contains(scroll)) {
+                if (AhAddonValues.productValue(scroll) > minValue) {
+                    return false;
+                }
+            }
+        }
+        Set<String> gemIds = new LinkedHashSet<>(a.gemstones.keySet());
+        gemIds.addAll(b.gemstones.keySet());
+        for (String gem : gemIds) {
+            if (!a.gemstones.getOrDefault(gem, 0).equals(b.gemstones.getOrDefault(gem, 0))
+                    && AhAddonValues.productValue(gem) > minValue) {
+                return false;
+            }
+        }
+        Set<String> slotDiff = new LinkedHashSet<>(a.unlockedGemSlots);
+        for (String slot : b.unlockedGemSlots) {
+            if (!slotDiff.remove(slot)) {
+                slotDiff.add(slot);
+            }
+        }
+        if (!slotDiff.isEmpty()
+                && AhAddonValues.slotUnlockValue(a.tag, slotDiff, false) > minValue) {
+            return false;
+        }
+        if (a.ethermerge != b.ethermerge
+                && AhAddonValues.etherwarpConduitValue() > minValue) {
+            return false;
+        }
+        if (a.tunedTransmission != b.tunedTransmission
+                && AhAddonValues.productValue("TRANSMISSION_TUNER")
+                * Math.max(a.tunedTransmission, b.tunedTransmission) > minValue) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean sameReforge(String a, String b) {
+        boolean aNone = a == null || a.isBlank() || a.equalsIgnoreCase("none");
+        boolean bNone = b == null || b.isBlank() || b.equalsIgnoreCase("none");
+        if (aNone && bNone) {
+            return true;
+        }
+        return a != null && b != null && a.equalsIgnoreCase(b);
+    }
+
+    private static boolean isNoneReforge(String reforge) {
+        return reforge == null || reforge.isBlank()
+                || reforge.equalsIgnoreCase("none");
+    }
+
+    private static String saleReforge(Sold sale) {
+        String value = nbtText(sale, "modifier");
+        if (value.isBlank()) {
+            value = nbtText(sale, "reforge");
+        }
+        return value;
+    }
+
+    private static boolean reforgesMatch(String tag, String actual, String wanted) {
+        boolean aNone = isNoneReforge(actual);
+        boolean bNone = isNoneReforge(wanted);
+        if (aNone && bNone) {
+            return true;
+        }
+        long threshold = Math.max(0, AhFlipperMod.CONFIG.reforgeMatchMinCoins);
+        long aValue = aNone ? 0 : reforgeValue(tag, actual);
+        long bValue = bNone ? 0 : reforgeValue(tag, wanted);
+        if (aValue < threshold && bValue < threshold) {
+            return true;
+        }
+        return !aNone && !bNone && actual.equalsIgnoreCase(wanted);
+    }
+
+    private static boolean reforgesMatch(String tag, Sold sale, String wanted) {
+        if (sameReforge(sale, wanted)) {
+            return true;
+        }
+        String actual = saleReforge(sale);
+        boolean aNone = isNoneReforge(actual);
+        boolean bNone = isNoneReforge(wanted);
+        if (aNone && bNone) {
+            return true;
+        }
+        long threshold = Math.max(0, AhFlipperMod.CONFIG.reforgeMatchMinCoins);
+        long aValue = aNone ? 0 : reforgeValue(tag, actual);
+        long bValue = bNone ? 0 : reforgeValue(tag, wanted);
+        return aValue < threshold && bValue < threshold;
+    }
+
+    private static boolean sameText(String a, String b) {
+        String left = a == null ? "" : a.trim();
+        String right = b == null ? "" : b.trim();
+        return left.equalsIgnoreCase(right);
+    }
+
+    private static boolean killsMatch(int itemKills, int saleKills) {
+        if (itemKills <= 0) {
+            return saleKills <= 500;
+        }
+        return saleKills >= itemKills / 2L && saleKills <= itemKills * 2L;
+    }
+
+    private static double petItemValue(String petItem) {
+        if (petItem == null || petItem.isBlank()) {
+            return 0;
+        }
+        return AhAddonValues.productValue(petItem.toUpperCase(Locale.ROOT));
+    }
+
+    private static boolean hasCosmetic(AuctionDetails details) {
+        if (hasDetailText(details, "dye_item") || hasDetailText(details, "skin")) {
+            return true;
+        }
+        String petInfo = detailText(details, "petInfo");
+        return !petInfo.isBlank()
+                && petInfo.toLowerCase(Locale.ROOT).contains("\"skin\"");
+    }
+
+    private static boolean hasDetailText(AuctionDetails details, String key) {
+        String value = detailText(details, key);
+        return !value.isBlank() && !"0".equals(value)
+                && !"false".equalsIgnoreCase(value) && !"none".equalsIgnoreCase(value);
+    }
+
+    private static String detailText(AuctionDetails details, String key) {
+        if (details == null || details.flatNbt == null
+                || !details.flatNbt.has(key) || details.flatNbt.get(key).isJsonNull()) {
+            return "";
+        }
+        try {
+            return details.flatNbt.get(key).getAsString();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     public static long lowestReference(long cleanAverage, long lowestBin) {
@@ -593,7 +1291,7 @@ public class AhMarketData {
                 if (sale.petLevel != petLevel || !petRarity.equalsIgnoreCase(sale.petRarity)) {
                     continue;
                 }
-            } else if (!isCleanSale(sale)) {
+            } else if (!isCleanSale(tag, sale)) {
                 continue;
             }
             prices.add(sale.price);
@@ -652,6 +1350,39 @@ public class AhMarketData {
         return result;
     }
 
+    private static Set<String> dominantSellers(List<Sold> sales) {
+        if (sales == null || sales.isEmpty()) {
+            return Set.of();
+        }
+        Map<String, Integer> counts = sellerCounts(sales);
+        Set<String> result = new LinkedHashSet<>();
+        long threshold = (long) sales.size() * 33;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() >= 2 && (long) entry.getValue() * 100 >= threshold) {
+                result.add(entry.getKey());
+            }
+        }
+        return result;
+    }
+
+    private static Map<String, Integer> sellerCounts(List<Sold> sales) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Sold sale : sales) {
+            String seller = sale.seller == null ? "" : sale.seller.trim().toLowerCase(Locale.ROOT);
+            if (!seller.isEmpty()) {
+                counts.merge(seller, 1, Integer::sum);
+            }
+        }
+        return counts;
+    }
+
+    private static boolean isDominantSeller(Sold sale, Set<String> dominant) {
+        if (dominant.isEmpty() || sale == null || sale.seller == null) {
+            return false;
+        }
+        return dominant.contains(sale.seller.trim().toLowerCase(Locale.ROOT));
+    }
+
     public static AddonPrice averageForEnchant(String tag, String type, int level) {
         return addonAverage(tag, sale -> hasEnchant(sale, type, level));
     }
@@ -672,9 +1403,9 @@ public class AhMarketData {
             return 0;
         }
         int wanted = Math.max(1, item.stars);
-        AddonPrice price = addonAverage(tag, sale -> isCleanSale(sale)
-                && (nbtInt(sale, "upgrade_level") >= wanted
-                || nbtInt(sale, "dungeon_item_level") >= wanted));
+        AddonPrice price = addonAverage(tag, sale -> saleStars(sale) >= wanted
+                && soldAddonValue(tag, sale)
+                < AhFlipperMod.CONFIG.comparableAddonMinCoins);
         if (price == null || price.average <= cleanBaseline
                 || price.sample < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
             return 0;
@@ -684,6 +1415,32 @@ public class AhMarketData {
 
     public static AddonPrice averageForReforge(String tag, String reforge) {
         return addonAverage(tag, sale -> matchesReforge(sale, reforge));
+    }
+
+    public static long reforgeValue(String tag, String reforge) {
+        if (tag == null || tag.isBlank() || isNoneReforge(reforge)) {
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        String key = tag + "|" + reforge.toLowerCase(Locale.ROOT);
+        ReforgeValueCache cached = REFORGE_VALUE_CACHE.get(key);
+        if (cached != null && now - cached.at < 5 * 60_000L) {
+            return cached.value;
+        }
+        long clean = lowestCleanAverage(tag, 0, "", 0);
+        AddonPrice price = addonAverage(tag, sale -> matchesReforge(sale, reforge)
+                && soldAddonValue(tag, sale)
+                < AhFlipperMod.CONFIG.comparableAddonMinCoins);
+        long value = 0;
+        if (price != null && price.average > 0) {
+            value = clean > 0 ? Math.max(0, price.average - clean) : price.average;
+        }
+        REFORGE_VALUE_CACHE.put(key, new ReforgeValueCache(value, now));
+        if (REFORGE_VALUE_CACHE.size() > 500) {
+            REFORGE_VALUE_CACHE.entrySet().removeIf(
+                    entry -> now - entry.getValue().at > 10 * 60_000L);
+        }
+        return value;
     }
 
     public static AddonPrice averageForPetItem(String tag, int petLevel, String petRarity,
@@ -742,19 +1499,28 @@ public class AhMarketData {
     }
 
     public static AddonPrice averageForComparable(String tag, AhItem item, long minAddonValue) {
+        AddonPrice diagnostics = new AddonPrice();
         if (item == null) {
-            return null;
+            return diagnostics;
         }
         long minValue = Math.max(0, minAddonValue);
+        List<Sold> matchedSales = new ArrayList<>();
+        for (Sold sale : sold(tag)) {
+            if (sale.price > 0 && matchesComparable(sale, item, minValue)) {
+                matchedSales.add(sale);
+            }
+        }
+        diagnostics.candidates = matchedSales.size();
+        Set<String> dominant = dominantSellers(matchedSales);
         List<Long> prices = new ArrayList<>();
         int matched = 0;
-        for (Sold sale : sold(tag)) {
-            if (sale.price <= 0 || !matchesComparable(sale, item, minValue)) {
+        for (Sold sale : matchedSales) {
+            if (isDominantSeller(sale, dominant)) {
                 continue;
             }
             matched++;
             double extra = extraAddonBuyValue(sale, item, minValue);
-            if (extra >= sale.price * 0.15) {
+                if (extra >= sale.price * 0.50) {
                 continue;
             }
             long adjusted = Math.round(sale.price - extra);
@@ -762,13 +1528,29 @@ public class AhMarketData {
                 prices.add(adjusted);
             }
         }
+        int minSample = Math.max(2, AhFlipperMod.CONFIG.comparableMinSalesPerWeek);
+        if (prices.size() < minSample && !dominant.isEmpty()) {
+            prices.clear();
+            matched = 0;
+            for (Sold sale : matchedSales) {
+                matched++;
+                double extra = extraAddonBuyValue(sale, item, minValue);
+            if (extra >= sale.price * 0.50) {
+                    continue;
+                }
+                long adjusted = Math.round(sale.price - extra);
+                if (adjusted > 0) {
+                    prices.add(adjusted);
+                }
+            }
+        }
         if (prices.isEmpty()) {
-            return null;
+            return diagnostics;
         }
         prices.sort(null);
         long median = median(prices);
         if (median <= 0) {
-            return null;
+            return diagnostics;
         }
         double outlier = Math.max(0.01,
                 AhFlipperMod.CONFIG.comparableOutlierPercent / 100.0);
@@ -783,13 +1565,12 @@ public class AhMarketData {
             }
         }
         if (kept == 0) {
-            return null;
+            return diagnostics;
         }
-        AddonPrice result = new AddonPrice();
-        result.average = Math.round((double) sum / kept);
-        result.sample = kept;
-        result.excluded = matched - kept;
-        return result;
+        diagnostics.average = Math.round((double) sum / kept);
+        diagnostics.sample = kept;
+        diagnostics.excluded = matched - kept;
+        return diagnostics;
     }
 
     private static boolean matchesComparable(Sold sale, AhItem item, long minValue) {
@@ -835,6 +1616,10 @@ public class AhMarketData {
         if (AhAddonValues.hpbValue(item.hpb) > minValue && saleHpb(sale) < item.hpb) {
             return false;
         }
+        if (AhAddonValues.fumingHpbValue(item.fumingHpb) > minValue
+                && saleFumingHpb(sale) < item.fumingHpb) {
+            return false;
+        }
         if (item.recomb && AhAddonValues.recombValue() > minValue
                 && nbtInt(sale, "rarity_upgrades") <= 0) {
             return false;
@@ -847,7 +1632,7 @@ public class AhMarketData {
                 && nbtInt(sale, "wood_singularity_count") < item.woodSingularity) {
             return false;
         }
-        if (!sameReforge(sale, item.reforge)) {
+        if (!reforgesMatch(item.tag, sale, item.reforge)) {
             return false;
         }
         if (saleStars(sale) != item.stars) {
@@ -890,6 +1675,14 @@ public class AhMarketData {
         if (soldHpb > item.hpb) {
             double value = AhAddonValues.instantBuyProductValue("HOT_POTATO_BOOK")
                     * (soldHpb - item.hpb);
+            if (value > minValue) {
+                extra += value;
+            }
+        }
+        int soldFuming = saleFumingHpb(sale);
+        if (soldFuming > item.fumingHpb) {
+            double value = AhAddonValues.instantBuyProductValue("FUMING_POTATO_BOOK")
+                    * (soldFuming - item.fumingHpb);
             if (value > minValue) {
                 extra += value;
             }
@@ -965,6 +1758,27 @@ public class AhMarketData {
                 && petInfo.toLowerCase(Locale.ROOT).contains("\"skin\"");
     }
 
+    private static String soldDye(Sold sale) {
+        return nbtText(sale, "dye_item").trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String soldSkin(Sold sale) {
+        return nbtText(sale, "skin").trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String soldPetSkin(Sold sale) {
+        String raw = nbtText(sale, "petInfo");
+        if (raw.isBlank()) {
+            return "";
+        }
+        try {
+            JsonObject json = JsonParser.parseString(raw).getAsJsonObject();
+            return stringValue(json, "skin").trim().toUpperCase(Locale.ROOT);
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
     private static Map<String, Integer> soldEnchants(Sold sale) {
         Map<String, Integer> result = new LinkedHashMap<>();
         for (Enchant enchant : sale.enchants) {
@@ -978,6 +1792,16 @@ public class AhMarketData {
     }
 
     private static int saleHpb(Sold sale) {
+        return Math.min(10, salePotatoCount(sale));
+    }
+
+    private static int saleFumingHpb(Sold sale) {
+        int explicit = nbtInt(sale, "fuming_potato_count");
+        int fromCount = Math.max(0, salePotatoCount(sale) - 10);
+        return Math.max(explicit, fromCount);
+    }
+
+    private static int salePotatoCount(Sold sale) {
         return Math.max(nbtInt(sale, "hpc"), nbtInt(sale, "hot_potato_count"));
     }
 
@@ -1159,7 +1983,7 @@ public class AhMarketData {
                 if (sale.petLevel != petLevel || !petRarity.equalsIgnoreCase(sale.petRarity)) {
                     continue;
                 }
-            } else if (cleanOnly && !isCleanSale(sale)) {
+            } else if (cleanOnly && !isCleanSale(tag, sale)) {
                 continue;
             }
             prices.add(sale.price);
@@ -1200,38 +2024,165 @@ public class AhMarketData {
         return result;
     }
 
-    private static boolean isCleanSale(Sold sale) {
-        if (!sale.enchants.isEmpty()) {
+    private static boolean isCleanSale(String tag, Sold sale) {
+        if (saleStars(sale) > 0) {
             return false;
         }
-        String[] addonKeys = {
-                "rarity_upgrades", "hpc", "hot_potato_count", "art_of_war_count",
-                "wood_singularity_count", "dye_item", "upgrade_level", "dungeon_item_level",
-                "ability_scroll", "modifier", "reforge", "unlocked_slots",
-                "farming_for_dummies_count", "mana_disintegrator_count",
-                "ethermerge", "tuned_transmission", "power_ability_scroll"
-        };
-        for (String key : addonKeys) {
-            if (!hasNbt(sale, key)) {
+        String reforge = nbtText(sale, "modifier");
+        if (reforge.isBlank()) {
+            reforge = nbtText(sale, "reforge");
+        }
+        if (!reforge.isBlank() && !reforge.equalsIgnoreCase("none")) {
+            return false;
+        }
+        if (hasNbt(sale, "farming_for_dummies_count")
+                || hasNbt(sale, "mana_disintegrator_count")
+                || hasNbt(sale, "power_ability_scroll")) {
+            return false;
+        }
+        return soldAddonBaseValue(tag, sale)
+                < AhFlipperMod.CONFIG.comparableAddonMinCoins;
+    }
+
+    public static boolean isFastCleanForInvestment(String tag, Sold sale,
+                                                   long maxAddonCoins) {
+        if (sale == null || sale.price <= 0 || sale.count <= 0) {
+            return false;
+        }
+        if (saleStars(sale) > 0) {
+            return false;
+        }
+        String reforge = nbtText(sale, "modifier");
+        if (reforge.isBlank()) {
+            reforge = nbtText(sale, "reforge");
+        }
+        if (!reforge.isBlank() && !reforge.equalsIgnoreCase("none")) {
+            return false;
+        }
+        if (hasNbt(sale, "farming_for_dummies_count")
+                || hasNbt(sale, "mana_disintegrator_count")
+                || hasNbt(sale, "power_ability_scroll")) {
+            return false;
+        }
+        double addon = soldAddonBaseValue(tag, sale);
+        if (addon == Double.MAX_VALUE) {
+            return false;
+        }
+        return addon / Math.max(1, sale.count) < Math.max(0, maxAddonCoins);
+    }
+
+    private static double soldAddonBaseValue(String tag, Sold sale) {
+        double value = soldAddonValue(tag, sale);
+        if (value == Double.MAX_VALUE) {
+            return value;
+        }
+        return Math.max(0, value - soldCoinValue(sale));
+    }
+
+    private static double soldAddonValue(String tag, Sold sale) {
+        double total = 0;
+        for (Enchant enchant : sale.enchants) {
+            if (enchant == null || enchant.type == null || enchant.type.isBlank()
+                    || enchant.level <= 0) {
                 continue;
             }
-            String value = sale.nbt.get(key).getAsString();
-            if (!value.equalsIgnoreCase("none")) {
-                return false;
-            }
+            total += AhAddonValues.enchantValue(enchant.type, enchant.level);
         }
-        for (Map.Entry<String, JsonElement> entry : sale.nbt.entrySet()) {
-            if (entry.getValue() == null || entry.getValue().isJsonNull()) {
+        int hpb = saleHpb(sale);
+        if (hpb > 0) {
+            total += AhAddonValues.hpbValue(hpb);
+        }
+        int fumingHpb = saleFumingHpb(sale);
+        if (fumingHpb > 0) {
+            total += AhAddonValues.fumingHpbValue(fumingHpb);
+        }
+        Set<String> cosmetics = new LinkedHashSet<>();
+        cosmetics.add(soldDye(sale));
+        cosmetics.add(soldSkin(sale));
+        cosmetics.add(soldPetSkin(sale));
+        for (String cosmetic : cosmetics) {
+            if (cosmetic.isBlank()) {
                 continue;
             }
-            String value = entry.getValue().getAsString();
-            if (value.equalsIgnoreCase("rough") || value.equalsIgnoreCase("flawed")
-                    || value.equalsIgnoreCase("fine") || value.equalsIgnoreCase("flawless")
-                    || value.equalsIgnoreCase("perfect")) {
-                return false;
+            double value = AhAddonValues.cosmeticValue(cosmetic, false);
+            if (value <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += value;
+        }
+        if (nbtInt(sale, "rarity_upgrades") > 0) {
+            total += AhAddonValues.recombValue();
+        }
+        int artOfWar = nbtInt(sale, "art_of_war_count");
+        if (artOfWar > 0) {
+            total += AhAddonValues.artOfWarValue(artOfWar);
+        }
+        int wood = nbtInt(sale, "wood_singularity_count");
+        if (wood > 0) {
+            total += AhAddonValues.productValue("WOOD_SINGULARITY") * wood;
+        }
+        for (String scroll : soldScrolls(sale)) {
+            double value = AhAddonValues.productValue(scroll);
+            if (value <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += value;
+        }
+        for (Map.Entry<String, Integer> gem : soldGemstones(sale).entrySet()) {
+            double value = AhAddonValues.productValue(gem.getKey());
+            if (value <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += value * gem.getValue();
+        }
+        Set<String> slots = soldUnlockedSlots(sale);
+        if (!slots.isEmpty()) {
+            double slotValue = AhAddonValues.slotUnlockValue(tag, slots, false);
+            if (slotValue <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += slotValue;
+        }
+        if (hasNbt(sale, "ethermerge")) {
+            double value = AhAddonValues.etherwarpConduitValue();
+            if (value <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += value;
+        }
+        int tuners = nbtInt(sale, "tuned_transmission");
+        if (tuners > 0) {
+            double value = AhAddonValues.productValue("TRANSMISSION_TUNER");
+            if (value <= 0) {
+                return Double.MAX_VALUE;
+            }
+            total += value * tuners;
+        }
+        total += soldCoinValue(sale);
+        return total;
+    }
+
+    private static long soldCoinValue(Sold sale) {
+        if (sale == null || sale.nbt == null) {
+            return 0;
+        }
+        long total = 0;
+        String[] keys = {"coins", "collected_coins", "stored_coins",
+                "crown_coins", "avarice_coins", "coin_count",
+                "winning_bid", "gilded_gifted_coins"};
+        for (String key : keys) {
+            if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
+                continue;
+            }
+            try {
+                long value = sale.nbt.get(key).getAsLong();
+                if (value > 0) {
+                    total += value;
+                }
+            } catch (Exception ignored) {
             }
         }
-        return true;
+        return total;
     }
 
     private static boolean hasNbt(Sold sale, String key) {
@@ -1240,6 +2191,41 @@ public class AhMarketData {
         }
         String value = sale.nbt.get(key).getAsString();
         return !value.isBlank() && !"0".equals(value) && !"false".equalsIgnoreCase(value);
+    }
+
+    private static long robustMedian(List<Sold> sales, long cutoff) {
+        List<Long> prices = new ArrayList<>();
+        for (Sold sale : sales) {
+            if (sale.price <= 0 || (sale.end > 0 && sale.end < cutoff)) {
+                continue;
+            }
+            long base = sale.price - soldCoinValue(sale);
+            if (base > 0) {
+                prices.add(base);
+            }
+        }
+        if (prices.isEmpty()) {
+            return 0;
+        }
+        prices.sort(null);
+        long median = median(prices);
+        if (median <= 0) {
+            return 0;
+        }
+        double outlier = Math.max(1.0,
+                AhFlipperMod.CONFIG.comparableOutlierPercent) / 100.0;
+        long low = Math.round(median * (1.0 - outlier));
+        long high = Math.round(median * (1.0 + outlier));
+        List<Long> kept = new ArrayList<>();
+        for (long price : prices) {
+            if (price >= low && price <= high) {
+                kept.add(price);
+            }
+        }
+        if (kept.isEmpty()) {
+            kept.add(median);
+        }
+        return median(kept);
     }
 
     private static long median(List<Long> values) {

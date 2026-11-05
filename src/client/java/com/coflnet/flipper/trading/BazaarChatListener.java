@@ -75,9 +75,17 @@ public class BazaarChatListener {
     }
 
     public static boolean waitForChat(String contains, long timeoutMs) {
+        return waitForChat(contains, timeoutMs, null);
+    }
+
+    public static boolean waitForChat(String contains, long timeoutMs,
+                                      java.util.function.BooleanSupplier cancel) {
         long start = System.currentTimeMillis();
         long deadline = start + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
+            if (cancel != null && cancel.getAsBoolean()) {
+                return false;
+            }
             for (ChatEntry entry : since(start)) {
                 if (entry.text.contains(contains)) {
                     return true;

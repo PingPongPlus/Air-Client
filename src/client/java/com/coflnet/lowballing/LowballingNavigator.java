@@ -116,12 +116,61 @@ public final class LowballingNavigator {
     }
 
     private static void configureBaritone() {
-        BaritoneAPI.getSettings().allowSprint.value = true;
-        BaritoneAPI.getSettings().allowBreak.value = false;
-        BaritoneAPI.getSettings().allowPlace.value = false;
-        BaritoneAPI.getSettings().allowParkour.value = false;
-        BaritoneAPI.getSettings().allowParkourPlace.value = false;
-        BaritoneAPI.getSettings().freeLook.value = true;
+        baritone.api.Settings s = BaritoneAPI.getSettings();
+        s.allowSprint.value = true;
+        s.allowBreak.value = false;
+        s.allowPlace.value = false;
+        s.allowInventory.value = false;
+        s.autoTool.value = false;
+        s.allowParkour.value = true;
+        s.allowParkourAscend.value = true;
+        s.allowParkourPlace.value = false;
+        s.allowDiagonalDescend.value = true;
+        s.allowDiagonalAscend.value = true;
+        s.allowDownward.value = true;
+        s.allowOvershootDiagonalDescend.value = true;
+        s.allowVines.value = true;
+        s.allowWalkOnBottomSlab.value = true;
+        s.sprintAscends.value = true;
+        s.sprintInWater.value = true;
+        s.overshootTraverse.value = true;
+        s.assumeWalkOnWater.value = false;
+        s.assumeWalkOnLava.value = false;
+        s.assumeStep.value = false;
+        s.assumeSafeWalk.value = false;
+        s.allowWaterBucketFall.value = false;
+        s.freeLook.value = true;
+        s.blockFreeLook.value = false;
+        s.smoothLook.value = false;
+        s.randomLooking.value = 0.01;
+        s.antiCheatCompatibility.value = true;
+        s.considerPotionEffects.value = true;
+        s.avoidance.value = true;
+        s.rightClickContainerOnArrival.value = false;
+        s.enterPortal.value = false;
+        s.renderPath.value = false;
+        s.renderGoal.value = false;
+        s.renderSelectionBoxes.value = false;
+        s.renderCachedChunks.value = false;
+        s.chatDebug.value = false;
+        s.chatControl.value = false;
+        s.desktopNotifications.value = false;
+        s.itemSaver.value = false;
+        s.mineScanDroppedItems.value = false;
+        s.costHeuristic.value = 3.0;
+        s.jumpPenalty.value = 2.0;
+        s.walkOnWaterOnePenalty.value = 3.0;
+        s.pathingMaxChunkBorderFetch.value = 64;
+        s.planningTickLookahead.value = 150;
+        s.primaryTimeoutMS.value = 500L;
+        s.failureTimeoutMS.value = 2000L;
+        s.planAheadPrimaryTimeoutMS.value = 2000L;
+        s.planAheadFailureTimeoutMS.value = 3000L;
+        s.movementTimeoutTicks.value = 20;
+        s.maxFallHeightNoWater.value = 3;
+        s.blockReachDistance.value = 3.0f;
+        s.chunkCaching.value = true;
+        s.pruneRegionsFromRAM.value = true;
     }
 
     private static Vec3 pathAhead(IBaritone baritone, Player player) {

@@ -71,6 +71,17 @@ public class AhScreenUtil {
         return isAhTitle(title) ? AhScreen.OTHER : AhScreen.NONE;
     }
 
+    public static void loadCoflDescriptions() {
+        ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (screen instanceof AbstractContainerScreen<?> container
+                    && com.coflnet.CoflModClient.instance != null) {
+                com.coflnet.CoflModClient.instance.loadDescriptionsForInv(container);
+            }
+            return null;
+        });
+    }
+
     public static String currentScreenTitle() {
         return ScreenUtil.sync(() -> {
             Screen screen = Minecraft.getInstance().gui.screen();
@@ -108,6 +119,31 @@ public class AhScreenUtil {
                     continue;
                 }
                 if (ScreenUtil.fuzzyTextMatch(stack.getHoverName().getString(), name)) {
+                    return i;
+                }
+            }
+            return -1;
+        });
+        return found == null ? -1 : found;
+    }
+
+    public static int findSlotByTag(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return -1;
+        }
+        Integer found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1;
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                AhItem item = AhItem.fromStack(stack);
+                if (item.tag.equalsIgnoreCase(tag)) {
                     return i;
                 }
             }
@@ -321,7 +357,7 @@ public class AhScreenUtil {
 
     public static long priceAt(AbstractContainerScreen<?> container, int slot) {
         for (String line : loreLines(itemAt(container, slot))) {
-            String plain = line.trim();
+            String plain = ScreenUtil.cleanName(line).trim();
             if (plain.startsWith("Buy it now:") || plain.startsWith("Price:") || plain.startsWith("Cost:")) {
                 long parsed = parseCoins(plain);
                 if (parsed > 0) {
@@ -343,6 +379,25 @@ public class AhScreenUtil {
         return value == null ? -1 : value;
     }
 
+    public static long currentPrice() {
+        Long value = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1L;
+            }
+            long best = -1;
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                long price = priceAt(container, i);
+                if (price > best) {
+                    best = price;
+                }
+            }
+            return best;
+        });
+        return value == null ? -1 : value;
+    }
+
     public static ItemStack currentItem(int slot) {
         ItemStack stack = ScreenUtil.sync(() -> {
             Screen screen = Minecraft.getInstance().gui.screen();
@@ -350,6 +405,48 @@ public class AhScreenUtil {
                 return ItemStack.EMPTY;
             }
             return itemAt(container, slot).copy();
+        });
+        return stack == null ? ItemStack.EMPTY : stack;
+    }
+
+    public static boolean isContainerOpen() {
+        return Boolean.TRUE.equals(ScreenUtil.sync(
+                () -> Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>));
+    }
+
+    public static boolean noScreenOpen() {
+        return Boolean.TRUE.equals(ScreenUtil.sync(
+                () -> Minecraft.getInstance().gui.screen() == null));
+    }
+
+    public static ItemStack currentAuctionItem() {
+        ItemStack stack = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return ItemStack.EMPTY;
+            }
+            ItemStack preferred = itemAt(container, 13);
+            if (!preferred.isEmpty() && AhItem.hasSkyBlockId(preferred)) {
+                return preferred.copy();
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                if (i == 13) {
+                    continue;
+                }
+                ItemStack candidate = itemAt(container, i);
+                if (candidate.isEmpty() || !AhItem.hasSkyBlockId(candidate)) {
+                    continue;
+                }
+                String name = ScreenUtil.cleanName(candidate.getHoverName().getString())
+                        .toLowerCase(Locale.ROOT);
+                if (name.contains("bid") || name.contains("buy") || name.contains("auction")
+                        || name.contains("confirm") || name.contains("cancel")) {
+                    continue;
+                }
+                return candidate.copy();
+            }
+            return ItemStack.EMPTY;
         });
         return stack == null ? ItemStack.EMPTY : stack;
     }
@@ -528,6 +625,156 @@ public class AhScreenUtil {
         return displayName != null && !displayName.isBlank()
                 && ScreenUtil.cleanName(displayName)
                         .equalsIgnoreCase(ScreenUtil.cleanName(item.displayName));
+    }
+
+    public static long currentBidPrice() {
+        Long found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1L;
+            }
+            long best = -1;
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                for (String line : loreLines(itemAt(container, i))) {
+                    String plain = ScreenUtil.cleanName(line).trim();
+                    String lower = plain.toLowerCase(Locale.ROOT);
+                    if (!(lower.startsWith("top bid:") || lower.startsWith("highest bid:")
+                            || lower.startsWith("current bid:") || lower.startsWith("bid:")
+                            || lower.startsWith("starting bid:"))) {
+                        continue;
+                    }
+                    long parsed = parseCoins(plain);
+                    if (parsed > best) {
+                        best = parsed;
+                    }
+                }
+            }
+            return best;
+        });
+        return found == null ? -1 : found;
+    }
+
+    public static long currentRequiredBid() {
+        Long found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1L;
+            }
+            int size = containerSize(container);
+            long best = -1;
+            for (int i = 0; i < size; i++) {
+                for (String line : loreLines(itemAt(container, i))) {
+                    String plain = ScreenUtil.cleanName(line).trim();
+                    String lower = plain.toLowerCase(Locale.ROOT);
+                    if (!(lower.startsWith("new bid:") || lower.startsWith("you pay:")
+                            || lower.startsWith("bid amount:")
+                            || lower.startsWith("minimum bid:")
+                            || lower.startsWith("min bid:")
+                            || lower.startsWith("next bid:")
+                            || lower.contains("you need to bid at least"))) {
+                        continue;
+                    }
+                    long parsed = parseCoins(plain);
+                    if (parsed > best) {
+                        best = parsed;
+                    }
+                }
+            }
+            return best;
+        });
+        return found == null ? -1 : found;
+    }
+
+    public static boolean currentAuctionUnavailable() {
+        Boolean found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return false;
+            }
+            int size = containerSize(container);
+            boolean action = false;
+            boolean unavailable = false;
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                String name = ScreenUtil.cleanName(stack.getHoverName().getString())
+                        .toLowerCase(Locale.ROOT);
+                if (name.contains("buy item right now") || name.contains("click to purchase")
+                        || name.contains("submit bid") || name.contains("click to bid")
+                        || name.contains("bid now") || name.contains("confirm bid")) {
+                    action = true;
+                }
+                for (String line : loreLines(stack)) {
+                    String lower = ScreenUtil.cleanName(line).toLowerCase(Locale.ROOT);
+                    if (lower.contains("buy item right now") || lower.contains("click to purchase")
+                            || lower.contains("submit bid") || lower.contains("click to bid")
+                            || lower.contains("bid now") || lower.contains("confirm bid")) {
+                        action = true;
+                    }
+                    if (lower.contains("collect auction") || lower.contains("collect your")
+                            || lower.contains("someone else")
+                            || lower.contains("auction ended")
+                            || lower.contains("auction has ended")
+                            || lower.contains("no longer available")
+                            || lower.contains("sold to")
+                            || lower.contains("you were outbid")
+                            || lower.contains("outbid by")) {
+                        unavailable = true;
+                    }
+                }
+            }
+            return unavailable && !action;
+        });
+        return Boolean.TRUE.equals(found);
+    }
+
+    public static boolean currentIsHighestBidder() {
+        Boolean found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return false;
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                for (String line : loreLines(itemAt(container, i))) {
+                    String lower = ScreenUtil.cleanName(line).toLowerCase(Locale.ROOT);
+                    if (lower.contains("you are the highest bidder")
+                            || lower.contains("you are currently the highest bidder")
+                            || lower.contains("you have the highest bid")) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+        return Boolean.TRUE.equals(found);
+    }
+
+    public static int findBidButton() {
+        int slot = findSlotWithText("submit bid", 0, 53);
+        if (slot >= 0) {
+            return slot;
+        }
+        slot = findSlotWithText("click to bid", 0, 53);
+        if (slot >= 0) {
+            return slot;
+        }
+        slot = findSlotWithText("place bid", 0, 53);
+        if (slot >= 0) {
+            return slot;
+        }
+        return findSlotWithText("bid now", 0, 53);
+    }
+
+    public static int findConfirmBidButton() {
+        int slot = findSlotWithText("confirm bid", 0, 53);
+        if (slot >= 0) {
+            return slot;
+        }
+        return findSlotWithText("confirm", 0, 53);
     }
 
     public static long parseCoins(String text) {

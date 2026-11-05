@@ -3,6 +3,11 @@ package com.coflnet.gui.cofl;
 import CoflCore.CoflCore;
 import CoflCore.CoflSkyCommand;
 import CoflCore.classes.Settings;
+import com.coflnet.ahflipper.AhFireSaleSkinScreen;
+import com.coflnet.ahflipper.AhFireSaleSkinTracker;
+import com.coflnet.ahflipper.AhFlipperMod;
+import com.coflnet.ahflipper.AhInvestmentScreen;
+import com.coflnet.ahflipper.AhInvestmentTracker;
 import dev.isxander.yacl3.api.ButtonOption;
 import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.Option;
@@ -140,6 +145,7 @@ public class CoflSettingsScreen {
                 });
 
         builder.category(buildAutomationsCategory());
+        builder.category(buildInvestmentCategory());
 
         builder.save(() -> saveActions.forEach(Runnable::run));
 
@@ -156,7 +162,7 @@ public class CoflSettingsScreen {
                         .description(OptionDescription.of(Component.literal(
                                 "Pathfindet zu Mobs/Entities/Playern mit diesem Namen und greift sie an. Client-seitig, menschliches Movement.")))
                         .option(Option.<String>createBuilder()
-                                .name(Component.literal("Ziel-Name"))
+                                .name(Component.literal("Target name"))
                                 .description(OptionDescription.of(Component.literal(
                                         "Name des Ziels (Teilname reicht, Gross/Klein egal). Leer = aus.")))
                                 .controller(StringControllerBuilder::create)
@@ -184,10 +190,30 @@ public class CoflSettingsScreen {
                                 })
                                 .build())
                         .option(Option.<Boolean>createBuilder()
+                                .name(Component.literal("One-Hit-Modus"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Ein Schlag pro Ziel, danach sofort das naechste Ziel suchen.")))
+                                .controller(TickBoxControllerBuilder::create)
+                                .binding(false, () -> config.oneHitMode, value -> {
+                                    config.oneHitMode = value;
+                                    config.save();
+                                })
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
                                 .name(Component.literal("Sprinten erlaubt"))
                                 .controller(TickBoxControllerBuilder::create)
                                 .binding(true, () -> config.allowSprint, value -> {
                                     config.allowSprint = value;
+                                    config.save();
+                                })
+                                .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(Component.literal("Kamera-Drehgeschwindigkeit"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Maximale Grad pro Sekunde fuer die weiche Kamera.")))
+                                .controller(DoubleFieldControllerBuilder::create)
+                                .binding(240.0, () -> config.cameraTurnSpeed, value -> {
+                                    config.cameraTurnSpeed = value;
                                     config.save();
                                 })
                                 .build())
@@ -208,12 +234,144 @@ public class CoflSettingsScreen {
                                 })
                                 .build())
                         .option(Option.<Double>createBuilder()
-                                .name(Component.literal("Angriffs-Reichweite"))
+                                .name(Component.literal("Attack reach"))
                                 .controller(DoubleFieldControllerBuilder::create)
                                 .binding(3.5, () -> config.reach, value -> {
                                     config.reach = value;
                                     config.save();
                                 })
+                                .build())
+                        .build())
+                .build();
+    }
+
+    private static ConfigCategory buildInvestmentCategory() {
+        return ConfigCategory.createBuilder()
+                .name(Component.literal("Investment"))
+                .group(OptionGroup.createBuilder()
+                        .name(Component.literal("AH Investment Tracker"))
+                        .description(OptionDescription.of(Component.literal(
+                                "Scans the last 7 days of AH sales, detects hourly patterns and shows the best coins/hour investments.")))
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Component.literal("Investment Tracker aktiv"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Starts the background scan and unlocks the Investment GUI.")))
+                                .controller(TickBoxControllerBuilder::create)
+                                .binding(false, () -> AhFlipperMod.CONFIG.investmentGui, value -> {
+                                    AhFlipperMod.CONFIG.investmentGui = value;
+                                    AhFlipperMod.CONFIG.save();
+                                    if (value) {
+                                        AhInvestmentTracker.start();
+                                    } else {
+                                        AhInvestmentTracker.stop();
+                                    }
+                                })
+                                .build())
+                        .option(ButtonOption.createBuilder()
+                                .name(Component.literal("Open Investment GUI"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Top 5 with 24h graph, buy/sell window, quantity, holding time and coins/hour.")))
+                                .text(Component.literal("Open"))
+                                .action(screen -> {
+                                    AhFlipperMod.CONFIG.investmentGui = true;
+                                    AhFlipperMod.CONFIG.save();
+                                    AhInvestmentTracker.start();
+                                    net.minecraft.client.Minecraft.getInstance().gui
+                                            .setScreen(new AhInvestmentScreen());
+                                })
+                                .build())
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Component.literal("Fire Sale skins enabled"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Scans Fire Sale skins with Cofl monthly/weekly history, volume and current BIN book.")))
+                                .controller(TickBoxControllerBuilder::create)
+                                .binding(false, () -> AhFlipperMod.CONFIG.fireSaleSkins, value -> {
+                                    AhFlipperMod.CONFIG.fireSaleSkins = value;
+                                    AhFlipperMod.CONFIG.save();
+                                    if (value) {
+                                        AhFireSaleSkinTracker.start();
+                                    } else {
+                                        AhFireSaleSkinTracker.stop();
+                                    }
+                                })
+                                .build())
+                        .option(ButtonOption.createBuilder()
+                                .name(Component.literal("Fire Sale GUI Open"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Top 5 Fire Sale skins with price history graph, trend, ROI and holding time.")))
+                                .text(Component.literal("Open"))
+                                .action(screen -> {
+                                    AhFlipperMod.CONFIG.fireSaleSkins = true;
+                                    AhFlipperMod.CONFIG.save();
+                                    AhFireSaleSkinTracker.start();
+                                    net.minecraft.client.Minecraft.getInstance().gui
+                                            .setScreen(new AhFireSaleSkinScreen());
+                                })
+                                .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(Component.literal("Max Buy Price (M)"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Only items whose current price is below this (in million coins).")))
+                                .controller(DoubleFieldControllerBuilder::create)
+                                .binding(0.1, () -> AhFlipperMod.CONFIG.investmentMaxBuyPrice / 1_000_000.0,
+                                        value -> {
+                                            AhFlipperMod.CONFIG.investmentMaxBuyPrice =
+                                                    Math.max(1, Math.round(value * 1_000_000.0));
+                                            AhFlipperMod.CONFIG.save();
+                                            AhInvestmentTracker.requestRefresh();
+                                        })
+                                .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(Component.literal("Min Price (M)"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Only items whose current price is above this (in million coins).")))
+                                .controller(DoubleFieldControllerBuilder::create)
+                                .binding(0.001, () -> AhFlipperMod.CONFIG.investmentMinPrice / 1_000_000.0,
+                                        value -> {
+                                            AhFlipperMod.CONFIG.investmentMinPrice =
+                                                    Math.max(0, Math.round(value * 1_000_000.0));
+                                            AhFlipperMod.CONFIG.save();
+                                            AhInvestmentTracker.requestRefresh();
+                                        })
+                                .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(Component.literal("Min Coins/h (k)"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Minimum profit per hour in thousand coins.")))
+                                .controller(DoubleFieldControllerBuilder::create)
+                                .binding(1.0, () -> AhFlipperMod.CONFIG.investmentMinCoinsPerHour / 1000.0,
+                                        value -> {
+                                            AhFlipperMod.CONFIG.investmentMinCoinsPerHour =
+                                                    Math.max(0, Math.round(value * 1000.0));
+                                            AhFlipperMod.CONFIG.save();
+                                            AhInvestmentTracker.requestRefresh();
+                                        })
+                                .build())
+                        .option(Option.<Double>createBuilder()
+                                .name(Component.literal("Slippage %"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Maximum premium at which BINs are considered safe to buy.")))
+                                .controller(DoubleFieldControllerBuilder::create)
+                                .binding(5.0, () -> AhFlipperMod.CONFIG.investmentSlippagePercent,
+                                        value -> {
+                                            AhFlipperMod.CONFIG.investmentSlippagePercent =
+                                                    Math.max(1.0, Math.min(25.0, value));
+                                            AhFlipperMod.CONFIG.save();
+                                            AhInvestmentTracker.requestRefresh();
+                                        })
+                                .build())
+                        .option(Option.<Integer>createBuilder()
+                                .name(Component.literal("Max Safe Qty"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Upper limit for the recommended buy quantity per item.")))
+                                .controller(IntegerFieldControllerBuilder::create)
+                                .binding(10, () -> AhFlipperMod.CONFIG.investmentMaxQty,
+                                        value -> {
+                                            AhFlipperMod.CONFIG.investmentMaxQty =
+                                                    Math.max(1, Math.min(50, value));
+                                            AhFlipperMod.CONFIG.save();
+                                            AhInvestmentTracker.requestRefresh();
+                                        })
                                 .build())
                         .build())
                 .build();

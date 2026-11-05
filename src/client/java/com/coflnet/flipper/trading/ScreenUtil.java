@@ -629,10 +629,18 @@ public final class ScreenUtil {
     }
 
     public static boolean waitForScreen(BzScreen target, long timeoutMs) {
+        return waitForScreen(target, timeoutMs, null);
+    }
+
+    public static boolean waitForScreen(BzScreen target, long timeoutMs,
+                                        java.util.function.BooleanSupplier cancel) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         long lastUnknownLog = 0;
         int noneStreak = 0;
         while (System.currentTimeMillis() < deadline) {
+            if (cancel != null && cancel.getAsBoolean()) {
+                return false;
+            }
             Trader trader = Trader.get();
             if (trader != null && trader.isAhPriority()) {
                 return false;
@@ -959,6 +967,18 @@ public final class ScreenUtil {
                 screen.onClose();
             }
         });
+    }
+
+    public static boolean closeAndWait(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(50L, timeoutMs);
+        do {
+            if (Boolean.TRUE.equals(sync(() -> Minecraft.getInstance().gui.screen() == null))) {
+                return true;
+            }
+            closeCurrentScreen();
+            sleep(10L);
+        } while (System.currentTimeMillis() < deadline);
+        return Boolean.TRUE.equals(sync(() -> Minecraft.getInstance().gui.screen() == null));
     }
 
     private static volatile long lastPurseDebugAt;
