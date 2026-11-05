@@ -5,6 +5,7 @@ import com.coflnet.flipper.analysis.FlipAnalyzer;
 import com.coflnet.flipper.data.ItemNames;
 import com.coflnet.flipper.data.MarketData;
 import com.coflnet.flipper.trading.BazaarChatListener;
+import com.coflnet.flipper.trading.BazaarDailyLimit;
 import com.coflnet.flipper.trading.OrderLedger;
 import com.coflnet.flipper.trading.ScreenUtil;
 import com.coflnet.flipper.trading.Trade;
@@ -24,9 +25,16 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class FlipperMod {
     public static final FlipperConfig CONFIG = FlipperConfig.load();
+    private static final ExecutorService COMMANDS = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "skycofl-command");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static OrderLedger ledger;
     private static KeyMapping toggleKey;
 
@@ -37,7 +45,6 @@ public class FlipperMod {
         ItemNames.load();
         BazaarChatListener.init();
         registerKeybinding();
-        registerCommands();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (toggleKey.consumeClick()) {
                 toggle();
@@ -58,13 +65,29 @@ public class FlipperMod {
         return trader != null && trader.isRunning();
     }
 
+    public static boolean pauseForRestart() {
+        Trader trader = Trader.get();
+        if (trader != null && trader.isRunning()) {
+            trader.setPaused(true);
+            return true;
+        }
+        return false;
+    }
+
+    public static void resumeAfterRestart(boolean wasRunning) {
+        Trader trader = Trader.get();
+        if (wasRunning && trader != null) {
+            trader.setPaused(false);
+        }
+    }
+
     private static void registerKeybinding() {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("coflnet", "flipper"));
         toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "keybinding.coflmod.flipper",
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_F8,
+                GLFW.GLFW_KEY_F7,
                 category));
     }
 
@@ -143,23 +166,29 @@ public class FlipperMod {
 
     private static int status(CommandContext<FabricClientCommandSource> context) {
         Trader trader = Trader.get();
-        String state = trader.isRunning() ? (trader.isPaused() ? "§6PAUSIERT" : "§aAKTIV") : "§cGESTOPPT";
-        message("§6[Flipper] §7Status: " + state);
+        String state = trader.isRunning()
+                ? (trader.isPaused() ? "\u00a76PAUSED" : "\u00a7aACTIVE")
+                : "\u00a7cSTOPPED";
+        message("\u00a76[Flipper] \u00a77Status: " + state);
         if (trader.isRunning()) {
             long purse = ScreenUtil.readPurse();
             if (purse >= 0) {
-                message("§7Purse: §f" + ScreenUtil.formatCoins(purse)
-                        + " §7· Reserve: §f" + ScreenUtil.formatCoins(CONFIG.reserveCoins)
-                        + " §7· Bankroll: §f" + ScreenUtil.formatCoins(Math.max(0, purse - CONFIG.reserveCoins)));
+                message("\u00a77Purse: \u00a7f" + ScreenUtil.formatCoins(purse)
+                        + " \u00a77\u00b7 Reserve: \u00a7f" + ScreenUtil.formatCoins(CONFIG.reserveCoins)
+                        + " \u00a77\u00b7 Bankroll: \u00a7f" + ScreenUtil.formatCoins(Math.max(0, purse - CONFIG.reserveCoins)));
             }
         }
         MarketData market = trader.marketSnapshot();
         if (market != null) {
-            message("§7Marktdaten: §f" + market.products.size() + " §7Produkte");
+            message("\u00a77Market data: \u00a7f" + market.products.size() + " \u00a77products");
         }
-        message("§7Offene Orders: §f" + ledger.openOrderCount() + "§7/§f" + CONFIG.maxOrders
-                + " §7· Geblacklistet: §f" + trader.blacklistCount());
-        message("§7Realisierter Gewinn: §f" + ScreenUtil.formatCoins(ledger.realizedProfit()));
+        message("\u00a77Open orders: \u00a7f" + ledger.openOrderCount() + "\u00a77/\u00a7f" + CONFIG.maxOrders
+                + " \u00a77\u00b7 Blacklisted: \u00a7f" + trader.blacklistCount());
+        message("\u00a77Daily sell limit: \u00a7f"
+                + ScreenUtil.formatCoins(BazaarDailyLimit.sold()) + "\u00a77/\u00a7f"
+                + ScreenUtil.formatCoins(BazaarDailyLimit.LIMIT_COINS)
+                + " \u00a77(resets 02:00 Europe/Berlin)");
+        message("\u00a77Realized profit: \u00a7f" + ScreenUtil.formatCoins(ledger.realizedProfit()));
         return 1;
     }
 
@@ -181,32 +210,44 @@ public class FlipperMod {
     }
 
     private static int analyze(CommandContext<FabricClientCommandSource> context) {
-        MarketData market = Trader.get().marketSnapshot();
-        if (market == null) {
-            message("§7Lade Marktdaten von der Hypixel API...");
-            market = com.coflnet.flipper.data.BazaarApi.fetch();
-        }
-        if (market == null || market.products.isEmpty()) {
-            message("§cMarktdaten konnten nicht geladen werden (API-Fehler?).");
-            return 1;
-        }
-        long purse = ScreenUtil.readPurse();
-        double bankroll = purse > 0 ? Math.max(0, purse - CONFIG.reserveCoins) : 100_000_000;
-        List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(market, CONFIG, bankroll, java.util.Set.of(), 10);
-        message("§6§l=== Top Flips §7(Bankroll: §f" + ScreenUtil.formatCoins(bankroll) + "§7) ===");
-        int shown = 0;
-        for (FlipAnalyzer.FlipPlan plan : plans) {
-            if (shown++ >= 10) {
-                break;
+        message("\u00a77Analysiere Bazaar-Daten ...");
+        COMMANDS.submit(() -> {
+            try {
+                MarketData market = Trader.get().marketSnapshot();
+                if (market == null || market.products.isEmpty()) {
+                    market = com.coflnet.flipper.data.BazaarApi.fetch();
+                }
+                if (market == null || market.products.isEmpty()) {
+                    message("\u00a7cMarktdaten konnten nicht geladen werden (API-Fehler?).");
+                    return;
+                }
+                long purse = ScreenUtil.readPurse();
+                double bankroll = purse > 0 ? Math.max(0, purse - CONFIG.reserveCoins)
+                        : 100_000_000;
+                List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(market, CONFIG,
+                        bankroll, java.util.Set.of(), 10);
+                message("\u00a76\u00a7l=== Top Flips \u00a77(Bankroll: \u00a7f"
+                        + ScreenUtil.formatCoins(bankroll) + "\u00a77) ===");
+                int shown = 0;
+                for (FlipAnalyzer.FlipPlan plan : plans) {
+                    if (shown++ >= 10) {
+                        break;
+                    }
+                    message("\u00a77" + plan.displayName + " \u00a7f" + plan.qty
+                            + "x \u00a77@ \u00a7f" + ScreenUtil.formatPrice(plan.buyPrice)
+                            + " \u00a78\u2192 \u00a7f" + ScreenUtil.formatPrice(plan.sellPrice)
+                            + " \u00a77Marge \u00a7a"
+                            + String.format(java.util.Locale.US, "%.1f%%", plan.marginPercent)
+                            + " \u00a77Gewinn \u00a7a"
+                            + ScreenUtil.formatCoins(plan.expectedProfit()));
+                }
+                if (plans.isEmpty()) {
+                    message("\u00a77Keine lohnenden Flips gefunden.");
+                }
+            } catch (Exception e) {
+                message("\u00a7cAnalyse fehlgeschlagen: " + e.getMessage());
             }
-            message("§7" + plan.displayName + " §f" + plan.qty + "x §7@ §f" + ScreenUtil.formatPrice(plan.buyPrice)
-                    + " §8→ §f" + ScreenUtil.formatPrice(plan.sellPrice)
-                    + " §7Marge §a" + String.format(java.util.Locale.US, "%.1f%%", plan.marginPercent)
-                    + " §7Gewinn §a" + ScreenUtil.formatCoins(plan.expectedProfit()));
-        }
-        if (plans.isEmpty()) {
-            message("§7Keine lohnenden Flips gefunden.");
-        }
+        });
         return 1;
     }
 

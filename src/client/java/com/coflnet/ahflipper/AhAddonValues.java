@@ -4,6 +4,7 @@ import com.coflnet.flipper.data.BazaarApi;
 import com.coflnet.flipper.data.MarketData;
 
 import java.util.Collection;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,11 +22,14 @@ public class AhAddonValues {
     }
 
     private static double bazaarValue(AhItem item, boolean ask) {
-        MarketData data = bazaar();
-        if (data == null) {
+        if (item == null) {
             return 0;
         }
-        double total = 0;
+        double total = Math.max(0, item.coinValue);
+        MarketData data = bazaar();
+        if (data == null) {
+            return total;
+        }
         for (Map.Entry<String, Integer> entry : item.enchants.entrySet()) {
             String id = "ENCHANTMENT_" + entry.getKey().toUpperCase(Locale.ROOT) + "_" + entry.getValue();
             total += value(data, id, ask);
@@ -33,6 +37,12 @@ public class AhAddonValues {
         if (item.hpb > 0) {
             total += item.hpb * value(data, "HOT_POTATO_BOOK", ask);
         }
+        if (item.fumingHpb > 0) {
+            total += item.fumingHpb * value(data, "FUMING_POTATO_BOOK", ask);
+        }
+        total += cosmeticValue(item.dyeItem, ask);
+        total += cosmeticValue(item.skin, ask);
+        total += cosmeticValue(item.petSkin, ask);
         if (item.recomb) {
             total += value(data, "RECOMBOBULATOR_3000", ask);
         }
@@ -171,6 +181,47 @@ public class AhAddonValues {
 
     public static double hpbValue(int count) {
         return count * productValue("HOT_POTATO_BOOK");
+    }
+
+    public static double fumingHpbValue(int count) {
+        return count * productValue("FUMING_POTATO_BOOK");
+    }
+
+    public static double cosmeticValue(String id, boolean ask) {
+        if (id == null || id.isBlank()) {
+            return 0;
+        }
+        String key = id.trim().toUpperCase(Locale.ROOT);
+        List<String> candidates = new ArrayList<>();
+        candidates.add(key);
+        if (!key.startsWith("DYE_")) {
+            candidates.add("DYE_" + key);
+        }
+        if (!key.endsWith("_SKIN")) {
+            candidates.add(key + "_SKIN");
+        }
+        for (String candidate : candidates) {
+            AhMarketData.MarketEntry entry = AhMarketData.market().get(candidate);
+            if (entry != null && entry.value() > 0) {
+                return entry.value();
+            }
+        }
+        for (String candidate : candidates) {
+            long bin = AhMarketData.binReference(candidate, "");
+            if (bin > 0) {
+                return bin;
+            }
+        }
+        return 0;
+    }
+
+    public static double masterStarValue(int stars) {
+        String[] names = {"FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"};
+        double total = 0;
+        for (int star = 6; star <= Math.min(10, stars); star++) {
+            total += productValue(names[star - 6] + "_MASTER_STAR");
+        }
+        return total;
     }
 
     public static double hpbVolume() {

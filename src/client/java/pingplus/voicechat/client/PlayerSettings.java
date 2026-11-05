@@ -1,6 +1,15 @@
 package pingplus.voicechat.client;
 
+import net.fabricmc.loader.api.FabricLoader;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Properties;
+
 public final class PlayerSettings {
+    private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("laby-player-settings.properties");
     public static float xScale = 1F;
     public static float yScale = 1F;
     public static float zScale = 1F;
@@ -66,6 +75,91 @@ public final class PlayerSettings {
     public static String followTarget = "";
     public static boolean followLookAtNearbyPlayers = false;
 
+    static {
+        load();
+    }
+
+    public static synchronized void save() {
+        Properties values = new Properties();
+        for (Field field : fields()) {
+            try {
+                values.setProperty(field.getName(), String.valueOf(field.get(null)));
+            } catch (Exception ignored) {
+            }
+        }
+        try {
+            Files.createDirectories(FILE.getParent());
+            Path tmp = FILE.resolveSibling(FILE.getFileName() + ".tmp");
+            try (var out = Files.newOutputStream(tmp)) {
+                values.store(out, "Client player settings");
+            }
+            Files.move(tmp, FILE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void load() {
+        if (!Files.exists(FILE)) {
+            return;
+        }
+        Properties values = new Properties();
+        try (var in = Files.newInputStream(FILE)) {
+            values.load(in);
+        } catch (Exception ignored) {
+            return;
+        }
+        for (Field field : fields()) {
+            String raw = values.getProperty(field.getName());
+            if (raw == null) {
+                continue;
+            }
+            try {
+                Class<?> type = field.getType();
+                if (type == boolean.class) {
+                    field.setBoolean(null, Boolean.parseBoolean(raw));
+                } else if (type == int.class) {
+                    field.setInt(null, Integer.parseInt(raw));
+                } else if (type == long.class) {
+                    field.setLong(null, Long.parseLong(raw));
+                } else if (type == float.class) {
+                    field.setFloat(null, Float.parseFloat(raw));
+                } else if (type == double.class) {
+                    field.setDouble(null, Double.parseDouble(raw));
+                } else if (type == String.class) {
+                    field.set(null, raw);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    private static Field[] fields() {
+        Field[] all = PlayerSettings.class.getDeclaredFields();
+        int count = 0;
+        for (Field field : all) {
+            if (persistable(field)) {
+                count++;
+            }
+        }
+        Field[] result = new Field[count];
+        int index = 0;
+        for (Field field : all) {
+            if (persistable(field)) {
+                result[index++] = field;
+            }
+        }
+        return result;
+    }
+
+    private static boolean persistable(Field field) {
+        int modifiers = field.getModifiers();
+        if (!Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers)) {
+            return false;
+        }
+        Class<?> type = field.getType();
+        return type == boolean.class || type == int.class || type == long.class
+                || type == float.class || type == double.class || type == String.class;
+    }
 }
 
 

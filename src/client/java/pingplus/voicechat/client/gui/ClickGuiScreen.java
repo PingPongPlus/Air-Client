@@ -12,7 +12,16 @@ import pingplus.voicechat.client.hud.PingHud;
 import pingplus.voicechat.client.hud.ScoreboardHud;
 
 import com.coflnet.ahflipper.AhFlipperMod;
+import com.coflnet.ahflipper.AhBidMacro;
+import com.coflnet.ahflipper.AhFireSaleBacktest;
+import com.coflnet.ahflipper.AhFireSaleSkinScreen;
+import com.coflnet.ahflipper.AhFireSaleSkinTracker;
+import com.coflnet.ahflipper.AhInvestmentScreen;
+import com.coflnet.ahflipper.AhInvestmentTracker;
 import com.coflnet.flipper.FlipperMod;
+import com.coflnet.flipper.trading.ScreenUtil;
+import com.coflnet.lowballing.LowballingMod;
+import com.coflnet.profit.ProfitTracker;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -44,6 +53,7 @@ public final class ClickGuiScreen extends Screen {
     private final List<Runnable> offActions = new ArrayList<>();
     private final Map<String, OptionsPanel> optionPanels = new LinkedHashMap<>();
     private final Map<String, int[]> positions = new HashMap<>();
+    private final Set<String> collapsedCategories = new HashSet<>();
     private static final int OPTIONS_WIDTH = 220;
     private OptionsPanel buildingOptions;
     private String openOptions;
@@ -82,6 +92,222 @@ public final class ClickGuiScreen extends Screen {
         int columns = Math.clamp((canvasWidth-16)/148,2,4);
         panelWidth = Math.min(140, (canvasWidth-24-(columns-1)*8)/columns);
         int startX = 16;
+        Category investment = category("INVESTMENT", "AH & Fire Sale investments");
+        toggle(investment,"Investment Tracker",()->AhFlipperMod.CONFIG.investmentGui,()->{
+            boolean enable=!AhFlipperMod.CONFIG.investmentGui;
+            AhFlipperMod.CONFIG.investmentGui=enable;
+            AhFlipperMod.CONFIG.save();
+            if(enable){
+                AhInvestmentTracker.start();
+                net.minecraft.client.Minecraft.getInstance().gui.setScreen(new AhInvestmentScreen());
+            }else{
+                AhInvestmentTracker.stop();
+            }
+        });
+        options(investment,"Investment Settings",()-> {
+            add(investment,new CombatSlider(panelWidth-20,"Max buy price (M)",0,1000,1,
+                    ()->AhFlipperMod.CONFIG.investmentMaxBuyPrice/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.investmentMaxBuyPrice=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min price (M)",0,1000,1,
+                    ()->AhFlipperMod.CONFIG.investmentMinPrice/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.investmentMinPrice=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min coins/h (k)",0,500,1,
+                    ()->AhFlipperMod.CONFIG.investmentMinCoinsPerHour/1000.0,v-> {
+                AhFlipperMod.CONFIG.investmentMinCoinsPerHour=Math.round(v*1000.0);
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Refresh (min)",2,60,1,
+                    ()->AhFlipperMod.CONFIG.investmentRefreshMinutes,v-> {
+                AhFlipperMod.CONFIG.investmentRefreshMinutes=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Slippage %",1,20,1,
+                    ()->AhFlipperMod.CONFIG.investmentSlippagePercent,v-> {
+                AhFlipperMod.CONFIG.investmentSlippagePercent=v;
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Max buy premium %",5,100,5,
+                    ()->AhFlipperMod.CONFIG.investmentMaxBuyPremiumPercent,v-> {
+                AhFlipperMod.CONFIG.investmentMaxBuyPremiumPercent=v;
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min margin %",1,50,1,
+                    ()->AhFlipperMod.CONFIG.investmentMinMarginPercent,v-> {
+                AhFlipperMod.CONFIG.investmentMinMarginPercent=v;
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Max qty",1,20,1,
+                    ()->AhFlipperMod.CONFIG.investmentMaxQty,v-> {
+                AhFlipperMod.CONFIG.investmentMaxQty=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Scan tags",20,400,10,
+                    ()->AhFlipperMod.CONFIG.investmentMaxTags,v-> {
+                AhFlipperMod.CONFIG.investmentMaxTags=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+                AhInvestmentTracker.requestRefresh();
+            }),26);
+        });
+        add(investment,new Button(0,0,panelWidth-20,18,Component.literal("Investment GUI"),b->{
+            AhFlipperMod.CONFIG.investmentGui=true;
+            AhFlipperMod.CONFIG.save();
+            AhInvestmentTracker.start();
+            net.minecraft.client.Minecraft.getInstance().gui.setScreen(new AhInvestmentScreen());
+        },supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,"Investment GUI",getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        },18);
+        toggle(investment,"Fire Sale Skins",()->AhFlipperMod.CONFIG.fireSaleSkins,()->{
+            boolean enable=!AhFlipperMod.CONFIG.fireSaleSkins;
+            AhFlipperMod.CONFIG.fireSaleSkins=enable;
+            AhFlipperMod.CONFIG.save();
+            if(enable){
+                AhFireSaleSkinTracker.start();
+                net.minecraft.client.Minecraft.getInstance().gui.setScreen(new AhFireSaleSkinScreen());
+            }else{
+                AhFireSaleSkinTracker.stop();
+            }
+        });
+        options(investment,"Fire Sale Settings",()-> {
+            add(investment,new CombatSlider(panelWidth-20,"Min price (M)",1,1000,1,
+                    ()->AhFlipperMod.CONFIG.fireSaleMinPrice/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.fireSaleMinPrice=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Max price (M)",100,20000,100,
+                    ()->AhFlipperMod.CONFIG.fireSaleMaxPrice/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.fireSaleMaxPrice=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min ROI %",0,200,5,
+                    ()->AhFlipperMod.CONFIG.fireSaleMinRoiPercent,v-> {
+                AhFlipperMod.CONFIG.fireSaleMinRoiPercent=v;
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min trend %/d",-2,5,0.5,
+                    ()->AhFlipperMod.CONFIG.fireSaleMinTrendPercent,v-> {
+                AhFlipperMod.CONFIG.fireSaleMinTrendPercent=v;
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min Conf %",5,90,5,
+                    ()->AhFlipperMod.CONFIG.fireSaleMinConfidence*100.0,v-> {
+                AhFlipperMod.CONFIG.fireSaleMinConfidence=v/100.0;
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Backtest fill %",10,100,10,
+                    ()->AhFlipperMod.CONFIG.fireSaleBacktestFillProbability*100.0,v-> {
+                AhFlipperMod.CONFIG.fireSaleBacktestFillProbability=v/100.0;
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleBacktest.runAsync();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Min sales",1,20,1,
+                    ()->AhFlipperMod.CONFIG.fireSaleMinSales,v-> {
+                AhFlipperMod.CONFIG.fireSaleMinSales=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Max qty",1,10,1,
+                    ()->AhFlipperMod.CONFIG.fireSaleMaxQty,v-> {
+                AhFlipperMod.CONFIG.fireSaleMaxQty=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Scan skins",5,300,5,
+                    ()->AhFlipperMod.CONFIG.fireSaleMaxTags,v-> {
+                AhFlipperMod.CONFIG.fireSaleMaxTags=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+                AhFireSaleSkinTracker.requestRefresh();
+            }),26);
+            add(investment,new CombatSlider(panelWidth-20,"Refresh (min)",5,120,5,
+                    ()->AhFlipperMod.CONFIG.fireSaleRefreshMinutes,v-> {
+                AhFlipperMod.CONFIG.fireSaleRefreshMinutes=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+        });
+        add(investment,new Button(0,0,panelWidth-20,18,Component.literal("Fire Sale GUI"),b->{
+            AhFlipperMod.CONFIG.fireSaleSkins=true;
+            AhFlipperMod.CONFIG.save();
+            AhFireSaleSkinTracker.start();
+            net.minecraft.client.Minecraft.getInstance().gui.setScreen(new AhFireSaleSkinScreen());
+        },supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,"Fire Sale GUI",getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        },18);
+        toggle(investment,"Investment Panel",()->AhFlipperMod.CONFIG.investmentPanelEnabled,()-> {
+            AhFlipperMod.CONFIG.investmentPanelEnabled=!AhFlipperMod.CONFIG.investmentPanelEnabled;
+            AhFlipperMod.CONFIG.save();
+        });
+        options(investment,"Investment Panel Settings",()-> {
+            toggle(investment,"Glass",()->AhFlipperMod.CONFIG.investmentPanelGlass,()-> {
+                AhFlipperMod.CONFIG.investmentPanelGlass=!AhFlipperMod.CONFIG.investmentPanelGlass;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(investment,"Edges",()->AhFlipperMod.CONFIG.investmentPanelEdges,()-> {
+                AhFlipperMod.CONFIG.investmentPanelEdges=!AhFlipperMod.CONFIG.investmentPanelEdges;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(investment,"Footer",()->AhFlipperMod.CONFIG.investmentPanelFooter,()-> {
+                AhFlipperMod.CONFIG.investmentPanelFooter=!AhFlipperMod.CONFIG.investmentPanelFooter;
+                AhFlipperMod.CONFIG.save();
+            });
+            add(investment,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->AhFlipperMod.CONFIG.investmentPanelRows,v-> {
+                AhFlipperMod.CONFIG.investmentPanelRows=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+        });
+        Category profit = category("PROFIT", "SkyBlock overall & module profit");
+        profitDisplay(profit,"Overall",ProfitTracker::overallNet);
+        profitDisplay(profit,"Bazaar",()->ProfitTracker.net(ProfitTracker.BAZAAR));
+        profitDisplay(profit,"AH-Flipper",()->ProfitTracker.net(ProfitTracker.AH));
+        profitDisplay(profit,"Lowballing",()->ProfitTracker.net(ProfitTracker.LOWBALLING));
+        actionButton(profit,"Reset Bazaar",()->ProfitTracker.reset(ProfitTracker.BAZAAR));
+        actionButton(profit,"Reset AH",()->ProfitTracker.reset(ProfitTracker.AH));
+        actionButton(profit,"Reset Lowballing",()->ProfitTracker.reset(ProfitTracker.LOWBALLING));
+        actionButton(profit,"Reset Overall",ProfitTracker::resetAll);
+        toggle(profit,"Profit HUD",()->AhFlipperMod.CONFIG.profitPanelEnabled,()-> {
+            AhFlipperMod.CONFIG.profitPanelEnabled=!AhFlipperMod.CONFIG.profitPanelEnabled;
+            AhFlipperMod.CONFIG.save();
+        });
+        options(profit,"Profit HUD Settings",()-> {
+            toggle(profit,"Glass",()->AhFlipperMod.CONFIG.profitPanelGlass,()-> {
+                AhFlipperMod.CONFIG.profitPanelGlass=!AhFlipperMod.CONFIG.profitPanelGlass;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(profit,"Edges",()->AhFlipperMod.CONFIG.profitPanelEdges,()-> {
+                AhFlipperMod.CONFIG.profitPanelEdges=!AhFlipperMod.CONFIG.profitPanelEdges;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(profit,"Footer",()->AhFlipperMod.CONFIG.profitPanelFooter,()-> {
+                AhFlipperMod.CONFIG.profitPanelFooter=!AhFlipperMod.CONFIG.profitPanelFooter;
+                AhFlipperMod.CONFIG.save();
+            });
+            add(profit,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->AhFlipperMod.CONFIG.profitPanelRows,v-> {
+                AhFlipperMod.CONFIG.profitPanelRows=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+        });
         Category hud = category("HUD", "On-screen information");
         var crosshair = CustomCrosshairHud.INSTANCE;
         toggle(hud,"Crosshair",crosshair::isEnabled,crosshair::toggle);
@@ -330,7 +556,238 @@ public final class ClickGuiScreen extends Screen {
         });
         Category skyblock = category("SKYBLOCK", "Hypixel skyblock helpers");
         toggle(skyblock,"Auction Flipper",AhFlipperMod::isRunning,AhFlipperMod::toggle);
+        options(skyblock,"Auction Flipper Settings",()-> {
+            toggle(skyblock,"AH Flip GUI",()->AhFlipperMod.CONFIG.ahPanelEnabled,()-> {
+                AhFlipperMod.CONFIG.ahPanelEnabled=!AhFlipperMod.CONFIG.ahPanelEnabled;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Auto-Buy",AhFlipperMod::isAutoBuyOn,AhFlipperMod::toggleAutoBuy);
+            toggle(skyblock,"Glass",()->AhFlipperMod.CONFIG.ahPanelGlass,()-> {
+                AhFlipperMod.CONFIG.ahPanelGlass=!AhFlipperMod.CONFIG.ahPanelGlass;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Edges",()->AhFlipperMod.CONFIG.ahPanelEdges,()-> {
+                AhFlipperMod.CONFIG.ahPanelEdges=!AhFlipperMod.CONFIG.ahPanelEdges;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Footer",()->AhFlipperMod.CONFIG.ahPanelFooter,()-> {
+                AhFlipperMod.CONFIG.ahPanelFooter=!AhFlipperMod.CONFIG.ahPanelFooter;
+                AhFlipperMod.CONFIG.save();
+            });
+            add(skyblock,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->AhFlipperMod.CONFIG.ahPanelRows,v-> {
+                AhFlipperMod.CONFIG.ahPanelRows=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Min profit %",0,100,1,
+                    ()->AhFlipperMod.CONFIG.minProfitPercent,v-> {
+                AhFlipperMod.CONFIG.minProfitPercent=v;
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Max bankroll (M)",0,1000,1,
+                    ()->AhFlipperMod.CONFIG.maxBankrollCoins/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.maxBankrollCoins=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"LBin min count",1,5,1,
+                    ()->AhFlipperMod.CONFIG.coflLbinMinCount,v-> {
+                AhFlipperMod.CONFIG.coflLbinMinCount=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"LBin match %",0.5,5,0.5,
+                    ()->AhFlipperMod.CONFIG.coflLbinMatchPercent,v-> {
+                AhFlipperMod.CONFIG.coflLbinMatchPercent=v;
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            blockedItemBox(skyblock,"Block item (Enter)");
+            List<String> blocked = AhFlipperMod.CONFIG.blacklist == null
+                    ? List.of() : List.copyOf(AhFlipperMod.CONFIG.blacklist);
+            optionLabel(skyblock,blocked.isEmpty()
+                    ? "Blocked items: none - Enter adds"
+                    : "Blocked items: "+blocked.size()+" - x removes");
+            for (String item : blocked) blockedItemRow(skyblock,item);
+            optionLabel(skyblock,"Hover item + K = block/unblock");
+            List<Map.Entry<String,String>> tagBlocked =
+                    new ArrayList<>(AhFlipperMod.CONFIG.blacklistTags.entrySet());
+            if (tagBlocked.isEmpty()) {
+                optionLabel(skyblock,"Tag blacklist: empty");
+            } else {
+                for (Map.Entry<String,String> entry : tagBlocked) {
+                    blockedTagRow(skyblock,entry.getKey(),entry.getValue());
+                }
+            }
+        });
+        toggle(skyblock,"Item value tooltip",AhFlipperMod::isTooltipValueOn,AhFlipperMod::toggleTooltipValue);
+        options(skyblock,"Tooltip options",()-> {
+            toggle(skyblock,"Tooltip details",AhFlipperMod::isTooltipDetailsOn,AhFlipperMod::toggleTooltipDetails);
+        });
+        options(skyblock,"Bids Settings",null,()-> {
+            toggle(skyblock,"Auto-Bid",AhBidMacro::isRunning,()->{
+                boolean enable=!AhBidMacro.isRunning();
+                AhFlipperMod.CONFIG.bidMacro=enable;
+                AhFlipperMod.CONFIG.save();
+                if(enable) AhBidMacro.start(); else AhBidMacro.stop();
+            });
+            toggle(skyblock,"Bids GUI",()->AhFlipperMod.CONFIG.bidsPanelEnabled,()-> {
+                AhFlipperMod.CONFIG.bidsPanelEnabled=!AhFlipperMod.CONFIG.bidsPanelEnabled;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Glass",()->AhFlipperMod.CONFIG.bidsPanelGlass,()-> {
+                AhFlipperMod.CONFIG.bidsPanelGlass=!AhFlipperMod.CONFIG.bidsPanelGlass;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Edges",()->AhFlipperMod.CONFIG.bidsPanelEdges,()-> {
+                AhFlipperMod.CONFIG.bidsPanelEdges=!AhFlipperMod.CONFIG.bidsPanelEdges;
+                AhFlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Footer",()->AhFlipperMod.CONFIG.bidsPanelFooter,()-> {
+                AhFlipperMod.CONFIG.bidsPanelFooter=!AhFlipperMod.CONFIG.bidsPanelFooter;
+                AhFlipperMod.CONFIG.save();
+            });
+            add(skyblock,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->AhFlipperMod.CONFIG.bidsPanelRows,v-> {
+                AhFlipperMod.CONFIG.bidsPanelRows=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Bid min profit %",1,50,1,
+                    ()->AhFlipperMod.CONFIG.bidMacroMinProfitPercent,v-> {
+                AhFlipperMod.CONFIG.bidMacroMinProfitPercent=v;
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Bid min value (M)",1,20,1,
+                    ()->AhFlipperMod.CONFIG.bidMacroMinValueCoins/1_000_000.0,v-> {
+                AhFlipperMod.CONFIG.bidMacroMinValueCoins=Math.round(v*1_000_000.0);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Bid max minutes (max 120)",10,120,5,
+                    ()->AhFlipperMod.CONFIG.bidMacroMaxRemainingMinutes,v-> {
+                AhFlipperMod.CONFIG.bidMacroMaxRemainingMinutes=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Bids per scan",1,15,1,
+                    ()->AhFlipperMod.CONFIG.bidMacroMaxBidsPerScan,v-> {
+                AhFlipperMod.CONFIG.bidMacroMaxBidsPerScan=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Candidates per scan",1,15,1,
+                    ()->AhFlipperMod.CONFIG.bidMacroMaxCandidatesPerScan,v-> {
+                AhFlipperMod.CONFIG.bidMacroMaxCandidatesPerScan=(int)Math.round(v);
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Bid bankroll %",10,100,5,
+                    ()->AhFlipperMod.CONFIG.bidMacroMaxBankrollFraction*100.0,v-> {
+                AhFlipperMod.CONFIG.bidMacroMaxBankrollFraction=v/100.0;
+                AhFlipperMod.CONFIG.save();
+            }),26);
+            toggle(skyblock,"Bid auto-list",()->AhFlipperMod.CONFIG.bidMacroAutoList,()->{
+                AhFlipperMod.CONFIG.bidMacroAutoList=!AhFlipperMod.CONFIG.bidMacroAutoList;
+                AhFlipperMod.CONFIG.save();
+            });
+        });
         toggle(skyblock,"Bazaar Flipper",FlipperMod::isRunning,FlipperMod::toggle);
+        options(skyblock,"Bazaar Flipper Settings",()-> {
+            toggle(skyblock,"Bazaar GUI",()->FlipperMod.CONFIG.bazaarPanelEnabled,()-> {
+                FlipperMod.CONFIG.bazaarPanelEnabled=!FlipperMod.CONFIG.bazaarPanelEnabled;
+                FlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Glass",()->FlipperMod.CONFIG.bazaarPanelGlass,()-> {
+                FlipperMod.CONFIG.bazaarPanelGlass=!FlipperMod.CONFIG.bazaarPanelGlass;
+                FlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Edges",()->FlipperMod.CONFIG.bazaarPanelEdges,()-> {
+                FlipperMod.CONFIG.bazaarPanelEdges=!FlipperMod.CONFIG.bazaarPanelEdges;
+                FlipperMod.CONFIG.save();
+            });
+            toggle(skyblock,"Footer",()->FlipperMod.CONFIG.bazaarPanelFooter,()-> {
+                FlipperMod.CONFIG.bazaarPanelFooter=!FlipperMod.CONFIG.bazaarPanelFooter;
+                FlipperMod.CONFIG.save();
+            });
+            add(skyblock,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->FlipperMod.CONFIG.bazaarPanelRows,v-> {
+                FlipperMod.CONFIG.bazaarPanelRows=(int)Math.round(v);
+                FlipperMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Min coins/hour (M)",0,1000,1,
+                    ()->FlipperMod.CONFIG.minCoinsPerHour/1_000_000.0,v-> {
+                FlipperMod.CONFIG.minCoinsPerHour=Math.round(v*1_000_000.0);
+                FlipperMod.CONFIG.save();
+            }),26);
+            blockedItemBox(skyblock,"Block Bazaar item (Enter)","Bazaar-Flipper",
+                    FlipperMod.CONFIG::addBlocked,()->FlipperMod.CONFIG.save());
+            List<String> bazaarBlocked = FlipperMod.CONFIG.blacklist == null
+                    ? List.of() : List.copyOf(FlipperMod.CONFIG.blacklist);
+            optionLabel(skyblock,bazaarBlocked.isEmpty()
+                    ? "Blocked bazaar items: none - Enter adds"
+                    : "Blocked bazaar items: "+bazaarBlocked.size()+" - x removes");
+            for (String item : bazaarBlocked) blockedItemRow(skyblock,item,"Bazaar-Flipper",
+                    FlipperMod.CONFIG::removeBlocked,()->FlipperMod.CONFIG.save());
+        });
+        toggle(skyblock,"Lowballing",LowballingMod::isRunning,LowballingMod::toggle);
+        options(skyblock,"Lowballing Settings",()-> {
+            toggle(skyblock,"Lowballing GUI",()->LowballingMod.CONFIG.panelEnabled,()-> {
+                LowballingMod.CONFIG.panelEnabled=!LowballingMod.CONFIG.panelEnabled;
+                LowballingMod.CONFIG.save();
+            });
+            toggle(skyblock,"Glass",()->LowballingMod.CONFIG.panelGlass,()-> {
+                LowballingMod.CONFIG.panelGlass=!LowballingMod.CONFIG.panelGlass;
+                LowballingMod.CONFIG.save();
+            });
+            toggle(skyblock,"Edges",()->LowballingMod.CONFIG.panelEdges,()-> {
+                LowballingMod.CONFIG.panelEdges=!LowballingMod.CONFIG.panelEdges;
+                LowballingMod.CONFIG.save();
+            });
+            toggle(skyblock,"Footer",()->LowballingMod.CONFIG.panelFooter,()-> {
+                LowballingMod.CONFIG.panelFooter=!LowballingMod.CONFIG.panelFooter;
+                LowballingMod.CONFIG.save();
+            });
+            add(skyblock,new CombatSlider(panelWidth-20,"Rows",1,5,1,
+                    ()->LowballingMod.CONFIG.panelRows,v-> {
+                LowballingMod.CONFIG.panelRows=(int)Math.round(v);
+                LowballingMod.CONFIG.save();
+            }),26);
+            toggle(skyblock,"Loop",()->LowballingMod.CONFIG.loop,()-> {
+                LowballingMod.CONFIG.loop=!LowballingMod.CONFIG.loop;
+                LowballingMod.CONFIG.save();
+            });
+            toggle(skyblock,"Debug",()->LowballingMod.CONFIG.debug,()-> {
+                LowballingMod.CONFIG.debug=!LowballingMod.CONFIG.debug;
+                LowballingMod.CONFIG.save();
+            });
+            toggle(skyblock,"Enforce bankroll",()->LowballingMod.CONFIG.enforceBankroll,()-> {
+                LowballingMod.CONFIG.enforceBankroll=!LowballingMod.CONFIG.enforceBankroll;
+                LowballingMod.CONFIG.save();
+            });
+            add(skyblock,new CombatSlider(panelWidth-20,"Min profit",0,50,1,
+                    ()->LowballingMod.CONFIG.minProfitPercent,v-> {
+                LowballingMod.CONFIG.minProfitPercent=v;
+                LowballingMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"First offer discount",0,50,1,
+                    ()->LowballingMod.CONFIG.firstOfferDiscountPercent,v-> {
+                LowballingMod.CONFIG.firstOfferDiscountPercent=v;
+                LowballingMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Interact reach",2,5,0.1,
+                    ()->LowballingMod.CONFIG.interactReach,v-> {
+                LowballingMod.CONFIG.interactReach=v;
+                LowballingMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Reserve (M)",0,100,1,
+                    ()->LowballingMod.CONFIG.reserveCoins/1_000_000.0,v-> {
+                LowballingMod.CONFIG.reserveCoins=Math.round(v*1_000_000.0);
+                LowballingMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Max cycles",0,200,1,
+                    ()->LowballingMod.CONFIG.maxCycles,v-> {
+                LowballingMod.CONFIG.maxCycles=(int)Math.round(v);
+                LowballingMod.CONFIG.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Hub forward",0,20,1,
+                    ()->LowballingMod.CONFIG.hubForwardBlocks,v-> {
+                LowballingMod.CONFIG.hubForwardBlocks=v;
+                LowballingMod.CONFIG.save();
+            }),26);
+        });
         options(skyblock,"General", null,()-> {
             toggle(skyblock,"No particles",()->PlayerSettings.hideParticles,()->PlayerSettings.hideParticles=!PlayerSettings.hideParticles);
             toggle(skyblock,"No mob names",()->PlayerSettings.hideMobNames,()->{
@@ -361,6 +818,9 @@ public final class ClickGuiScreen extends Screen {
             toggle(skyblock,"AGG",()->pingplus.voicechat.client.hud.AggSettings.isEnabled(),()->pingplus.voicechat.client.hud.AggSettings.setEnabled(!pingplus.voicechat.client.hud.AggSettings.isEnabled()));
             toggle(skyblock,"Player outline",()->PlayerSettings.playerOutline,()->PlayerSettings.playerOutline=!PlayerSettings.playerOutline);
         });
+        Category general = category("GENERAL", "General controls");
+        keyButton(general,"Release mouse",AhFlipperMod.mouseUngrabKey());
+        optionLabel(general,"Release mouse");
         Category keys = category("KEYS", "Hotkeys, click then press");
         keyButton(keys, "GUI", VoicechatClient.openGuiKey());
         keyButton(keys, "HUD editor", VoicechatClient.hudEditorKey());
@@ -371,7 +831,10 @@ public final class ClickGuiScreen extends Screen {
         keyButton(keys, "Shoulder cam", VoicechatClient.shoulderCamKey());
         keyButton(keys, "Killaura", VoicechatClient.killAuraKey());
         keyButton(keys, "Auction Flipper", AhFlipperMod.toggleKey());
+        keyButton(keys, "Investment GUI", AhFlipperMod.investKey());
+        keyButton(keys, "Fire Sale GUI", AhFlipperMod.fireSaleKey());
         keyButton(keys, "Bazaar Flipper", FlipperMod.toggleKey());
+        keyButton(keys, "Lowballing", LowballingMod.toggleKey());
         add(keys, new Button(0,0,panelWidth-20,18,Component.literal("Reset keys"),b->{resetKeys();rebuildWidgets();},supplier->supplier.get()) {
             @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
                 if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
@@ -381,8 +844,8 @@ public final class ClickGuiScreen extends Screen {
         // Stack shorter categories together, keeping the full Player settings column visible.
         int[] columnY = new int[columns];
         Arrays.fill(columnY, 30);
-        int[] columnFor = columns == 2 ? new int[]{0,0,1,0,1,0}
-                : columns == 3 ? new int[]{0,0,1,2,1,2} : new int[]{0,1,2,3,1,3};
+        int[] columnFor = columns == 2 ? new int[]{0,0,1,0,1,0,1,0,1}
+                : columns == 3 ? new int[]{0,0,1,2,1,2,0,1,2} : new int[]{0,1,2,3,1,3,0,1,2};
         for (int i=0; i<categories.size(); i++) {
             Category c=categories.get(i);
             int col=columnFor[Math.min(i, columnFor.length-1)];
@@ -394,6 +857,7 @@ public final class ClickGuiScreen extends Screen {
                 c.y=Math.clamp(saved[1],28,Math.max(28,canvasHeight-18-c.height()));
             }
         }
+        for(Category c:categories)c.lastHeight=c.height();
         updateScroll(); layout();
         installOptionsWindow();
     }
@@ -406,10 +870,17 @@ public final class ClickGuiScreen extends Screen {
         PlayerSettings.mobHealthBar = false;
         PlayerSettings.slayerBossHighlight = false;
         VoicechatClient.syncSlayerCfg();
-        if (GlassRainSettings.isEnabled()) GlassRainSettings.setEnabled(false);
         rebuildWidgets();
     }
-    private Category category(String name,String subtitle) { Category c=new Category(name,subtitle);categories.add(c);return c; }
+    private Category category(String name,String subtitle) {
+        Category c=new Category(name,subtitle);
+        if (collapsedCategories.contains(name)) {
+            c.collapsed=true;
+            c.open=0f;
+        }
+        categories.add(c);
+        return c;
+    }
     private void add(Category c,AbstractWidget w,int h) {
         if (buildingOptions != null) {
             if (!(w instanceof EditBox)) w.setWidth(OPTIONS_WIDTH - 20);
@@ -599,6 +1070,111 @@ public final class ClickGuiScreen extends Screen {
             return super.keyPressed(event);
         }
     }
+    private void blockedItemBox(Category c,String label) {
+        blockedItemBox(c,label,"AH-Flipper",AhFlipperMod.CONFIG::addBlocked,()->AhFlipperMod.CONFIG.save());
+    }
+    private void blockedItemBox(Category c,String label,String prefix,
+                                java.util.function.Function<String,Boolean> adder,Runnable save) {
+        EditBox box=new EditBox(font,0,0,55,14,Component.literal(label)) {
+            @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                text(g,label,getX()-(optionsWidth-80),getY()+3,GlassStyle.MUTED);
+                GlassButtonRenderer.control(g,getX()-5,getY()-2,getWidth()+10,18,GlassStyle.alpha(isFocused()?0xFF555555:0xFF303030,opacity));
+                g.nextStratum();super.extractWidgetRenderState(g,mx,my,dt);
+            }
+            @Override public boolean keyPressed(KeyEvent event) {
+                if (event.key()==GLFW.GLFW_KEY_ENTER || event.key()==GLFW.GLFW_KEY_KP_ENTER) {
+                    String value=getValue().trim();
+                    if (!value.isEmpty()) {
+                        boolean added=adder.apply(value);
+                        save.run();
+                        AhFlipperMod.message(added
+                                ? "Â§a["+prefix+"] Â§7Blocked Â§f"+value
+                                : "Â§e["+prefix+"] Â§f"+value+" Â§7is already blocked");
+                        setValue("");
+                        rebuildWidgets();
+                    }
+                    return true;
+                }
+                return super.keyPressed(event);
+            }
+        };
+        box.addFormatter((text,index)->net.minecraft.util.FormattedCharSequence.forward(text,GlassStyle.FONT));
+        box.setBordered(false);box.setTextShadow(false);box.setTextColor(GlassStyle.TEXT);box.setMaxLength(64);
+        box.setTooltip(Tooltip.create(Component.literal("Type an item name and press Enter to block it.")));
+        add(c,box,20);
+    }
+    private void blockedItemRow(Category c,String name) {
+        blockedItemRow(c,name,"AH-Flipper",AhFlipperMod.CONFIG::removeBlocked,()->AhFlipperMod.CONFIG.save());
+    }
+    private void blockedItemRow(Category c,String name,String prefix,
+                                java.util.function.Function<String,Boolean> remover,Runnable save) {
+        String shown=name.length()>22?name.substring(0,22)+"...":name;
+        Button row=new Button(0,0,panelWidth-20,18,Component.literal("Remove "+name),b-> {
+            boolean removed=remover.apply(name);
+            save.run();
+            AhFlipperMod.message(removed
+                    ? "Â§a["+prefix+"] Â§7Unblocked Â§f"+name
+                    : "Â§e["+prefix+"] Â§f"+name+" Â§7was not blocked");
+            rebuildWidgets();
+        },supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,"x "+shown,getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        };
+        row.setTooltip(Tooltip.create(Component.literal("Click to unblock")));
+        add(c,row,18);
+    }
+    private void blockedTagRow(Category c,String tag,String name) {
+        String shown=name.length()>20?name.substring(0,20)+"...":name;
+        Button row=new Button(0,0,panelWidth-20,18,Component.literal("Remove "+name),b-> {
+            boolean removed=AhFlipperMod.CONFIG.blacklistTags.remove(
+                    com.coflnet.ahflipper.AhFlipperConfig.baseTag(tag))!=null;
+            AhFlipperMod.CONFIG.save();
+            AhFlipperMod.message(removed
+                    ? "\u00a7a[AH-Flipper] \u00a77Unblocked: \u00a7f" + name
+                    : "\u00a7e[AH-Flipper] \u00a7f" + name + " \u00a77was not blocked");
+            rebuildWidgets();
+        },supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,"x "+shown+" §8("+tag+")",getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        };
+        row.setTooltip(Tooltip.create(Component.literal("Click removes the tag block")));
+        add(c,row,18);
+    }
+
+    private void profitDisplay(Category c,String label,LongSupplier net) {
+        add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
+            { active=false; }
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                long value=net.getAsLong();
+                String shown=label+": "+(value>=0?"+":"-")
+                        +ScreenUtil.formatCoins(Math.abs(value))
+                        +(value<0?" (invested)":"");
+                text(g,shown,getX()+4,getY()+4,value>=0?GlassStyle.STATUS:GlassStyle.MUTED);
+            }
+        },18);
+    }
+
+    private void actionButton(Category c,String label,Runnable action) {
+        add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->action.run(),supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
+                text(g,label,getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        },18);
+    }
+
+    private void optionLabel(Category c,String label) {
+        add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
+            { active=false; }
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                text(g,label,getX()+4,getY()+4,GlassStyle.MUTED);
+            }
+        },18);
+    }
     private void keyButton(Category c, String name, KeyMapping mapping) {
         String label = mapping == null ? name + ": -"
             : mapping == pendingKey ? name + ": press..." : name + ": " + mapping.getTranslatedKeyMessage().getString();
@@ -619,7 +1195,11 @@ public final class ClickGuiScreen extends Screen {
         if (VoicechatClient.shoulderCamKey() != null) VoicechatClient.shoulderCamKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_R));
         if (VoicechatClient.killAuraKey() != null) VoicechatClient.killAuraKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_Z));
         if (AhFlipperMod.toggleKey() != null) AhFlipperMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F9));
-        if (FlipperMod.toggleKey() != null) FlipperMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F8));
+        if (FlipperMod.toggleKey() != null) FlipperMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F7));
+        if (LowballingMod.toggleKey() != null) LowballingMod.toggleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F6));
+        if (AhFlipperMod.investKey() != null) AhFlipperMod.investKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F10));
+        if (AhFlipperMod.fireSaleKey() != null) AhFlipperMod.fireSaleKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_F8));
+        if (AhFlipperMod.mouseUngrabKey() != null) AhFlipperMod.mouseUngrabKey().setKey(InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_LEFT_ALT));
         pendingKey = null;
         saveKeys();
     }
@@ -634,7 +1214,38 @@ public final class ClickGuiScreen extends Screen {
     private void layout() {
         for(Entry e:entries){
             e.widget.setX(e.category.x+(e.widget instanceof OptionGear?panelWidth-28:10));
-            e.widget.setY(e.category.y+22+e.row-scroll);
+            e.widget.setY(e.category.y+22+Math.round(e.row*e.category.open)-scroll);
+        }
+    }
+
+    private void animateCategories(float dt) {
+        float step=Math.min(1f,Math.max(.08f,dt)*16f);
+        boolean changed=false;
+        for(Category c:categories){
+            float target=c.collapsed?0f:1f;
+            if(Math.abs(c.open-target)<.002f){
+                c.open=target;
+            }else{
+                c.open+=(target-c.open)*step;
+                changed=true;
+            }
+            int height=c.height();
+            int old=c.lastHeight<0?height:c.lastHeight;
+            if(old!=height){
+                int delta=height-old;
+                for(Category other:categories){
+                    if(other==c||Math.abs(other.x-c.x)>1)continue;
+                    if(other.y>=c.y+old){
+                        other.y+=delta;
+                    }
+                }
+                c.lastHeight=height;
+                changed=true;
+            }
+        }
+        if(changed){
+            updateScroll();
+            layout();
         }
     }
     @Override public void extractBackground(GuiGraphicsExtractor g,int mx,int my,float dt) {
@@ -642,15 +1253,15 @@ public final class ClickGuiScreen extends Screen {
             MenuBackground.drawWallpaper(g);
         }
         g.fill(0,0,width,height,GlassStyle.alpha(0x50000000,opacity));
-        pingplus.voicechat.client.gui.glass.GlassRain.draw(g);
     }
     @Override public void extractRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
+        animateCategories(dt);
         opacity=closing==0?Math.clamp((System.nanoTime()-opened)/220_000_000f,0,1):1-Math.clamp((System.nanoTime()-closing)/160_000_000f,0,1);
         g.pose().pushMatrix();
         g.pose().scale(UI_SCALE);
         mx = (int)(mx / UI_SCALE);
         my = (int)(my / UI_SCALE);
-        text(g,"UNTITLED",16,13,GlassStyle.TEXT);text(g,"/  CONTROL CENTER",74,13,GlassStyle.MUTED);
+        text(g,"UNTITLED",16,13,GlassStyle.TEXT);text(g,"/  CONTROL CENTER  \u00b7  INVEST",74,13,GlassStyle.MUTED);
         allOff.setAlpha(opacity);
         allOff.extractRenderState(g,mx,my,dt);
         text(g,"ESC  /  CLOSE",canvasWidth-78,13,GlassStyle.MUTED);
@@ -664,11 +1275,14 @@ public final class ClickGuiScreen extends Screen {
         for(Category c:categories){
             int y=c.y-scroll;
             text(g,c.title,c.x+10,y+6,GlassStyle.TEXT);
+            text(g,c.open<.5f?">":"v",c.x+panelWidth-14,y+6,GlassStyle.MUTED);
             GlassButtonRenderer.control(g,c.x+10,y+18,panelWidth-20,1,GlassStyle.alpha(0xFFBBBBBB,opacity*.5f));
-            for(Entry e:entries)if(e.category==c){e.widget.setAlpha(opacity);e.widget.extractRenderState(g,openOptions==null?mx:-100,openOptions==null?my:-100,dt);}
+            if(c.open<=.02f)continue;
+            float contentAlpha=opacity*Math.min(1f,c.open*1.6f);
+            for(Entry e:entries)if(e.category==c){e.widget.setAlpha(contentAlpha);e.widget.extractRenderState(g,openOptions==null?mx:-100,openOptions==null?my:-100,dt);}
         }
         g.disableScissor();
-        text(g,"DRAG HEADERS  /  GEARS OPEN OPTIONS",16,canvasHeight-13,GlassStyle.MUTED);
+        text(g,"LMB DRAG  /  RMB COLLAPSE  /  GEARS OPTIONS",16,canvasHeight-13,GlassStyle.MUTED);
         if(maxScroll>0)text(g,"SCROLL",canvasWidth-48,canvasHeight-13,GlassStyle.ACCENT);
         drawOptions(g,mx,my,dt);
         g.pose().popMatrix();
@@ -725,8 +1339,15 @@ public final class ClickGuiScreen extends Screen {
         }
         if(e.y()>canvasHeight-16)return true;
         for(int i=categories.size()-1;i>=0;i--){Category c=categories.get(i);int y=c.y-scroll;
-            if(e.button()==0&&e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+20){dragging=c;dragX=e.x()-c.x;dragY=e.y()-y;return true;}
+            boolean header=e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+20;
+            if(e.button()==1&&header){
+                c.collapsed=!c.collapsed;
+                if(c.collapsed)collapsedCategories.add(c.title);else collapsedCategories.remove(c.title);
+                return true;
+            }
+            if(e.button()==0&&header){dragging=c;dragX=e.x()-c.x;dragY=e.y()-y;return true;}
             if(e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+c.height()){
+                if(c.collapsed||c.open<.9f)return true;
                 for(Entry entry:entries)if(entry.category==c&&entry.widget.mouseClicked(e,twice)){if(children().contains(entry.widget)){setFocused(entry.widget);setDragging(true);}return true;}
                 return true;
             }
@@ -748,6 +1369,8 @@ public final class ClickGuiScreen extends Screen {
     @Override public boolean keyPressed(KeyEvent e){
         if (pendingKey != null) {
             if (e.key() == GLFW.GLFW_KEY_ESCAPE) {
+                pendingKey.setKey(InputConstants.UNKNOWN);
+                saveKeys();
                 pendingKey = null;
                 rebuildWidgets();
                 return true;
@@ -777,13 +1400,16 @@ public final class ClickGuiScreen extends Screen {
         return handled;
     }
     @Override public boolean isPauseScreen(){return false;}
-    @Override public void onClose(){if(closing==0)closing=System.nanoTime();}
+    @Override public void onClose(){if(closing==0){PlayerSettings.save();closing=System.nanoTime();}}
     @Override public void tick(){if(closing!=0&&System.nanoTime()-closing>=160_000_000L)minecraft.gui.setScreen(null);}
 
     private static final class Category {
         final String title,subtitle;int x,y,content;
+        boolean collapsed;
+        float open=1f;
+        int lastHeight=-1;
         Category(String title,String subtitle){this.title=title;this.subtitle=subtitle;}
-        int height(){return 22+content;}
+        int height(){return 22+Math.max(0,Math.round(content*open));}
     }
     private record Entry(Category category,AbstractWidget widget,int row){}
     private static final class OptionsPanel {
@@ -980,3 +1606,4 @@ public final class ClickGuiScreen extends Screen {
         }
     }
 }
+

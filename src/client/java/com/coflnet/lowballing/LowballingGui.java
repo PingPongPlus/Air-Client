@@ -2,6 +2,7 @@ package com.coflnet.lowballing;
 
 import com.coflnet.ahflipper.AhItem;
 import com.coflnet.flipper.trading.ScreenUtil;
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -9,9 +10,10 @@ import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SignItem;
+import net.minecraft.world.item.TooltipFlag;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,7 +23,8 @@ import java.util.Locale;
 public final class LowballingGui {
     private static final List<String> UI_WORDS = List.of(
             "kick", "trade", "coins", "coin", "close", "back", "accept", "decline",
-            "confirm", "cancel", "deny", "visit", "island", "menu", "next", "previous"
+            "confirm", "cancel", "deny", "visit", "island", "menu", "next", "previous",
+            "your stuff", "your items", "their stuff", "their items", "gift"
     );
 
     private LowballingGui() {
@@ -110,6 +113,28 @@ public final class LowballingGui {
         return findButtonSlot("trade");
     }
 
+    public static boolean isTradeWindow(String previousTitle) {
+        String title = currentTitle();
+        if (title.isBlank()) {
+            return false;
+        }
+        String lower = title.toLowerCase(Locale.ROOT);
+        if (lower.contains("player menu") || lower.contains("trade request")) {
+            return false;
+        }
+        if (lower.contains("trade") || lower.contains("deal")) {
+            return true;
+        }
+        if (findButtonSlot("accept", "confirm", "decline", "cancel") >= 0) {
+            return true;
+        }
+        if (findKickSlot() < 0 && findCoinsSlot() < 0 && findTradeSlot() < 0) {
+            return true;
+        }
+        return previousTitle != null && !previousTitle.isBlank()
+                && !title.equalsIgnoreCase(previousTitle);
+    }
+
     public static List<Integer> findTradeItemSlots() {
         if (LowballingMod.CONFIG.tradeItemSlotOverride >= 0) {
             return List.of(LowballingMod.CONFIG.tradeItemSlotOverride);
@@ -141,10 +166,15 @@ public final class LowballingGui {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
-        if (stack.getItem() == Items.STAINED_GLASS_PANE.black()
-                || stack.getItem() == Items.BARRIER
-                || stack.getItem() == Items.ARROW
+        String itemId = stack.getItem().toString().toLowerCase(Locale.ROOT);
+        if (itemId.contains("stained_glass_pane") || itemId.contains("glass_pane")
+                || itemId.contains("terracotta") || itemId.contains("barrier")
+                || itemId.contains("arrow")
                 || stack.getItem() instanceof SignItem) {
+            return false;
+        }
+        AhItem parsed = AhItem.fromStack(stack);
+        if (isFillerTag(parsed.tag)) {
             return false;
         }
         String name = ScreenUtil.cleanName(stack.getHoverName().getString())
@@ -166,6 +196,52 @@ public final class LowballingGui {
             }
         }
         return true;
+    }
+
+    private static boolean isFillerTag(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return false;
+        }
+        String upper = tag.toUpperCase(Locale.ROOT);
+        return upper.contains("STAINED_GLASS_PANE")
+                || upper.endsWith("GLASS_PANE")
+                || upper.contains("TERRACOTTA")
+                || upper.equals("BARRIER")
+                || upper.equals("ARROW");
+    }
+
+    public static List<String> tooltipLinesAt(int slot) {
+        List<String> lines = ScreenUtil.sync(() -> {
+            AbstractContainerScreen<?> container = currentContainer();
+            if (container == null || slot < 0 || slot >= containerSize(container)) {
+                return Collections.<String>emptyList();
+            }
+            ItemStack stack = itemAt(container, slot);
+            if (stack == null || stack.isEmpty()) {
+                return Collections.<String>emptyList();
+            }
+            List<Component> tooltip = stack.getTooltipLines(Item.TooltipContext.EMPTY,
+                    Minecraft.getInstance().player, TooltipFlag.NORMAL);
+            ItemTooltipCallback.EVENT.invoker().getTooltip(stack,
+                    Item.TooltipContext.EMPTY, TooltipFlag.NORMAL, tooltip);
+            List<String> result = new ArrayList<>();
+            for (Component line : tooltip) {
+                result.add(line.getString());
+            }
+            return result;
+        });
+        return lines == null ? Collections.emptyList() : lines;
+    }
+
+    public static List<String> loreAt(int slot) {
+        List<String> lines = ScreenUtil.sync(() -> {
+            AbstractContainerScreen<?> container = currentContainer();
+            if (container == null || slot < 0 || slot >= containerSize(container)) {
+                return Collections.<String>emptyList();
+            }
+            return lore(itemAt(container, slot));
+        });
+        return lines == null ? Collections.emptyList() : lines;
     }
 
     public static AhItem itemAt(int slot) {

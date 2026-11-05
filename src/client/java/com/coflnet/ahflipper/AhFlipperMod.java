@@ -1,7 +1,11 @@
 package com.coflnet.ahflipper;
 
 import com.coflnet.CoflModClient;
+import com.coflnet.flipper.FlipperMod;
 import com.coflnet.flipper.trading.ScreenUtil;
+import com.coflnet.lowballing.LowballingMod;
+import com.coflnet.profit.ProfitTracker;
+
 import com.coflnet.flipper.trading.SignInput;
 import com.coflnet.flipper.trading.Trader;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -14,39 +18,74 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
 public class AhFlipperMod {
     public static final AhFlipperConfig CONFIG = AhFlipperConfig.load();
     private static KeyMapping toggleKey;
+    private static KeyMapping investKey;
+    private static KeyMapping fireSaleKey;
+    private static KeyMapping blacklistKey;
+    private static KeyMapping mouseUngrabKey;
     private static volatile boolean running;
     private static volatile boolean recon;
-    private static volatile boolean autoBuy;
-    private static volatile boolean busy;
+    private static volatile boolean autoBuy = CONFIG.autoBuy;
+    private static volatile boolean purchaseInProgress;
+    private static volatile long bidPriorityUntil;
+    private static volatile AutomationGate.Lease bidLease;
     private static volatile boolean lastBuyOk;
     private static volatile boolean autoWorkerRunning;
-    private static volatile boolean debugAnalyze;
+    private static volatile boolean debugAnalyze = CONFIG.debugAnalyze;
     private static volatile boolean debugWorkerRunning;
     private static final java.util.List<AutoCandidate> AUTO_QUEUE = new java.util.ArrayList<>();
     private static final java.util.List<AutoCandidate> DEBUG_QUEUE = new java.util.ArrayList<>();
     private static final java.util.ArrayDeque<ListingTask> LISTING_QUEUE = new java.util.ArrayDeque<>();
+    private static final java.util.Map<String, Long> RECENT_LISTINGS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Set<String> ACTIVE_LISTINGS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final int AH_MAX_ACTIVE = 17;
+    private static volatile int activeAuctionCount = -1;
+    private static volatile boolean listingWorkerRunning;
+    private static volatile long lastActiveCountRefreshAt;
+    private static volatile boolean activeCountRefreshRunning;
+    private static volatile boolean claimActionPerformed;
     private static volatile String lastFlipId;
     private static volatile long lastFlipWorth;
     private static volatile long lastFlipAt;
     private static volatile String lastBoughtTag = "";
     private static volatile String lastBoughtName = "";
+    private static volatile String lastBoughtId = "";
     private static volatile long lastBoughtValue;
     private static volatile long lastBoughtPrice;
+    private static volatile String activePurchaseTag = "";
+    private static volatile String activePurchaseName = "";
+    private static volatile String activePurchaseId = "";
+    private static volatile long activePurchaseValue;
+    private static volatile long activePurchasePrice;
+    private static volatile long activePurchaseAt;
     private static final java.util.concurrent.atomic.AtomicBoolean SOLD_CLAIM_PENDING =
             new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicBoolean CHAT_HANDLING =
+            new java.util.concurrent.atomic.AtomicBoolean();
     private static volatile long lastSoldClaimAt;
+    private static volatile long lastPurchaseErrorAt;
+    private static volatile boolean recoveryRunning;
     private static String lastScreenKey = "";
+    private static Screen watchdogScreen;
+    private static long watchdogSince;
+    private static long lastWatchdogCloseAt;
+    private static long lastPriorityRefreshAt;
+    private static long lastPriorityReleaseCheckAt;
 
     private record AutoCandidate(String id, long value, long profit, long at, boolean prevalidated) {
         private AutoCandidate(String id, long value, long profit, long at) {
@@ -54,20 +93,59 @@ public class AhFlipperMod {
         }
     }
 
-    private record ListingTask(String tag, String name, long value, long boughtPrice, long at) {
+    private record ListingTask(String tag, String name, long value, long boughtPrice,
+                               String excludeUuid, long fixedPrice, long at) {
     }
 
     public static void init() {
+        System.out.println("[AH-Flipper] BUILD CLEAN-2026-11-05 geladen (investmentGui="
+                + CONFIG.investmentGui + ", fireSaleSkins=" + CONFIG.fireSaleSkins
+                + ", keys=F10/F8)");
+        debugAnalyze = false;
+        CONFIG.debugAnalyze = false;
         registerKeybinding();
-        registerCommands();
         registerSoldChatClaim();
-        AhDashboard.init();
+        com.coflnet.gui.panel.FlipperPanels.init();
+        AhBidMacro.init();
+        AhInvestmentTracker.init();
+        AhFireSaleSkinTracker.init();
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+                message("\u00a76[AH-Flipper] \u00a77Build \u00a7fCLEAN-2026-11-05"
+                        + " \u00a77\u00b7 \u00a7fF10 \u00a77Investment \u00b7 \u00a7fF8"
+                        + " \u00a77Fire Sale"));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (toggleKey.consumeClick()) {
                 toggle();
             }
+            if (investKey.consumeClick()) {
+                openInvestmentGui();
+            }
+            if (fireSaleKey.consumeClick()) {
+                openFireSaleGui();
+            }
+            if (blacklistKey.consumeClick() && client.gui.screen() == null
+                    && client.player != null) {
+                handleBlacklistKey(client.player.getMainHandItem());
+            }
+            if (mouseUngrabKey.consumeClick() && client.gui.screen() == null) {
+                toggleMouseGrab(client);
+            }
             if (recon || running) {
                 trackScreens(client);
+            }
+            watchdogScreens(client);
+            long now = System.currentTimeMillis();
+            if (isBusy() && now - lastPriorityRefreshAt > 10_000L) {
+                lastPriorityRefreshAt = now;
+                ensureAhPriority();
+            }
+            if (now - lastPriorityReleaseCheckAt > 1000L) {
+                lastPriorityReleaseCheckAt = now;
+                releaseAhPriorityIfIdle();
+            }
+            if (running && client.player != null
+                    && now - lastActiveCountRefreshAt > 30_000L) {
+                refreshActiveAuctionCountAsync();
             }
         });
     }
@@ -76,12 +154,80 @@ public class AhFlipperMod {
         return toggleKey;
     }
 
+    public static KeyMapping investKey() {
+        return investKey;
+    }
+
+    public static KeyMapping fireSaleKey() {
+        return fireSaleKey;
+    }
+
+    public static KeyMapping mouseUngrabKey() {
+        return mouseUngrabKey;
+    }
+
+    public static void toggleMouseGrab(Minecraft client) {
+        if (client == null || client.mouseHandler == null) {
+            return;
+        }
+        if (client.mouseHandler.isMouseGrabbed()) {
+            client.mouseHandler.releaseMouse();
+        } else {
+            client.mouseHandler.grabMouse();
+        }
+    }
+
+    public static void openFireSaleGui() {
+        openFireSaleGui(AhFireSaleSkinScreen.Mode.SCAN);
+    }
+
+    public static void openFireSaleGui(AhFireSaleSkinScreen.Mode mode) {
+        if (!CONFIG.fireSaleSkins) {
+            CONFIG.fireSaleSkins = true;
+            CONFIG.save();
+        }
+        AhFireSaleSkinTracker.start();
+        if (mode == AhFireSaleSkinScreen.Mode.BACKTEST) {
+            AhFireSaleBacktest.runAsync();
+        } else if (mode == AhFireSaleSkinScreen.Mode.COMPS) {
+            AhFireSaleComps.runAsync();
+        }
+        message("\u00a76[Investment] \u00a7aFire Sale skin tracker active \u00a77- scan running.");
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> client.gui.setScreen(new AhFireSaleSkinScreen(mode)));
+    }
+
+    public static void openInvestmentGui() {
+        if (!CONFIG.investmentGui) {
+            CONFIG.investmentGui = true;
+            CONFIG.save();
+        }
+        AhInvestmentTracker.start();
+        message("\u00a76[Investment] \u00a7aTracker active \u00a77- background scan running.");
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> client.gui.setScreen(new AhInvestmentScreen()));
+    }
+
     public static boolean isRunning() {
         return running;
     }
 
+    public static boolean stopForRestart() {
+        boolean wasRunning = running;
+        if (wasRunning) {
+            stop();
+        }
+        return wasRunning;
+    }
+
+    public static void resumeAfterRestart(boolean wasRunning) {
+        if (wasRunning && !running) {
+            start();
+        }
+    }
+
     public static boolean wantsFlips() {
-        return running || debugAnalyze;
+        return debugAnalyze;
     }
 
     public static boolean isRecon() {
@@ -96,6 +242,67 @@ public class AhFlipperMod {
                 InputConstants.Type.KEYSYM,
                 GLFW.GLFW_KEY_F9,
                 category));
+        investKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "keybinding.coflmod.investment",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_F10,
+                category));
+        fireSaleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "keybinding.coflmod.firesale",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_F8,
+                category));
+        blacklistKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "keybinding.coflmod.blacklist_hovered",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_K,
+                category));
+        mouseUngrabKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "keybinding.coflmod.mouse_ungrab",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_LEFT_ALT,
+                category));
+    }
+
+    public static KeyMapping blacklistKey() {
+        return blacklistKey;
+    }
+
+    public static boolean handleToggleKeys(net.minecraft.client.input.KeyEvent input) {
+        if (toggleKey != null && toggleKey.matches(input)) {
+            toggle();
+            return true;
+        }
+        if (FlipperMod.toggleKey() != null && FlipperMod.toggleKey().matches(input)) {
+            FlipperMod.toggle();
+            return true;
+        }
+        if (LowballingMod.toggleKey() != null && LowballingMod.toggleKey().matches(input)) {
+            LowballingMod.toggle();
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean handleBlacklistKey(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            message("\u00a7e[AH-Flipper] \u00a77No item under cursor / in hand.");
+            return false;
+        }
+        AhItem item = AhItem.fromStack(stack);
+        if (item.tag == null || item.tag.isBlank()) {
+            message("\u00a7e[AH-Flipper] \u00a77No SkyBlock ID detected.");
+            return false;
+        }
+        String base = AhFlipperConfig.baseTag(item.tag);
+        boolean locked = CONFIG.toggleBlacklist(item.tag, item.displayName);
+        CONFIG.save();
+        if (locked) {
+            message("\u00a7a[AH-Flipper] \u00a77Blocked: \u00a7f" + item.displayName + " \u00a78(" + base + ", all variants)");
+        } else {
+            message("\u00a7e[AH-Flipper] \u00a77Unblocked: \u00a7f" + item.displayName);
+        }
+        return true;
     }
 
     private static void registerCommands() {
@@ -111,12 +318,16 @@ public class AhFlipperMod {
                 .then(ClientCommands.literal("stop").executes(AhFlipperMod::stopCommand))
                 .then(ClientCommands.literal("recon").executes(AhFlipperMod::reconCommand))
                 .then(ClientCommands.literal("claim").executes(AhFlipperMod::claimCommand))
-                .then(ClientCommands.literal("autobuy").executes(AhFlipperMod::autoBuyCommand))
                 .then(ClientCommands.literal("scan").executes(AhFlipperMod::scanCommand))
                 .then(ClientCommands.literal("stream").executes(AhFlipperMod::streamCommand))
                 .then(ClientCommands.literal("feed").executes(AhFlipperMod::streamCommand))
-                .then(ClientCommands.literal("tooltip").executes(AhFlipperMod::tooltipCommand))
                 .then(ClientCommands.literal("automations").executes(AhFlipperMod::automationsCommand))
+                .then(ClientCommands.literal("invest").executes(AhFlipperMod::investmentCommand))
+                .then(ClientCommands.literal("investment").executes(AhFlipperMod::investmentCommand))
+                .then(ClientCommands.literal("skins").executes(AhFlipperMod::fireSaleCommand))
+                .then(ClientCommands.literal("firesale").executes(AhFlipperMod::fireSaleCommand))
+                .then(ClientCommands.literal("backtest").executes(AhFlipperMod::fireSaleBacktestCommand))
+                .then(ClientCommands.literal("comps").executes(AhFlipperMod::fireSaleCompsCommand))
                 .then(ClientCommands.literal("buy")
                         .then(ClientCommands.argument("auktion", com.mojang.brigadier.arguments.StringArgumentType.word())
                                 .executes(AhFlipperMod::buyCommand)))
@@ -124,12 +335,12 @@ public class AhFlipperMod {
                 .then(ClientCommands.literal("buyauktion")
                         .then(ClientCommands.argument("spieler", com.mojang.brigadier.arguments.StringArgumentType.string())
                                 .executes(AhFlipperMod::buyPlayerAuctionCommand)))
-                .then(ClientCommands.literal("analyze5").executes(AhFlipperMod::analyze5Command))
                 .then(ClientCommands.literal("dump").executes(context -> {
                     AhScreenUtil.dumpScreen();
                     return 1;
                 }))
                 .then(ClientCommands.literal("status").executes(AhFlipperMod::statusCommand))
+                .then(ClientCommands.literal("auctions").executes(AhFlipperMod::activeAuctionsCommand))
                 .then(ClientCommands.literal("open")
                         .then(ClientCommands.argument("spieler", com.mojang.brigadier.arguments.StringArgumentType.word())
                                 .executes(AhFlipperMod::openCommand)))
@@ -157,7 +368,7 @@ public class AhFlipperMod {
 
     private static void start() {
         if (!ScreenUtil.onSkyBlock()) {
-            message("§cAH-Flipper kann nur auf Hypixel SkyBlock gestartet werden.");
+            message("\u00a7cAH-Flipper can only start on Hypixel SkyBlock.");
             return;
         }
         running = true;
@@ -168,26 +379,34 @@ public class AhFlipperMod {
         if (CONFIG.autoScan) {
             AhScanner.start();
         }
-        message("§6[AH-Flipper] §aaktiv §7(Live "
-                + (CONFIG.liveFeed ? "§aan" : "§caus") + "§7, Scanner "
-                + (CONFIG.autoScan ? "§aan" : "§caus") + "§7, Auto-Buy "
-                + (autoBuy ? "§aan" : "§caus") + "§7).");
+        if (CONFIG.bidMacro) {
+            AhBidMacro.start();
+        }
+        ensureListingWorker();
+        refreshActiveAuctionCountAsync();
+        message("\u00a76[AH-Flipper] \u00a7aactive \u00a77(Live " + (CONFIG.liveFeed ? "\u00a7aon" : "\u00a7coff") + "\u00a77, Scanner " + (CONFIG.autoScan ? "\u00a7aon" : "\u00a7coff") + "\u00a77, Auto-Buy " + (autoBuy ? "\u00a7aon" : "\u00a7coff") + "\u00a77).");
+        message("\u00a77Investment: \u00a7fF10 \u00a77\u00b7 Fire Sale: \u00a7fF8");
     }
 
     private static void stop() {
         running = false;
         recon = false;
         AhLiveScanner.stop();
-        CoflFlipStream.stop();
         AhScanner.stop();
+        AhBidMacro.stop();
+        clearBidPriority();
         synchronized (AUTO_QUEUE) {
             AUTO_QUEUE.clear();
         }
+        synchronized (LISTING_QUEUE) {
+            LISTING_QUEUE.clear();
+        }
+        releaseAhPriorityIfIdle();
         Trader trader = Trader.get();
-        if (trader != null && !busy) {
+        if (trader != null && !isBusy()) {
             trader.releaseAhPriority();
         }
-        message("§6[AH-Flipper] §cgestoppt.");
+        message("\u00a76[AH-Flipper] \u00a7cstopped.");
     }
 
     private static void trackScreens(Minecraft client) {
@@ -210,14 +429,111 @@ public class AhFlipperMod {
         AhScreenUtil.logContainer(container);
     }
 
+    private static void watchdogScreens(Minecraft client) {
+        Screen screen = client.gui.screen();
+        if (screen == null) {
+            watchdogScreen = null;
+            watchdogSince = 0;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (screen != watchdogScreen) {
+            watchdogScreen = screen;
+            watchdogSince = now;
+        }
+        if (!isAutomationScreen(screen)) {
+            watchdogSince = now;
+            return;
+        }
+        long activity = AutomationGate.lastActivityAt();
+        boolean automationActive = running || AhBidMacro.isRunning() || isTraderRunning();
+        if (!automationActive && (activity <= 0 || now - activity > 15_000L)) {
+            return;
+        }
+        if (isBusy() || isBidPriorityActive()) {
+            watchdogSince = now;
+            return;
+        }
+        Trader trader = Trader.get();
+        if (trader != null && trader.isGuiOwned()) {
+            watchdogSince = now;
+            return;
+        }
+        if (trader != null && trader.isRunning() && !trader.isAhPriority()
+                && trader.hasBazaarGui()) {
+            watchdogSince = now;
+            return;
+        }
+        if (activity <= 0 || now - activity > 15_000L) {
+            return;
+        }
+        if (now - watchdogSince < 3000L || now - lastWatchdogCloseAt < 1000L) {
+            return;
+        }
+        lastWatchdogCloseAt = now;
+        watchdogSince = now;
+        ScreenUtil.closeCurrentScreen();
+        System.out.println("[AH-Flipper] GUI-Watchdog: schliesse haengende GUI nach 3s: "
+                + ScreenUtil.cleanName(screen.getTitle().getString()));
+    }
+
+    private static boolean isTraderRunning() {
+        Trader trader = Trader.get();
+        return trader != null && trader.isRunning();
+    }
+
+    private static boolean isAutomationScreen(Screen screen) {
+        if (screen instanceof AbstractSignEditScreen) {
+            return true;
+        }
+        if (!(screen instanceof AbstractContainerScreen<?> container)) {
+            return false;
+        }
+        String title = ScreenUtil.cleanName(container.getTitle().getString())
+                .toLowerCase(java.util.Locale.ROOT);
+        return title.contains("auction")
+                || title.contains("bazaar")
+                || title.contains("orders")
+                || title.contains("bids")
+                || title.contains("confirm")
+                || title.contains("create")
+                || title.contains("manage")
+                || title.contains("how many")
+                || title.contains("how much")
+                || title.contains("price")
+                || title.contains("selling")
+                || title.contains("buy order")
+                || title.contains("sell offer");
+    }
+
     private static int toggleCommand(CommandContext<FabricClientCommandSource> context) {
         toggle();
         return 1;
     }
 
+    private static int investmentCommand(CommandContext<FabricClientCommandSource> context) {
+        openInvestmentGui();
+        return 1;
+    }
+
+    private static int fireSaleCommand(CommandContext<FabricClientCommandSource> context) {
+        openFireSaleGui();
+        return 1;
+    }
+
+    private static int fireSaleBacktestCommand(CommandContext<FabricClientCommandSource> context) {
+        openFireSaleGui(AhFireSaleSkinScreen.Mode.BACKTEST);
+        return 1;
+    }
+
+    private static int fireSaleCompsCommand(CommandContext<FabricClientCommandSource> context) {
+        openFireSaleGui(AhFireSaleSkinScreen.Mode.COMPS);
+        return 1;
+    }
+
     private static int startCommand(CommandContext<FabricClientCommandSource> context) {
         if (running) {
-            message("§cAH-Flipper läuft bereits.");
+            message("Ãƒâ€šÃ‚Â§cAH-Flipper lÃƒÆ’Ã‚Â¤uft bereits.");
             return 1;
         }
         start();
@@ -226,7 +542,7 @@ public class AhFlipperMod {
 
     private static int stopCommand(CommandContext<FabricClientCommandSource> context) {
         if (!running && !recon) {
-            message("§cAH-Flipper läuft nicht.");
+            message("Ãƒâ€šÃ‚Â§cAH-Flipper lÃƒÆ’Ã‚Â¤uft nicht.");
             return 1;
         }
         stop();
@@ -235,46 +551,73 @@ public class AhFlipperMod {
 
     private static int reconCommand(CommandContext<FabricClientCommandSource> context) {
         recon = !recon;
-        message("§6[AH-Flipper] §7Recon-Logging " + (recon ? "§aan" : "§caus"));
+        message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Recon-Logging " + (recon ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus"));
+        return 1;
+    }
+
+    private static int activeAuctionsCommand(CommandContext<FabricClientCommandSource> context) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) {
+            message("Ãƒâ€šÃ‚Â§cSpieler nicht verfÃƒÆ’Ã‚Â¼gbar.");
+            return 0;
+        }
+        String uuid = client.player.getUUID().toString().replace("-", "");
+        message("Ãƒâ€šÃ‚Â§7Lade aktive Auktionen ...");
+        Thread thread = new Thread(() -> {
+            int count = AhMarketData.activePlayerAuctionCount(uuid);
+            if (count >= 0) {
+                activeAuctionCount = count;
+                message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Aktive Auktionen: Ãƒâ€šÃ‚Â§f" + count
+                        + "Ãƒâ€šÃ‚Â§7/Ãƒâ€šÃ‚Â§f" + AH_MAX_ACTIVE);
+                ensureListingWorker();
+            } else {
+                message("Ãƒâ€šÃ‚Â§cAktive Auktionen konnten nicht geladen werden.");
+            }
+        }, "skycofl-ah-active-auctions");
+        thread.setDaemon(true);
+        thread.start();
         return 1;
     }
 
     private static int statusCommand(CommandContext<FabricClientCommandSource> context) {
-        message("§6[Flipper] §7AH-Status: " + (running ? "§aAKTIV" : "§cGESTOPPT")
-                + (recon ? " §7(Recon an)" : ""));
-        message("§7Exit: §fmin(Craft-Cost, Cofl-LBIN) §7· Fee: §f"
+        message("Ãƒâ€šÃ‚Â§6[Flipper] Ãƒâ€šÃ‚Â§7AH-Status: " + (running ? "Ãƒâ€šÃ‚Â§aAKTIV" : "Ãƒâ€šÃ‚Â§cGESTOPPT")
+                + (recon ? " Ãƒâ€šÃ‚Â§7(Recon an)" : ""));
+        message("Ãƒâ€šÃ‚Â§7Exit: Ãƒâ€šÃ‚Â§fmin(Craft-Cost, Cofl-LBIN) Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Fee: Ãƒâ€šÃ‚Â§f"
                 + String.format(java.util.Locale.US, "%.1f%%", CONFIG.ahFeePercent)
-                + " §7· Min. Profit: §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent)
-                + " §7· Min. Item: §f" + ScreenUtil.formatCoins(CONFIG.minItemCoins));
-        message("§7Regeln: Total-Sales > §f" + CONFIG.minTotalSales
-                + " §7· Clean ≥ §f" + CONFIG.minCleanSales + " §7nur bei Addon ≤ §f"
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Min. Profit: Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent)
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Min. Item: Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(CONFIG.minItemCoins));
+        message("Ãƒâ€šÃ‚Â§7Regeln: Total-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.minTotalSales
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Clean ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + CONFIG.minCleanSales + " Ãƒâ€šÃ‚Â§7nur bei Addon ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¤ Ãƒâ€šÃ‚Â§f"
                 + String.format(java.util.Locale.US, "%.0fM", CONFIG.cleanSalesAddonValueCoins / 1_000_000.0)
-                + " §7· CV ≤ §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.maxDeviationPercent));
-        message("§7Addon: ≥ §f" + CONFIG.addonMinSalesPerWeek + "x/Woche"
-                + " §7· Addonwert ≥ §f" + String.format(java.util.Locale.US, "%.0fM", CONFIG.minAddonValueMillions));
-        message("§7Pets: Level-1-Sales > §f" + CONFIG.petLevel1MinSales
-                + " §7· Level-Sales > §f" + CONFIG.petLevelMinSales + " §7(nicht clean)");
-        message("§7Kaufreihenfolge: §fFIFO §7(erster passender Treffer, kein Score-Vergleich)");
-        message("§7Max. Auktionen: §f" + CONFIG.maxAuctions
-                + " §7· Reserve: §f" + ScreenUtil.formatCoins(CONFIG.reserveCoins));
-        message("§7Auto-Buy: " + (autoBuy ? "§aan" : "§caus")
-                + " §7· Kauf läuft: " + (busy ? "§eja" : "§7nein")
-                + " §7· Top-5-Analyse: " + (debugAnalyze ? "§aan" : "§caus"));
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· CV ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¤ Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.maxDeviationPercent));
+        message("Ãƒâ€šÃ‚Â§7Addon: ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + CONFIG.addonMinSalesPerWeek + "x/Woche"
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Addonwert ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0fM", CONFIG.minAddonValueMillions));
+        message("Ãƒâ€šÃ‚Â§7Pets: Level-1-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.petLevel1MinSales
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Level-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.petLevelMinSales + " Ãƒâ€šÃ‚Â§7(nicht clean)");
+        message("Ãƒâ€šÃ‚Â§7Kaufreihenfolge: Ãƒâ€šÃ‚Â§fFIFO Ãƒâ€šÃ‚Â§7(erster passender Treffer, kein Score-Vergleich)");
+        message("Ãƒâ€šÃ‚Â§7Max. Auktionen: Ãƒâ€šÃ‚Â§f" + CONFIG.maxAuctions
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Reserve: Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(CONFIG.reserveCoins));
+        message("Ãƒâ€šÃ‚Â§7Auto-Buy: " + (autoBuy ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Kauf lÃƒÆ’Ã‚Â¤uft: " + (isBusy() ? "Ãƒâ€šÃ‚Â§eja" : "Ãƒâ€šÃ‚Â§7nein")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Top-5-Analyse: " + (debugAnalyze ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus"));
         int queued;
         synchronized (AUTO_QUEUE) {
             queued = AUTO_QUEUE.size();
         }
         long age = lastFlipAt > 0 ? (System.currentTimeMillis() - lastFlipAt) / 1000 : -1;
-        message("§7Letzter Flip: §f" + (lastFlipId == null ? "-" : lastFlipId)
-                + " §7· Profit §f" + (lastFlipWorth > 0 ? ScreenUtil.formatCoins(lastFlipWorth) : "-")
-                + " §7· Alter §f" + (age >= 0 ? age + "s" : "-")
-                + " §7· Queue §f" + queued);
+        message("Ãƒâ€šÃ‚Â§7Letzter Flip: Ãƒâ€šÃ‚Â§f" + (lastFlipId == null ? "-" : lastFlipId)
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Profit Ãƒâ€šÃ‚Â§f" + (lastFlipWorth > 0 ? ScreenUtil.formatCoins(lastFlipWorth) : "-")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Alter Ãƒâ€šÃ‚Â§f" + (age >= 0 ? age + "s" : "-")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Queue Ãƒâ€šÃ‚Â§f" + queued);
         String conn = CoflCore.CoflCore.Wrapper != null
                 ? CoflCore.CoflCore.Wrapper.GetStatus() : "null";
-        message("§7Cofl: §f" + conn);
-        message("§7Live: " + AhLiveScanner.status());
-        message("§7Cofl-Stream: " + CoflFlipStream.status());
-        message("§7Scanner: " + AhScanner.status());
+        message("Ãƒâ€šÃ‚Â§7Cofl: Ãƒâ€šÃ‚Â§f" + conn);
+        message("Ãƒâ€šÃ‚Â§7Live: " + AhLiveScanner.status());
+        message("Ãƒâ€šÃ‚Â§7Scanner: " + AhScanner.status());
+        message("Ãƒâ€šÃ‚Â§7Investment: " + (CONFIG.investmentGui ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§fF10 Ãƒâ€šÃ‚Â§7oder Ãƒâ€šÃ‚Â§f/ahflip invest");
+        message("Ãƒâ€šÃ‚Â§7Fire-Sale-Skins: " + (CONFIG.fireSaleSkins ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
+                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§fF8 Ãƒâ€šÃ‚Â§7oder Ãƒâ€šÃ‚Â§f/ahflip skins");
         return 1;
     }
 
@@ -282,21 +625,21 @@ public class AhFlipperMod {
         long price = AhScreenUtil.currentPriceAt(31);
         AhItem item = AhItem.fromStack(AhScreenUtil.currentItem(13));
         if (item.tag.isBlank()) {
-            message("§cKein Item erkannt – öffne eine BIN-Auktion.");
+            message("Ãƒâ€šÃ‚Â§cKein Item erkannt ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ ÃƒÆ’Ã‚Â¶ffne eine BIN-Auktion.");
             return 0;
         }
-        message("§7Analysiere §f" + item.tag + "§7 (Preis: §f"
-                + (price > 0 ? ScreenUtil.formatCoins(price) : "?") + "§7) ...");
+        message("Ãƒâ€šÃ‚Â§7Analysiere Ãƒâ€šÃ‚Â§f" + item.tag + "Ãƒâ€šÃ‚Â§7 (Preis: Ãƒâ€šÃ‚Â§f"
+                + (price > 0 ? ScreenUtil.formatCoins(price) : "?") + "Ãƒâ€šÃ‚Â§7) ...");
         Thread thread = new Thread(() -> {
             try {
                 AhAnalyzer.Result result = AhAnalyzer.analyze(item, Math.max(price, 0), -1);
                 logAnalysis(result);
-                message((result.buyable ? "§a" : "§c") + result.shortSummary());
+                message((result.buyable ? "Ãƒâ€šÃ‚Â§a" : "Ãƒâ€šÃ‚Â§c") + result.shortSummary());
                 for (String reason : result.reasons) {
-                    message("§c- " + reason);
+                    message("Ãƒâ€šÃ‚Â§c- " + reason);
                 }
             } catch (Exception e) {
-                message("§cAnalyse fehlgeschlagen: " + e.getMessage());
+                message("Ãƒâ€šÃ‚Â§cAnalyse fehlgeschlagen: " + e.getMessage());
             }
         }, "skycofl-ah-analyze");
         thread.setDaemon(true);
@@ -313,9 +656,9 @@ public class AhFlipperMod {
                 + " artOfWar=" + item.artOfWar + " petItem=" + item.petItem
                 + " enchants=" + item.enchants + " scrolls=" + item.abilityScrolls);
         System.out.println("[AH-Flipper] Item-NBT: " + AhItem.rawCustomData(stack));
-        message("§6[AH-Flipper] §f" + item.tag + " §7Reforge: §f" + (item.reforge.isBlank() ? "-" : item.reforge)
-                + " §7Stars: §f" + item.stars + " §7HPB: §f" + item.hpb
-                + " §7Recomb: §f" + item.recomb + " §7Enchants: §f" + item.enchants.size()
+        message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§f" + item.tag + " Ãƒâ€šÃ‚Â§7Reforge: Ãƒâ€šÃ‚Â§f" + (item.reforge.isBlank() ? "-" : item.reforge)
+                + " Ãƒâ€šÃ‚Â§7Stars: Ãƒâ€šÃ‚Â§f" + item.stars + " Ãƒâ€šÃ‚Â§7HPB: Ãƒâ€šÃ‚Â§f" + item.hpb
+                + " Ãƒâ€šÃ‚Â§7Recomb: Ãƒâ€šÃ‚Â§f" + item.recomb + " Ãƒâ€šÃ‚Â§7Enchants: Ãƒâ€šÃ‚Â§f" + item.enchants.size()
                 + (item.enchants.isEmpty() ? "" : " " + item.enchants));
     }
 
@@ -334,7 +677,7 @@ public class AhFlipperMod {
                 + " score=" + String.format(java.util.Locale.US, "%.0f", result.score));
         for (AhAnalyzer.AddonCheck check : result.addons) {
             System.out.println("[AH-Flipper]   Addon " + check.label + ": " + check.sales
-                    + (check.supported ? "" : " (nicht prüfbar)"));
+                    + (check.supported ? "" : " (nicht prÃƒÆ’Ã‚Â¼fbar)"));
         }
         for (String reason : result.reasons) {
             System.out.println("[AH-Flipper]   Reject: " + reason);
@@ -348,20 +691,88 @@ public class AhFlipperMod {
 
     private static void claim() {
         if (!ScreenUtil.onSkyBlock()) {
-            message("§cClaim geht nur auf Hypixel SkyBlock.");
+            message("Ãƒâ€šÃ‚Â§cClaim geht nur auf Hypixel SkyBlock.");
             return;
         }
-        Thread thread = new Thread(AhFlipperMod::claimBlocking, "skycofl-ah-claim");
+        Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("claim", false);
+            if (lease == null) {
+                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                return;
+            }
+            ensureAhPriority();
+            try {
+                claimBlocking();
+            } finally {
+                AutomationGate.release(lease);
+                releaseAhPriorityIfIdle();
+            }
+        }, "skycofl-ah-claim");
         thread.setDaemon(true);
         thread.start();
     }
 
     private static void registerSoldChatClaim() {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
-            if (!overlay) {
+            if (overlay) {
+                return;
+            }
+            try {
                 onSoldAuctionChat(message);
+                onPurchaseErrorChat(message);
+            } catch (Exception e) {
+                System.out.println("[AH-Flipper] Chat handler failed: " + e);
             }
         });
+    }
+
+    private static void onPurchaseErrorChat(Component message) {
+        if (message == null || !running) {
+            return;
+        }
+        String raw = message.getString();
+        String lower = ScreenUtil.cleanName(raw).toLowerCase(java.util.Locale.ROOT);
+        // Ignore our own status messages. The chat hook also sees messages emitted
+        // by this mod, which used to recursively re-trigger this handler.
+        if (lower.contains("purchase error/refund detected")
+                || lower.contains("[ah-flipper]")
+                || lower.contains("[flipper]")
+                || lower.contains("[investment]")
+                || lower.contains("[live]")
+                || lower.contains("[scan]")) {
+            return;
+        }
+        if (!lower.contains("refund")) {
+            return;
+        }
+        if (!(lower.contains("error") || lower.contains("failed")
+                || lower.contains("purchase") || lower.contains("auction"))) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastPurchaseErrorAt < 5000L) {
+            return;
+        }
+        if (!CHAT_HANDLING.compareAndSet(false, true)) {
+            return;
+        }
+        lastPurchaseErrorAt = now;
+        try {
+            System.out.println("[AH-Flipper] Refund/error chat detected: " + raw);
+            message("\u00a76[AH-Flipper] \u00a7ePurchase error/refund detected - checking claim and listing...");
+            boolean recentPurchase = activePurchaseAt > 0
+                    && now - activePurchaseAt < 60_000L
+                    && !activePurchaseTag.isBlank();
+            if (recentPurchase) {
+                scheduleBuyRecovery(activePurchaseTag, activePurchaseName,
+                        activePurchaseValue, activePurchasePrice, activePurchaseId);
+            } else {
+                scheduleBuyRecovery(lastBoughtTag, lastBoughtName, lastBoughtValue,
+                        lastBoughtPrice, lastBoughtId);
+            }
+        } finally {
+            CHAT_HANDLING.set(false);
+        }
     }
 
     private static void onSoldAuctionChat(Component message) {
@@ -369,7 +780,20 @@ public class AhFlipperMod {
             return;
         }
         String lower = ScreenUtil.cleanName(message.getString()).toLowerCase(java.util.Locale.ROOT);
-        if (!lower.contains("auction") || !lower.contains("coins") || !lower.contains("click")) {
+        if (lower.contains("[ah-flipper]") || lower.contains("[flipper]")
+                || lower.contains("[investment]") || lower.contains("[live]")
+                || lower.contains("[scan]")) {
+            return;
+        }
+        if (lower.contains("outbid")) {
+            return;
+        }
+        if (!lower.contains("auction") || !lower.contains("coins")
+                || !lower.contains("click")) {
+            return;
+        }
+        if (!lower.contains("sold") && !lower.contains("ended")
+                && !lower.contains("bought")) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -381,7 +805,7 @@ public class AhFlipperMod {
             return;
         }
         System.out.println("[AH-Flipper] Verkaufs-Chat erkannt: " + message.getString());
-        message("\u00a77Verkaufte Auktion erkannt \u2013 claim l\u00e4uft ...");
+        message("\u00a77Sold auction detected - claiming...");
         Thread thread = new Thread(AhFlipperMod::soldClaimWorker, "skycofl-ah-sold-claim");
         thread.setDaemon(true);
         thread.start();
@@ -390,25 +814,30 @@ public class AhFlipperMod {
     private static void soldClaimWorker() {
         try {
             long deadline = System.currentTimeMillis() + 30000;
-            while (busy && running && System.currentTimeMillis() < deadline) {
-                ScreenUtil.sleep(100);
+            while ((isBusy() || isBidPriorityActive()) && running
+                    && System.currentTimeMillis() < deadline) {
+                ScreenUtil.sleep(50);
             }
-            if (!running || busy) {
-                System.out.println("[AH-Flipper] Sold-Claim \u00fcbersprungen (busy=" + busy
-                        + " running=" + running + ")");
+            if (!running) {
+                System.out.println("[AH-Flipper] Sold-Claim \u00fcbersprungen (running=false)");
                 return;
             }
-            busy = true;
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("sold-claim", false);
+            if (lease == null) {
+                System.out.println("[AH-Flipper] Sold-Claim \u00fcbersprungen (busy="
+                        + AutomationGate.owner() + ")");
+                return;
+            }
             ensureAhPriority();
             try {
                 claimSoldAuctionsBlocking();
             } finally {
-                busy = false;
+                AutomationGate.release(lease);
                 releaseAhPriorityIfIdle();
             }
         } catch (Exception e) {
             System.out.println("[AH-Flipper] Sold-Claim fehlgeschlagen: " + e);
-            message("\u00a7cSold-Claim fehlgeschlagen: " + e.getMessage());
+            message("\u00a7cSold claim failed: " + e.getMessage());
         } finally {
             SOLD_CLAIM_PENDING.set(false);
         }
@@ -424,17 +853,16 @@ public class AhFlipperMod {
                 if (AhScreenUtil.currentScreen() == AhScreenUtil.AhScreen.BIN_VIEW) {
                     if (clickSoldCollectSlot()) {
                         claimed++;
-                        ScreenUtil.sleep(900);
+                        ScreenUtil.sleep(250);
                         continue;
                     }
-                    ScreenUtil.closeCurrentScreen();
-                    ScreenUtil.sleep(250);
+                    ScreenUtil.closeAndWait(200);
                 }
                 if (!openManageAuctions()) {
                     System.out.println("[AH-Flipper] Sold-Claim: Manage Auctions nicht erreichbar.");
                     break;
                 }
-                Integer soldSlot = AhScreenUtil.findSoldAuctionSlot();
+                Integer soldSlot = waitForSoldAuctionSlot(2500);
                 if (soldSlot == null || soldSlot < 0) {
                     break;
                 }
@@ -461,10 +889,10 @@ public class AhFlipperMod {
             ScreenUtil.sleep(150);
         }
         if (claimed > 0) {
-            message("\u00a7a" + claimed + " verkaufte Auktion(en) geclaimt.");
+            message("\u00a7aClaimed " + claimed + " sold auction(s).");
             return true;
         }
-        message("\u00a77Keine verkaufte Auktion zum Claimen gefunden.");
+        message("\u00a77No sold auction to claim.");
         return false;
     }
 
@@ -475,8 +903,7 @@ public class AhFlipperMod {
             return true;
         }
         if (screen != AhScreenUtil.AhScreen.NONE) {
-            ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(250);
+            ScreenUtil.closeAndWait(200);
         }
         sendCommandSilent("/ah");
         if (!waitForScreenUntil(0L, 3500, AhScreenUtil.AhScreen.AH_MAIN,
@@ -486,13 +913,12 @@ public class AhFlipperMod {
                 return false;
             }
         }
-        ScreenUtil.sleep(350);
         screen = AhScreenUtil.currentScreen();
         if (screen == AhScreenUtil.AhScreen.MANAGE_AUCTIONS
                 || screen == AhScreenUtil.AhScreen.MANAGE_ORDERS) {
             return true;
         }
-        int manage = findManageAuctionsButton();
+        int manage = waitForManageAuctionsButton(2500);
         if (manage < 0) {
             System.out.println("[AH-Flipper] Sold-Claim: 'Manage Auctions/Orders' nicht gefunden.");
             AhScreenUtil.dumpScreen();
@@ -503,8 +929,55 @@ public class AhFlipperMod {
                 AhScreenUtil.AhScreen.MANAGE_ORDERS)) {
             return false;
         }
-        ScreenUtil.sleep(300);
         return true;
+    }
+
+    private static int waitForManageAuctionsButton(long timeoutMs) {
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            int manage = findManageAuctionsButton();
+            if (manage >= 0) {
+                return manage;
+            }
+            ScreenUtil.sleep(50);
+        }
+        return -1;
+    }
+
+    private static int waitForClaimEntryButton(long timeoutMs) {
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            int bids = findButtonOrText("manage bids", "your bids", "manage orders");
+            if (bids >= 0) {
+                return bids;
+            }
+            ScreenUtil.sleep(50);
+        }
+        return -1;
+    }
+
+    private static int waitForCreateAuctionButton(long timeoutMs) {
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            int create = findCreateAuctionButton();
+            if (create >= 0) {
+                return create;
+            }
+            ScreenUtil.sleep(50);
+        }
+        return -1;
+    }
+
+    private static Integer waitForSoldAuctionSlot(long timeoutMs) {
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < end) {
+            Integer slot = AhScreenUtil.findSoldAuctionSlot();
+            if (slot != null && slot >= 0) {
+                return slot;
+            }
+            ScreenUtil.sleep(50);
+        }
+        return -1;
     }
 
     private static boolean clickSoldCollectSlot() {
@@ -524,17 +997,128 @@ public class AhFlipperMod {
         if (slot == null || slot < 0) {
             return false;
         }
+        ProfitTracker.startPurseWatch(ProfitTracker.AH);
         ScreenUtil.clickSlot(slot, 0);
         System.out.println("[AH-Flipper] Sold-Claim: Collect-Coins geklickt (Slot " + slot + ").");
-        ScreenUtil.sleep(700);
+        ScreenUtil.sleep(900);
+        ProfitTracker.finishPurseWatch(ProfitTracker.AH);
         return true;
+    }
+
+    static boolean claimWonAuction(String tag, String name) {
+        if (AhScreenUtil.findInventorySlot(tag, name) >= 0) {
+            return true;
+        }
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            if (attempt > 1) {
+                ScreenUtil.sleep(3000);
+            }
+            if (claimWonAuctionOnce(tag, name)) {
+                return true;
+            }
+            if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
+                ScreenUtil.closeAndWait(250);
+            }
+        }
+        return false;
+    }
+
+    private static boolean claimWonAuctionOnce(String tag, String name) {
+        try {
+            if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
+                ScreenUtil.closeAndWait(250);
+            }
+            sendCommandSilent("/ah");
+            if (!waitForTitle(3500, "auction")) {
+                return false;
+            }
+            AhScreenUtil.AhScreen screen = AhScreenUtil.currentScreen();
+            if (screen != AhScreenUtil.AhScreen.YOUR_BIDS
+                    && screen != AhScreenUtil.AhScreen.MANAGE_ORDERS) {
+                int entry = waitForClaimEntryButton(2500);
+                if (entry < 0 && openManageAuctions()) {
+                    entry = waitForClaimEntryButton(1500);
+                }
+                if (entry < 0) {
+                    return waitForInventoryItem(tag, name, 500);
+                }
+                ScreenUtil.clickSlot(entry, 0);
+                if (!waitForClaimScreen(3500)) {
+                    return false;
+                }
+            }
+            ScreenUtil.sleep(500);
+            int slot = -1;
+            if (tag != null && !tag.isBlank()) {
+                slot = AhScreenUtil.findSlotByTag(tag);
+            }
+            if (slot < 0) {
+                slot = waitForSlotByName(name, 1500);
+            }
+            if (slot < 0) {
+                return waitForInventoryItem(tag, name, 1000);
+            }
+            ScreenUtil.clickSlot(slot, 0);
+            ScreenUtil.sleep(800);
+            if (AhScreenUtil.currentScreen() == AhScreenUtil.AhScreen.BIN_VIEW) {
+                Integer collect = AhScreenUtil.findSlotWithLore("click to pick up item");
+                if (collect == null || collect < 0) {
+                    collect = AhScreenUtil.findSlotByName("Collect Auction");
+                }
+                if (collect != null && collect >= 0) {
+                    ScreenUtil.clickSlot(collect, 0);
+                    ScreenUtil.sleep(700);
+                }
+            }
+            return waitForInventoryItem(tag, name, 2500);
+        } catch (Exception e) {
+            System.out.println("[AH-Flipper] Claim(2x) Fehler: " + e.getMessage());
+            return false;
+        }
     }
 
     private static boolean claimBlocking() {
         return claimBlocking("");
     }
 
-    private static boolean claimBlocking(String wantedName) {
+    static boolean claimBlocking(String wantedName) {
+        return claimBlocking("", wantedName);
+    }
+
+    static boolean claimBlocking(String wantedTag, String wantedName) {
+        claimActionPerformed = false;
+        if ((wantedTag != null && !wantedTag.isBlank())
+                || (wantedName != null && !wantedName.isBlank())) {
+            if (AhScreenUtil.findInventorySlot(wantedTag, wantedName) >= 0) {
+                System.out.println("[AH-Flipper] Claim: Item bereits im Inventar: " + wantedName);
+                return true;
+            }
+        }
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            if (claimBlockingOnce(wantedTag, wantedName)) {
+                return true;
+            }
+            if (attempt == 1) {
+                message("\u00a7eClaim not found - trying Manage Bids...");
+                System.out.println("[AH-Flipper] Claim: 2. Versuch ueber Manage Bids.");
+                if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
+                    ScreenUtil.closeCurrentScreen();
+                    ScreenUtil.sleep(400);
+                }
+                ScreenUtil.sleep(500);
+            }
+        }
+        if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
+            ScreenUtil.closeCurrentScreen();
+            ScreenUtil.sleep(250);
+        }
+        if (claimActionPerformed) {
+            message("\u00a7eClaim triggered, item not detected yet - trying listing.");
+        }
+        return claimActionPerformed;
+    }
+
+    private static boolean claimBlockingOnce(String wantedTag, String wantedName) {
         try {
             ScreenUtil.sleep(250);
             if (collectOpenAuction(wantedName)) {
@@ -545,73 +1129,76 @@ public class AhFlipperMod {
                     && claimScreen != AhScreenUtil.AhScreen.MANAGE_ORDERS) {
                 sendCommand("/ah");
                 if (!waitForTitle(3500, "auction")) {
-                    message("§cAH-Menü nicht erkannt.");
+                    message("\u00a7cAH menu not detected.");
                     return false;
                 }
-                ScreenUtil.sleep(400);
-                int bids = ScreenUtil.findButton("manage bids");
-                if (bids < 0) {
-                    bids = ScreenUtil.findButton("your bids");
-                }
-                if (bids < 0) {
-                    bids = ScreenUtil.findButton("manage orders");
-                }
+                int bids = waitForClaimEntryButton(2500);
                 if (bids < 0 && openManageAuctions()) {
-                    bids = ScreenUtil.findButton("manage bids");
-                    if (bids < 0) {
-                        bids = ScreenUtil.findButton("your bids");
-                    }
-                    if (bids < 0) {
-                        bids = ScreenUtil.findButton("manage orders");
-                    }
+                    bids = waitForClaimEntryButton(1500);
                 }
                 if (bids < 0) {
-                    message("§c'Manage Bids/Orders' nicht gefunden.");
+                    message("\u00a7cManage Bids/Orders not found.");
                     AhScreenUtil.dumpScreen();
                     return false;
                 }
                 ScreenUtil.clickSlot(bids, 0);
                 if (!waitForClaimScreen(3500)) {
-                    message("§c'Bids/Orders'-Menü hat nicht geöffnet.");
+                    message("\u00a7cBids/Orders menu did not open.");
                     AhScreenUtil.dumpScreen();
                     return false;
                 }
             }
             ScreenUtil.sleep(450);
             if (wantedName != null && !wantedName.isBlank()) {
-                int itemSlot = waitForSlotByName(wantedName, 1500);
+                int itemSlot = -1;
+                if (wantedTag != null && !wantedTag.isBlank()) {
+                    itemSlot = AhScreenUtil.findSlotByTag(wantedTag);
+                }
+                if (itemSlot < 0) {
+                    itemSlot = waitForSlotByName(wantedName, 1500);
+                }
                 if (itemSlot >= 0) {
                     ScreenUtil.clickSlot(itemSlot, 0);
+                    claimActionPerformed = true;
                     ScreenUtil.sleep(700);
                     if (collectOpenAuction(wantedName)) {
                         return true;
                     }
-                    if (waitForInventoryItem("", wantedName, 1500)) {
-                        message("§aItem geclaimt: §f" + wantedName);
+                    if (waitForInventoryItem(wantedTag, wantedName, 2000)) {
+                        message("\u00a7aItem claimed: \u00a7f" + wantedName);
                         return true;
                     }
-                    System.out.println("[AH-Flipper] Claim: Collect-Auction-Slot nach Item-Klick nicht gefunden.");
+                    message("\u00a7eClaim clicked - item not found after 2s.");
+                    return false;
                 } else {
-                    System.out.println("[AH-Flipper] Claim: kein Slot für " + wantedName);
+                    System.out.println("[AH-Flipper] Claim: kein Slot fÃƒÆ’Ã‚Â¼r " + wantedName);
                 }
             }
             int claimed = clickClaimableItems();
             if (claimed > 0) {
-                message("§a" + claimed + " Item(s) geclaimt.");
-                return true;
+                claimActionPerformed = true;
+                message("\u00a7aClaimed " + claimed + " item(s).");
+                if (wantedName == null || wantedName.isBlank()) {
+                    return true;
+                }
+                return waitForInventoryItem(wantedTag, wantedName, 2000);
             }
             int claimAll = ScreenUtil.findButton("claim all");
             if (claimAll >= 0) {
                 ScreenUtil.clickSlot(claimAll, 0);
+                claimActionPerformed = true;
                 ScreenUtil.sleep(600);
-                message("§aClaim All geklickt.");
-                return true;
+                message("\u00a7aClaim All clicked.");
+                if (wantedName == null || wantedName.isBlank()) {
+                    return true;
+                }
+                return waitForInventoryItem(wantedTag, wantedName, 2000);
             }
-            message("§7Nichts zu claimen (kein Item-Slot/'Click to claim').");
+            message("\u00a77Nothing to claim (no item slot / Click to claim).");
             AhScreenUtil.dumpScreen();
             return false;
         } catch (Exception e) {
-            message("§cClaim fehlgeschlagen: " + e.getMessage());
+            message("\u00a7cClaim failed: " + e.getMessage());
             return false;
         }
     }
@@ -629,27 +1216,32 @@ public class AhFlipperMod {
             return false;
         }
         ScreenUtil.clickSlot(slot, 0);
+        claimActionPerformed = true;
         System.out.println("[AH-Flipper] Collect Auction geklickt: Slot " + slot);
         if (wantedName == null || wantedName.isBlank()) {
-            message("§aCollect Auction geklickt.");
+            message("\u00a7aCollect Auction clicked.");
             return true;
         }
-        if (waitForInventoryItem("", wantedName, 2500)) {
-            message("§aItem geclaimt: §f" + wantedName);
-        } else {
-            message("§eCollect Auction geklickt - prüfe Inventar ...");
+        if (waitForInventoryItem("", wantedName, 2000)) {
+            message("\u00a7aItem claimed: \u00a7f" + wantedName);
+            return true;
         }
-        return true;
+        message("\u00a7eCollect Auction clicked - item not found after 2s.");
+        return false;
     }
 
     private static int clickClaimableItems() {
         int clicked = 0;
+        java.util.Set<Integer> clickedSlots = new java.util.HashSet<>();
         for (int attempt = 0; attempt < 8; attempt++) {
             Integer slot = AhScreenUtil.findSlotWithLore("click to claim");
             if (slot == null || slot < 0) {
                 slot = AhScreenUtil.findSlotWithLore("click to pick up item");
             }
             if (slot == null || slot < 0) {
+                break;
+            }
+            if (!clickedSlots.add(slot)) {
                 break;
             }
             ScreenUtil.clickSlot(slot, 0);
@@ -761,8 +1353,29 @@ public class AhFlipperMod {
         return findButtonOrText("create auction", "create bin auction");
     }
 
+    private static boolean waitForAhContainer(long deadline, long timeoutMs) {
+        long end = System.currentTimeMillis() + remainingMs(deadline, timeoutMs);
+        while (System.currentTimeMillis() < end) {
+            AhScreenUtil.AhScreen current = AhScreenUtil.currentScreen();
+            if (current == AhScreenUtil.AhScreen.MANAGE_AUCTIONS
+                    || current == AhScreenUtil.AhScreen.MANAGE_ORDERS) {
+                return true;
+            }
+            if (AhScreenUtil.isContainerOpen()) {
+                String title = AhScreenUtil.currentScreenTitle()
+                        .toLowerCase(java.util.Locale.ROOT);
+                if (title.contains("auction") || title.contains("manage")
+                        || title.contains("orders")) {
+                    return true;
+                }
+            }
+            ScreenUtil.sleep(50);
+        }
+        return false;
+    }
+
     private static boolean waitForScreenUntil(long deadline, long timeoutMs,
-                                              AhScreenUtil.AhScreen... screens) {
+                                               AhScreenUtil.AhScreen... screens) {
         long end = System.currentTimeMillis() + remainingMs(deadline, timeoutMs);
         while (System.currentTimeMillis() < end) {
             AhScreenUtil.AhScreen current = AhScreenUtil.currentScreen();
@@ -799,8 +1412,61 @@ public class AhFlipperMod {
     }
 
 
-    static boolean isAutoBuyOn() {
+    public static boolean isAutoBuyOn() {
         return autoBuy;
+    }
+
+    public static void toggleAutoBuy() {
+        setAutoBuy(!autoBuy);
+    }
+
+    public static void setAutoBuy(boolean enabled) {
+        autoBuy = enabled;
+        CONFIG.autoBuy = enabled;
+        CONFIG.save();
+        if (!enabled) {
+            synchronized (AUTO_QUEUE) {
+                AUTO_QUEUE.clear();
+            }
+            releaseAhPriorityIfIdle();
+        }
+    }
+
+    public static boolean isDebugAnalyzeOn() {
+        return debugAnalyze;
+    }
+
+    public static void toggleDebugAnalyze() {
+        setDebugAnalyze(!debugAnalyze);
+    }
+
+    public static void setDebugAnalyze(boolean enabled) {
+        debugAnalyze = enabled;
+        CONFIG.debugAnalyze = enabled;
+        CONFIG.save();
+        if (!enabled) {
+            synchronized (DEBUG_QUEUE) {
+                DEBUG_QUEUE.clear();
+            }
+        }
+    }
+
+    public static boolean isTooltipValueOn() {
+        return CONFIG.tooltipValue;
+    }
+
+    public static void toggleTooltipValue() {
+        CONFIG.tooltipValue = !CONFIG.tooltipValue;
+        CONFIG.save();
+    }
+
+    public static boolean isTooltipDetailsOn() {
+        return CONFIG.tooltipDetails;
+    }
+
+    public static void toggleTooltipDetails() {
+        CONFIG.tooltipDetails = !CONFIG.tooltipDetails;
+        CONFIG.save();
     }
 
     static String ownPlayerName() {
@@ -830,7 +1496,7 @@ public class AhFlipperMod {
     }
 
     static boolean isOwnSeller(String seller, String playerName) {
-        if (isOwnPlayer(playerName)) {
+        if (isOwnPlayer(playerName) || isOwnPlayer(seller)) {
             return true;
         }
         String ownId = ownPlayerId();
@@ -838,14 +1504,18 @@ public class AhFlipperMod {
                 && seller.replace("-", "").equalsIgnoreCase(ownId);
     }
 
-    private static void ensureAhPriority() {
+    static void ensureAhPriority() {
+        ensureAhPriority(60_000L);
+    }
+
+    static void ensureAhPriority(long holdMs) {
         Trader trader = Trader.get();
         if (trader != null && trader.isRunning()) {
-            trader.yieldToAhFlipper();
+            trader.yieldToAhFlipper(holdMs);
         }
     }
 
-    private static void releaseAhPriorityIfIdle() {
+    static void releaseAhPriorityIfIdle() {
         boolean idle;
         synchronized (AUTO_QUEUE) {
             idle = AUTO_QUEUE.isEmpty();
@@ -853,7 +1523,8 @@ public class AhFlipperMod {
         synchronized (LISTING_QUEUE) {
             idle = idle && LISTING_QUEUE.isEmpty();
         }
-        if (!idle || busy) {
+        if (!idle || isBusy() || isBidPriorityActive()
+                || AhBidMacro.hasPendingWork()) {
             return;
         }
         Trader trader = Trader.get();
@@ -862,54 +1533,119 @@ public class AhFlipperMod {
         }
     }
 
-    static void onStreamFlip(String id, String tag, String name, long cost,
-                             long lowestBin, long profit) {
-        if (id == null || id.isBlank() || profit <= 0) {
-            return;
-        }
-        if (debugAnalyze) {
-            synchronized (DEBUG_QUEUE) {
-                DEBUG_QUEUE.add(new AutoCandidate(id, lowestBin, profit,
-                        System.currentTimeMillis()));
-            }
-            ensureDebugWorker();
-        }
-        if (!running || !autoBuy) {
-            return;
-        }
-        if (cost < CONFIG.minItemCoins) {
-            System.out.println("[AH-Flipper] Stream-Gate: " + tag + " zu billig (" + cost
-                    + " < " + CONFIG.minItemCoins + ")");
-            return;
-        }
-        message("§6[Stream] §f" + tag + " §7@ §f" + ScreenUtil.formatCoins(cost)
-                + " §7→ §a+" + ScreenUtil.formatCoins(profit));
-        if (enqueueAuto(id, lowestBin, profit)) {
-            ensureAutoWorker();
-        }
+    private static String listingKey(String tag, String name, String excludeUuid) {
+        return (tag == null ? "" : tag) + "|" + (name == null ? "" : name)
+                + "|" + (excludeUuid == null ? "" : excludeUuid);
     }
 
-    private static boolean enqueueAuto(String id, long value, long profit) {
-        synchronized (AUTO_QUEUE) {
-            for (AutoCandidate candidate : AUTO_QUEUE) {
-                if (candidate.id.equals(id)) {
-                    return false;
-                }
-            }
-            AUTO_QUEUE.add(new AutoCandidate(id, value, profit, System.currentTimeMillis()));
+    private static boolean recentlyListed(String key) {
+        Long at = RECENT_LISTINGS.get(key);
+        if (at == null) {
+            return false;
         }
-        ensureAhPriority();
+        if (System.currentTimeMillis() - at > 10 * 60_000L) {
+            RECENT_LISTINGS.remove(key);
+            return false;
+        }
         return true;
     }
 
-    private static void enqueueListing(String tag, String name, long value, long boughtPrice) {
+    private static void markListed(String key) {
+        RECENT_LISTINGS.put(key, System.currentTimeMillis());
+        if (RECENT_LISTINGS.size() > 500) {
+            long cutoff = System.currentTimeMillis() - 10 * 60_000L;
+            RECENT_LISTINGS.entrySet().removeIf(entry -> entry.getValue() < cutoff);
+        }
+    }
+
+    private static void enqueueListing(String tag, String name, long value, long boughtPrice,
+                                       String excludeUuid) {
+        enqueueListing(tag, name, value, boughtPrice, excludeUuid, 0L);
+    }
+
+    private static void enqueueListing(String tag, String name, long value, long boughtPrice,
+                                       String excludeUuid, long fixedPrice) {
+        String key = listingKey(tag, name, excludeUuid);
+        if (recentlyListed(key) || ACTIVE_LISTINGS.contains(key)) {
+            return;
+        }
         synchronized (LISTING_QUEUE) {
+            for (ListingTask queued : LISTING_QUEUE) {
+                if (listingKey(queued.tag(), queued.name(), queued.excludeUuid()).equals(key)) {
+                    return;
+                }
+            }
             LISTING_QUEUE.add(new ListingTask(tag, name, value, boughtPrice,
+                    excludeUuid == null ? "" : excludeUuid, fixedPrice,
                     System.currentTimeMillis()));
             if (LISTING_QUEUE.size() > 50) {
                 LISTING_QUEUE.removeFirst();
             }
         }
+        if (activeAuctionCount >= AH_MAX_ACTIVE) {
+            message("\u00a7eAH full (" + activeAuctionCount + "/" + AH_MAX_ACTIVE + ") - item queued: \u00a7f" + (name.isBlank() ? tag : name));
+        }
+        ensureListingWorker();
+    }
+
+    private static void ensureListingWorker() {
+        synchronized (AhFlipperMod.class) {
+            if (listingWorkerRunning || !running) {
+                return;
+            }
+            listingWorkerRunning = true;
+        }
+        Thread thread = new Thread(AhFlipperMod::listingWorkerLoop, "skycofl-ah-listing");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private static void listingWorkerLoop() {
+        try {
+            while (running) {
+                if (isBidPriorityActive() || activeAuctionCount >= AH_MAX_ACTIVE) {
+                    ScreenUtil.sleep(500);
+                    continue;
+                }
+                if (!processNextListing()) {
+                    ScreenUtil.sleep(250);
+                }
+            }
+        } finally {
+            synchronized (AhFlipperMod.class) {
+                listingWorkerRunning = false;
+            }
+            boolean pending;
+            synchronized (LISTING_QUEUE) {
+                pending = !LISTING_QUEUE.isEmpty();
+            }
+            if (pending && running) {
+                ensureListingWorker();
+            }
+        }
+    }
+
+    private static void refreshActiveAuctionCountAsync() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || activeCountRefreshRunning) {
+            return;
+        }
+        activeCountRefreshRunning = true;
+        lastActiveCountRefreshAt = System.currentTimeMillis();
+        String uuid = client.player.getUUID().toString().replace("-", "");
+        Thread thread = new Thread(() -> {
+            try {
+                int count = AhMarketData.activePlayerAuctionCount(uuid);
+                if (count >= 0) {
+                    activeAuctionCount = count;
+                    ensureListingWorker();
+                }
+            } finally {
+                activeCountRefreshRunning = false;
+            }
+        }, "skycofl-ah-count");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private static ListingTask takeListing() {
@@ -922,7 +1658,7 @@ public class AhFlipperMod {
         if (!running || !autoBuy) {
             return false;
         }
-        ensureAhPriority();
+        ensureAhPriority(15_000L);
         synchronized (AUTO_QUEUE) {
             for (int i = 0; i < AUTO_QUEUE.size(); i++) {
                 AutoCandidate candidate = AUTO_QUEUE.get(i);
@@ -935,13 +1671,91 @@ public class AhFlipperMod {
             }
             AUTO_QUEUE.add(new AutoCandidate(id, value, profit, System.currentTimeMillis(), true));
         }
-        message("§6[Live] §f" + id + " §7in Kauf-Queue");
+        message("\u00a76[Live] \u00a7f" + id + " \u00a77added to buy queue");
         ensureAutoWorker();
         return true;
     }
 
+    static boolean beginBidAction() {
+        return beginBidAction(false);
+    }
+
+    static boolean beginBidAction(boolean priority) {
+        synchronized (AhFlipperMod.class) {
+            if (bidLease != null || purchaseInProgress || SOLD_CLAIM_PENDING.get()) {
+                return false;
+            }
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("bid", true);
+            if (lease == null) {
+                return false;
+            }
+            bidLease = lease;
+        }
+        ensureAhPriority(15_000L);
+        return true;
+    }
+
+    static void requestBidPriority(long durationMs) {
+        long duration = Math.max(1000L, durationMs);
+        bidPriorityUntil = Math.max(bidPriorityUntil,
+                System.currentTimeMillis() + duration);
+        ensureAhPriority(duration + 3_000L);
+    }
+
+    static void clearBidPriority() {
+        bidPriorityUntil = 0;
+        releaseAhPriorityIfIdle();
+    }
+
+    static boolean isBidPriorityActive() {
+        return System.currentTimeMillis() < bidPriorityUntil;
+    }
+
+    static void closeGuiForBidPriority() {
+        if (isBusy()) {
+            return;
+        }
+        Trader trader = Trader.get();
+        if (trader != null && trader.isGuiOwned()) {
+            return;
+        }
+        ScreenUtil.closeCurrentScreen();
+    }
+
+    static boolean isPurchaseInProgress() {
+        return purchaseInProgress;
+    }
+
+    static boolean isBidActionBusy() {
+        return AutomationGate.isBidBusy();
+    }
+
+    static void endBidAction() {
+        AutomationGate.Lease lease;
+        synchronized (AhFlipperMod.class) {
+            lease = bidLease;
+            bidLease = null;
+        }
+        AutomationGate.release(lease);
+        releaseAhPriorityIfIdle();
+    }
+
     static boolean isBusy() {
-        return busy;
+        return AutomationGate.isBusy();
+    }
+
+    static boolean hasPendingAutoBuy() {
+        synchronized (AUTO_QUEUE) {
+            return !AUTO_QUEUE.isEmpty();
+        }
+    }
+
+    public static int activeAuctionCount() {
+        return activeAuctionCount;
+    }
+
+    public static int maxActiveAuctions() {
+        return AH_MAX_ACTIVE;
     }
 
     public static void onFlip(CoflCore.commands.models.FlipData flip) {
@@ -975,11 +1789,6 @@ public class AhFlipperMod {
         lastFlipId = flip.Id;
         lastFlipWorth = profit;
         lastFlipAt = System.currentTimeMillis();
-        if (autoBuy && flip.Id != null) {
-            if (enqueueAuto(flip.Id, profit, profit)) {
-                ensureAutoWorker();
-            }
-        }
     }
 
     private static void ensureAutoWorker() {
@@ -1000,7 +1809,7 @@ public class AhFlipperMod {
             AUTO_QUEUE.removeIf(c -> now - c.at > CONFIG.autoBuyMaxAgeSeconds * 1000L);
             AutoCandidate best = null;
             for (AutoCandidate candidate : AUTO_QUEUE) {
-                if (best == null || candidate.at < best.at) {
+                if (best == null || candidate.at > best.at) {
                     best = candidate;
                 }
             }
@@ -1041,13 +1850,19 @@ public class AhFlipperMod {
                 if (batch.size() > 5) {
                     batch = new java.util.ArrayList<>(batch.subList(0, 5));
                 }
-                while (busy && debugAnalyze) {
-                    ScreenUtil.sleep(200);
+                while (isBusy() && debugAnalyze) {
+                    ScreenUtil.sleep(50);
                 }
                 if (!debugAnalyze) {
                     break;
                 }
-                busy = true;
+                AutomationGate.Lease lease = AutomationGate.tryAcquire("analyze", false);
+                if (lease == null) {
+                    synchronized (DEBUG_QUEUE) {
+                        DEBUG_QUEUE.addAll(batch);
+                    }
+                    continue;
+                }
                 try {
                     int rank = 1;
                     for (AutoCandidate candidate : batch) {
@@ -1056,10 +1871,10 @@ public class AhFlipperMod {
                         }
                         analyzeCandidate(candidate, rank);
                         rank++;
-                        ScreenUtil.sleep(400);
+                        ScreenUtil.sleep(150);
                     }
                 } finally {
-                    busy = false;
+                    AutomationGate.release(lease);
                 }
             }
         } finally {
@@ -1079,20 +1894,31 @@ public class AhFlipperMod {
             System.out.println("[AH-Flipper] Top-" + rank + " Analyse: id=" + candidate.id
                     + " value=" + candidate.value + " profit=" + candidate.profit);
             if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
-                ScreenUtil.closeCurrentScreen();
-                ScreenUtil.sleep(250);
+                ScreenUtil.closeAndWait(200);
             }
             sendCommandSilent("/viewauction " + candidate.id);
             if (!waitForTitle(4000, "bin auction view")) {
-                System.out.println("[AH-Flipper] Top-" + rank + ": Auktion nicht geöffnet");
-                message("§c#" + rank + " Auktion nicht geöffnet: " + candidate.id);
+                System.out.println("[AH-Flipper] Top-" + rank + ": Auktion nicht geÃƒÆ’Ã‚Â¶ffnet");
+                message("\u00a7c#" + rank + " auction did not open: " + candidate.id);
+                return;
+            }
+            if (AhScreenUtil.currentAuctionUnavailable()) {
+                System.out.println("[AH-Flipper] Top-" + rank
+                        + ": Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar (Collect/Someone else) - schlieÃƒÆ’Ã…Â¸e sofort");
+                ScreenUtil.closeCurrentScreen();
                 return;
             }
             long price = waitForBuyPrice(4000);
+            if (price <= 0 && AhScreenUtil.currentAuctionUnavailable()) {
+                System.out.println("[AH-Flipper] Top-" + rank
+                        + ": Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar - schlieÃƒÆ’Ã…Â¸e sofort");
+                ScreenUtil.closeCurrentScreen();
+                return;
+            }
             AhItem item = AhItem.fromStack(AhScreenUtil.currentItem(13));
             if (item.tag.isBlank()) {
                 System.out.println("[AH-Flipper] Top-" + rank + ": kein Item-Tag");
-                message("§c#" + rank + " Item-Tag nicht erkannt.");
+                message("\u00a7c#" + rank + " item tag not detected.");
                 AhScreenUtil.dumpScreen();
                 ScreenUtil.closeCurrentScreen();
                 return;
@@ -1100,44 +1926,51 @@ public class AhFlipperMod {
             AhAnalyzer.Result result = AhAnalyzer.analyze(item, Math.max(price, 0), candidate.profit);
             System.out.println("[AH-Flipper] TOP" + rank + " " + result.shortSummary());
             logAnalysis(result);
-            message((result.buyable ? "§a" : "§c") + "#" + rank + " " + result.shortSummary());
+            message((result.buyable ? "\u00a7a" : "\u00a7c") + "#" + rank + " " + result.shortSummary());
             for (String reason : result.reasons) {
-                message("§c   - " + reason);
+                message("\u00a7c   - " + reason);
             }
-            ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(250);
+            ScreenUtil.closeAndWait(200);
         } catch (Exception e) {
             System.out.println("[AH-Flipper] Top-" + rank + " Fehler: " + e);
-            message("§c#" + rank + " Analyse fehlgeschlagen: " + e.getMessage());
+            message("\u00a7c#" + rank + " analysis failed: " + e.getMessage());
         }
     }
 
     private static void autoWorkerLoop() {
         try {
             while (running && autoBuy) {
+                if (SOLD_CLAIM_PENDING.get() || isBidPriorityActive()) {
+                    ScreenUtil.sleep(100);
+                    continue;
+                }
                 AutoCandidate best = pickBestCandidate();
                 if (best == null) {
-                    if (processNextListing()) {
-                        continue;
-                    }
                     ScreenUtil.sleep(10);
                     continue;
                 }
-                while (busy && running) {
+                while (isBusy() && running) {
                     ScreenUtil.sleep(10);
                 }
                 if (!running || !autoBuy) {
                     break;
                 }
+                AutomationGate.Lease lease = AutomationGate.tryAcquire("auto-buy", false);
+                if (lease == null) {
+                    synchronized (AUTO_QUEUE) {
+                        AUTO_QUEUE.add(best);
+                    }
+                    ScreenUtil.sleep(25);
+                    continue;
+                }
                 System.out.println("[AH-Flipper] Auto-Buy Kandidat: id=" + best.id
                         + " value=" + best.value + " profit=" + best.profit + " alter="
                         + (System.currentTimeMillis() - best.at) / 1000 + "s");
-                busy = true;
                 lastBuyOk = false;
                 try {
                     buyFlow(best.id, best.profit, true, false, best.prevalidated(), best.value);
                 } finally {
-                    busy = false;
+                    AutomationGate.release(lease);
                 }
             }
         } finally {
@@ -1153,64 +1986,99 @@ public class AhFlipperMod {
     }
 
     private static boolean processNextListing() {
-        if (!CONFIG.autoList) {
+        if (!CONFIG.autoList || isBidPriorityActive()
+                || activeAuctionCount >= AH_MAX_ACTIVE) {
             return false;
         }
         ListingTask task = takeListing();
         if (task == null) {
             return false;
         }
-        if (busy) {
+        AutomationGate.Lease lease = AutomationGate.tryAcquire("listing", false);
+        if (lease == null) {
             synchronized (LISTING_QUEUE) {
                 LISTING_QUEUE.addFirst(task);
             }
             return false;
         }
         ensureAhPriority();
-        busy = true;
+        String key = listingKey(task.tag, task.name, task.excludeUuid);
+        ACTIVE_LISTINGS.add(key);
+        boolean listed = false;
         try {
-            listPurchased(task.tag, task.name, task.value, task.boughtPrice);
+            listed = listPurchased(task.tag, task.name, task.value,
+                    task.boughtPrice, task.excludeUuid, task.fixedPrice);
         } finally {
-            busy = false;
+            ACTIVE_LISTINGS.remove(key);
+            if (listed) {
+                markListed(key);
+            }
+            AutomationGate.release(lease);
             releaseAhPriorityIfIdle();
         }
         return true;
     }
 
-    private static void listPurchased(String tag, String name, long value, long boughtPrice) {
-        if (AhScreenUtil.findInventorySlot(tag, name) < 0
-                && !waitForInventoryItem(tag, name, 5000)) {
-            for (int attempt = 1; attempt <= 2; attempt++) {
-                message("Item nicht im Inventar - Claim-Versuch " + attempt + "/2 ...");
-                claimBlocking(name);
-                if (waitForInventoryItem(tag, name, 3000)) {
-                    break;
-                }
-                ScreenUtil.sleep(400);
-            }
+    static void listPurchased(String tag, String name, long value, long boughtPrice) {
+        listPurchased(tag, name, value, boughtPrice, "");
+    }
+
+    static boolean listPurchased(String tag, String name, long value, long boughtPrice,
+                                 String excludeUuid) {
+        return listPurchased(tag, name, value, boughtPrice, excludeUuid, 0L);
+    }
+
+    public static boolean listLowballedFixed(String tag, String name, long price) {
+        if (tag == null || tag.isBlank() || price <= 0) {
+            return false;
         }
-        long price = listingPrice(tag, name, value, boughtPrice);
+        AutomationGate.Lease lease = AutomationGate.acquire("lowball-list", false, 10_000L);
+        if (lease == null) {
+            return false;
+        }
+        ensureAhPriority();
+        try {
+            return listPurchased(tag, name, price, 0, "", price);
+        } catch (Exception e) {
+            System.out.println("[AH-Flipper] Lowball-Listing Fehler: " + e.getMessage());
+            return false;
+        } finally {
+            AutomationGate.release(lease);
+            releaseAhPriorityIfIdle();
+        }
+    }
+
+    private static boolean listPurchased(String tag, String name, long value, long boughtPrice,
+                                         String excludeUuid, long fixedPrice) {
+        boolean inventoryFound = AhScreenUtil.findInventorySlot(tag, name) >= 0
+                || waitForInventoryItem(tag, name, 10_000);
+        if (!inventoryFound) {
+            ;
+            return false;
+        }
+        long price = fixedPrice > 0
+                ? fixedPrice
+                : listingPrice(tag, name, value, boughtPrice, excludeUuid);
         if (price <= 0) {
-            message("\u00a7cKein sicherer Listenpreis - Item wird nicht gelistet: " + tag);
-            return;
+            message("\u00a7cNo safe listing price - not listing: " + tag);
+            return false;
         }
         boolean listed = false;
         for (int attempt = 1; attempt <= 2; attempt++) {
-            boolean fallback = attempt == 2;
-            long deadline = fallback ? System.currentTimeMillis() + 35_000L : 0L;
-            if (fallback) {
-                message("Listing fehlgeschlagen - Fallback /ah -> Manage Auctions -> Create Auction -> Item ...");
-                System.out.println("[AH-Flipper] Listing-Fallback fuer " + tag
-                        + " (max. 35s, Manage Auctions -> Create Auction)");
+            boolean secondAttempt = attempt == 2;
+            if (secondAttempt) {
+                message("Listing failed - retry 2/2...");
+                System.out.println("[AH-Flipper] Listing-Versuch 2 fuer " + tag
+                        + " (identisch zu Versuch 1, Item wird nicht angefasst)");
             }
-            if (listFlow(tag, name, price, false, deadline)) {
+            if (listFlow(tag, name, price, secondAttempt, 0L)) {
                 listed = true;
                 break;
             }
             System.out.println("[AH-Flipper] Listing-Versuch " + attempt + "/2 fehlgeschlagen: "
                     + tag);
             if (attempt < 2) {
-                message("Listing fehlgeschlagen - Versuch " + (attempt + 1) + "/2 ...");
+                message("Listing failed - attempt " + (attempt + 1) + "/2...");
                 if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
                     ScreenUtil.closeCurrentScreen();
                 }
@@ -1218,33 +2086,34 @@ public class AhFlipperMod {
             }
         }
         if (!listed) {
-            message("\u00a7cListing nach 2 Versuchen fehlgeschlagen: " + tag);
+            message("\u00a7cListing failed after 2 attempts: " + tag);
             closeOpenScreens();
+        } else {
+            markListed(listingKey(tag, name, excludeUuid));
         }
+        return listed;
     }
 
-    private static long listingPrice(String tag, String name, long value, long boughtPrice) {
+    private static long listingPrice(String tag, String name, long value, long boughtPrice,
+                                     String excludeUuid) {
         AhItem item = AhScreenUtil.findInventoryItem(tag, name);
         if (item != null && !item.tag.equalsIgnoreCase(tag)) {
             item = null;
         }
-        AhValuation.Estimate estimate = AhValuation.estimate(item, "");
+        AhValuation.Estimate estimate = AhValuation.estimate(item,
+                excludeUuid == null ? "" : excludeUuid);
         double feeFraction = AhFlipperMod.CONFIG.ahFeePercent / 100.0;
         long minNetPrice = boughtPrice > 0
                 ? Math.round(boughtPrice / Math.max(0.01, 1.0 - feeFraction)) : 0;
         long fresh = estimate.estimated;
         long expected;
         if (value > 0) {
-            if (fresh > 0) {
-                expected = Math.min(fresh, value);
-                if (expected < minNetPrice) {
-                    expected = Math.max(value, minNetPrice);
-                    System.out.println("[AH-Flipper] Listing: " + tag + " frische Bewertung "
-                            + fresh + " unter Netto " + minNetPrice
-                            + " - nutze Kauf-Bewertung " + value);
-                }
-            } else {
-                expected = Math.max(value, minNetPrice);
+            expected = fresh > 0 ? Math.min(fresh, value) : value;
+            if (minNetPrice > 0 && expected < minNetPrice) {
+                System.out.println("[AH-Flipper] Listing verworfen: " + tag + " Wert="
+                        + expected + " < Kaufpreis-Netto=" + minNetPrice
+                        + " (Kauf " + boughtPrice + ")");
+                return 0;
             }
         } else {
             expected = fresh;
@@ -1262,28 +2131,41 @@ public class AhFlipperMod {
                 + " Slots=" + estimate.slotUnlockValue
                 + " Comparable=" + estimate.comparableAverage + " ("
                 + estimate.comparableSales + " Sales, "
-                + estimate.comparableExcluded + " Ausrei\u00dfer) AskSafety="
+                + estimate.comparableExcluded + " Ausrei\u00dfer) Bin="
+                + estimate.comparableBin + " AskSafety="
                 + estimate.askSafetyValue
                 + " Ceiling=" + estimate.ceiling
                 + " Frisch=" + fresh + " Kaufwert=" + value + " Netto=" + minNetPrice
                 + " -> " + expected
                 + (boughtPrice > 0 ? " (Kauf " + boughtPrice + ")" : ""));
-        return Math.max(1, expected);
+        if (expected <= 1) {
+            System.out.println("[AH-Flipper] Kein belastbarer Listenpreis fuer " + tag
+                    + ": " + estimate.source);
+            return 0;
+        }
+        return expected;
     }
 
     private static synchronized void startBuy(String id, long expectedProfit, boolean auto) {
-        if (busy) {
-            if (!auto) {
-                message("§cEs läuft bereits ein Kauf.");
-            }
-            return;
-        }
         if (id == null || id.isEmpty()) {
-            message("§cKeine Auktions-ID.");
+            message("Ãƒâ€šÃ‚Â§cKeine Auktions-ID.");
             return;
         }
-        busy = true;
-        Thread thread = new Thread(() -> buyFlow(id, expectedProfit, auto), "skycofl-ah-buy");
+        Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("buy", false);
+            if (lease == null) {
+                if (!auto) {
+                    message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
+                }
+                return;
+            }
+            try {
+                buyFlow(id, expectedProfit, auto);
+            } finally {
+                AutomationGate.release(lease);
+                releaseAhPriorityIfIdle();
+            }
+        }, "skycofl-ah-buy");
         thread.setDaemon(true);
         thread.start();
     }
@@ -1299,144 +2181,253 @@ public class AhFlipperMod {
     private static void buyFlow(String id, long expectedProfit, boolean auto, boolean alreadyOpen,
                                 boolean prevalidated, long expectedValue) {
         ensureAhPriority();
+        purchaseInProgress = true;
+        boolean purchaseAttempted = false;
+        boolean purchaseSucceeded = false;
+        String recoveryTag = "";
+        String recoveryName = "";
+        long recoveryValue = 0;
+        long recoveryPrice = 0;
         try {
             System.out.println("[AH-Flipper] buyFlow: id=" + id + " erwartet=" + expectedProfit
                     + " auto=" + auto + " offen=" + alreadyOpen);
-            long settle = prevalidated ? 10 : (auto ? 50 : 250);
-            ScreenUtil.sleep(settle);
+            long settle = prevalidated ? 100 : (auto ? 150 : 200);
             if (!alreadyOpen) {
                 Trader trader = Trader.get();
                 if (trader != null) {
                     trader.closeBazaarGui();
                 }
                 AhScreenUtil.AhScreen open = AhScreenUtil.currentScreen();
-                if (open != AhScreenUtil.AhScreen.NONE) {
-                    ScreenUtil.closeCurrentScreen();
-                    ScreenUtil.sleep(settle);
+                if (open != AhScreenUtil.AhScreen.NONE || AhScreenUtil.isContainerOpen()) {
+                    ScreenUtil.closeAndWait(settle);
+                } else {
+                    ScreenUtil.sleep(25);
                 }
             }
             long purseBefore = ScreenUtil.readPurse();
             if (!alreadyOpen) {
                 sendCommandSilent("/viewauction " + id);
-                if (!waitForTitle(1500, "bin auction view")) {
+                if (!waitForTitle(4000, "bin auction view")) {
                     System.out.println("[AH-Flipper] BUYABLE-Kauf abgebrochen (Auktion evtl. vorbei): id="
                             + id + " erwartet=" + expectedProfit);
-                    message((auto ? "§eAuto-Buy: " : "§c") + "Auktion nicht geöffnet: " + id);
+                    message((auto ? "\u00a7eAuto-Buy: " : "\u00a7c") + "auction did not open: " + id);
                     return;
                 }
             } else if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.BIN_VIEW) {
-                message("§cKeine BIN-Auktion geöffnet.");
+                message("\u00a7cNo BIN auction open.");
                 return;
             }
             System.out.println("[AH-Flipper] BIN-View offen, lese Preis");
             if (AhScreenUtil.isOwnAuctionCurrent()) {
-                message("§cEigene Auktion – übersprungen.");
+                message("\u00a7cOwn auction - skipped.");
                 return;
             }
-            long price = waitForBuyPrice(800);
+            if (AhScreenUtil.currentAuctionUnavailable()) {
+                System.out.println("[AH-Flipper] Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar (Collect/Someone else) - schlieÃƒÆ’Ã…Â¸e sofort: "
+                        + id);
+                ScreenUtil.closeCurrentScreen();
+                return;
+            }
+            long price = waitForBuyPrice(auto || prevalidated ? 3000 : 1500);
             if (price <= 0) {
+                price = AhScreenUtil.currentPrice();
+            }
+            if (price <= 0) {
+                if (AhScreenUtil.currentAuctionUnavailable()) {
+                    System.out.println("[AH-Flipper] Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar - schlieÃƒÆ’Ã…Â¸e sofort: " + id);
+                    ScreenUtil.closeCurrentScreen();
+                    return;
+                }
                 System.out.println("[AH-Flipper] Kein Preis erkannt");
-                message("§cKein Preis erkannt – übersprungen.");
+                message("\u00a7cNo price detected - skipped.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
             System.out.println("[AH-Flipper] Preis=" + price);
             long bankroll = purseBefore > 0 ? purseBefore - CONFIG.reserveCoins : -1;
+            if (bankroll > 0 && CONFIG.maxBankrollCoins > 0) {
+                bankroll = Math.min(bankroll, CONFIG.maxBankrollCoins);
+            }
             long maxPrice = bankroll > 0
                     ? Math.round(bankroll * CONFIG.maxBankFractionPerOrder) : -1;
             if (maxPrice > 0 && price > maxPrice) {
                 System.out.println("[AH-Flipper] Bankroll-Gate: Preis=" + price
                         + " max=" + maxPrice + " Bankroll=" + bankroll);
-                message("§cPreis über " + Math.round(CONFIG.maxBankFractionPerOrder * 100)
-                        + "% der Bankroll (§f" + ScreenUtil.formatCoins(maxPrice)
-                        + "§c) – übersprungen.");
+                message("\u00a7cPrice above " + Math.round(CONFIG.maxBankFractionPerOrder * 100) + "% of bankroll (\u00a7f" + ScreenUtil.formatCoins(maxPrice) + "\u00a7c) - skipped.");
                 return;
             }
-            AhItem item = AhItem.fromStack(AhScreenUtil.currentItem(13));
+            AhItem item = AhItem.resolveCofl(AhScreenUtil.currentItem(13), 4000);
             if (item.tag.isBlank()) {
-                message("§cItem-Tag nicht erkannt – abgebrochen.");
+                message("\u00a7cItem tag not detected - cancelled.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
-            AhAnalyzer.Result analysis = AhAnalyzer.analyze(item, price, expectedProfit, id);
-            logAnalysis(analysis);
-            message("§7Analyse: §f" + analysis.tag
-                    + " §7· Gewinn §f" + String.format(java.util.Locale.US, "%.0f%%", analysis.profitPercent)
-                    + " §7· Clean §f" + String.format(java.util.Locale.US, "%.0f%%", analysis.cleanScore * 100)
-                    + " §7· Score §f" + String.format(java.util.Locale.US, "%.0f", analysis.score)
-                    + " §7(Q §f" + String.format(java.util.Locale.US, "%.2f", analysis.quality) + "§7)");
-            if (auto && analysis.profitPercent < CONFIG.minProfitPercent) {
-                message("§c- Gewinn " + String.format(java.util.Locale.US, "%.0f%%",
-                        analysis.profitPercent) + " (< " + CONFIG.minProfitPercent + "%)");
-                message("§cKein Kauf.");
+            if (item.isPet()) {
+                message("\u00a7cPets are disabled in AH-Flipper.");
                 ScreenUtil.closeCurrentScreen();
                 return;
             }
-            if (!analysis.buyable) {
-                for (String reason : analysis.reasons) {
-                    message("§c- " + reason);
-                }
-                message("§cKein Kauf.");
+            if (item.coflValue() <= 0) {
+                System.out.println("[AH-Flipper] Cofl-Median/LBin nicht geladen: " + item.tag);
+                message("\u00a7cCofl tooltip value not loaded - no purchase.");
                 ScreenUtil.closeCurrentScreen();
                 return;
             }
+            System.out.println("[AH-Flipper] Cofl-Wert am Item: " + item.coflValue()
+                    + " (" + item.coflPick + ", Med=" + item.coflMed
+                    + ", LBin=" + item.coflLbin
+                    + ", LBinCount=" + item.coflLbinCount
+                    + ", min=" + CONFIG.coflLbinMinCount + ")");
+            AhValuation.Estimate tooltip = AhValuation.estimate(item, "");
+            long resale = tooltip.estimated;
+            if (resale <= 1) {
+                message("\u00a7cTooltip returned no value - hover the item.");
+                System.out.println("[AH-Flipper] Tooltip-Wert fehlt fÃƒÆ’Ã‚Â¼r "
+                        + item.tag + ": " + tooltip.source);
+                ScreenUtil.closeCurrentScreen();
+                return;
+            }
+            double feeFraction = CONFIG.ahFeePercent / 100.0;
+            double minProfit = Math.max(10.0, CONFIG.minProfitPercent);
+            long net = Math.round(resale * (1.0 - feeFraction));
+            long profit = net - price;
+            double profitPercent = price > 0 ? profit * 100.0 / price : -1;
+            message("\u00a77Tooltip value: \u00a7f" + ScreenUtil.formatCoins(resale) + " \u00a77\u00b7 Buy: \u00a7f" + ScreenUtil.formatCoins(price) + " \u00a77\u00b7 Profit: \u00a7f" + String.format(java.util.Locale.US, "%.1f%%", profitPercent));
+            if (profitPercent < minProfit) {
+                message("\u00a7c- Profit " + String.format(java.util.Locale.US, "%.1f%%", profitPercent) + " (< " + String.format(java.util.Locale.US, "%.0f%%", minProfit) + ")");
+                message("\u00a7cNo purchase.");
+                ScreenUtil.closeCurrentScreen();
+                return;
+            }
+            if (expectedProfit > 0 && profit < expectedProfit * 0.5) {
+                message("\u00a7cProfit " + ScreenUtil.formatCoins(profit) + " is far below scanner expectation " + ScreenUtil.formatCoins(expectedProfit) + " - no purchase.");
+                System.out.println("[AH-Flipper] Kauf verworfen (Scanner-Erwartung): id="
+                        + id + " profit=" + profit + " expected=" + expectedProfit);
+                ScreenUtil.closeCurrentScreen();
+                return;
+            }
+            recoveryTag = item.tag;
+            recoveryName = item.displayName;
+            recoveryValue = resale;
+            recoveryPrice = price;
+            activePurchaseTag = item.tag;
+            activePurchaseName = item.displayName;
+            activePurchaseValue = resale;
+            activePurchasePrice = price;
+            activePurchaseId = id;
+            activePurchaseAt = System.currentTimeMillis();
+            purchaseAttempted = true;
             if (!spamBuyButton()) {
                 System.out.println("[AH-Flipper] Kaufbutton nicht aktiv");
-                message("§cKaufbutton nicht aktiv – abgebrochen.");
+                message("\u00a7cBuy button not active - cancelled.");
                 AhScreenUtil.dumpScreen();
                 return;
+            }
+            long confirmPrice = AhScreenUtil.currentPriceAt(11);
+            if (confirmPrice <= 0) {
+                confirmPrice = AhScreenUtil.currentPrice();
+            }
+            if (confirmPrice > 0 && confirmPrice != price) {
+                long confirmProfit = Math.round(resale * (1.0 - feeFraction)) - confirmPrice;
+                double confirmPercent = confirmProfit * 100.0 / confirmPrice;
+                System.out.println("[AH-Flipper] Confirm-Preis " + confirmPrice
+                        + " weicht ab (Screen " + price + ") -> "
+                        + String.format(java.util.Locale.US, "%.1f%%", confirmPercent));
+                if (confirmPercent < minProfit
+                        || (expectedProfit > 0 && confirmProfit < expectedProfit * 0.5)) {
+                    message("\u00a7cConfirm price " + ScreenUtil.formatCoins(confirmPrice) + " makes the purchase unprofitable - cancelled.");
+                    ScreenUtil.closeCurrentScreen();
+                    return;
+                }
+                price = confirmPrice;
+                profit = confirmProfit;
+                profitPercent = confirmPercent;
+                recoveryPrice = price;
+                activePurchasePrice = price;
             }
             if (!spamConfirmButton()) {
-                System.out.println("[AH-Flipper] Confirm Purchase nicht bestätigt");
-                message("§cBestätigung nicht durchgegangen.");
+                System.out.println("[AH-Flipper] Confirm Purchase nicht bestÃƒÆ’Ã‚Â¤tigt");
+                message("\u00a7cConfirmation did not go through.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
+            purchaseSucceeded = true;
             lastBuyOk = true;
-            ScreenUtil.sleep(prevalidated || auto ? 50 : 250);
+            lastBoughtTag = item.tag;
+            lastBoughtName = item.displayName;
+            lastBoughtValue = resale;
+            lastBoughtPrice = price;
+            lastBoughtId = id;
+            AhFlipperConfig.blockTemporarily(item.tag, item.displayName);
+            ScreenUtil.sleep(prevalidated || auto ? 50 : 100);
             long purseAfter = ScreenUtil.readPurse();
-            System.out.println("[AH-Flipper] Kauf ausgelöst: Purse " + purseBefore + " -> " + purseAfter);
+            System.out.println("[AH-Flipper] Kauf ausgelÃƒÆ’Ã‚Â¶st: Purse " + purseBefore + " -> " + purseAfter);
             if (purseBefore > 0 && purseAfter > 0 && purseAfter < purseBefore) {
                 long purseDiff = purseBefore - purseAfter;
                 boolean plausible = price <= 0
                         || (purseDiff <= price * 1.5 && purseDiff >= price * 0.5);
                 if (plausible) {
-                    message("\u00a7aGekauft! \u00a77Bezahlt: \u00a7f"
-                            + ScreenUtil.formatCoins(purseDiff)
-                            + (expectedProfit > 0 ? " \u00a77\u00bb Erwarteter Gewinn: \u00a7f"
-                            + ScreenUtil.formatCoins(expectedProfit) : ""));
+                    message("\u00a7aPurchased! \u00a77Paid: \u00a7f" + ScreenUtil.formatCoins(purseDiff) + (profit > 0 ? " \u00a77>> Expected profit: \u00a7f" + ScreenUtil.formatCoins(profit) : ""));
                 } else {
-                    message("\u00a7aGekauft! \u00a77Screen-Preis: \u00a7f"
-                            + ScreenUtil.formatCoins(price)
-                            + " \u00a77(Purse-Diff \u00a7f" + ScreenUtil.formatCoins(purseDiff)
-                            + "\u00a77 weicht ab - Bazaar-Escrow?)"
-                            + (expectedProfit > 0 ? " \u00a77\u00bb Erwarteter Gewinn: \u00a7f"
-                            + ScreenUtil.formatCoins(expectedProfit) : ""));
+                    message("\u00a7aPurchased! \u00a77Screen price: \u00a7f" + ScreenUtil.formatCoins(price) + " \u00a77(purse diff \u00a7f" + ScreenUtil.formatCoins(purseDiff) + "\u00a77 differs - Bazaar escrow?)" + (profit > 0 ? " \u00a77>> Expected profit: \u00a7f" + ScreenUtil.formatCoins(profit) : ""));
                 }
             } else {
-                message("§eKauf ausgelöst – Purse: "
-                        + (purseBefore > 0 ? ScreenUtil.formatCoins(purseBefore) : "?")
-                        + " → " + (purseAfter > 0 ? ScreenUtil.formatCoins(purseAfter) : "?"));
+                message("\u00a7ePurchase triggered - purse: " + (purseBefore > 0 ? ScreenUtil.formatCoins(purseBefore) : "?") + " \u2192 " + (purseAfter > 0 ? ScreenUtil.formatCoins(purseAfter) : "?"));
             }
             ScreenUtil.closeCurrentScreen();
-            lastBoughtTag = analysis.tag;
-            lastBoughtName = item.displayName;
-            lastBoughtValue = analysis.expectedValue;
-            lastBoughtPrice = price;
-            if (CONFIG.autoList && analysis.expectedValue > 0) {
-                if (auto) {
-                    enqueueListing(analysis.tag, item.displayName, analysis.expectedValue, price);
-                } else {
-                    listPurchased(analysis.tag, item.displayName, analysis.expectedValue, price);
-                }
+            if (CONFIG.autoList && resale > 0) {
+                enqueueListing(item.tag, item.displayName, resale, price, id);
             }
         } catch (Exception e) {
             System.out.println("[AH-Flipper] buyFlow Fehler: " + e);
-            message("§cKauf fehlgeschlagen: " + e.getMessage());
+            message("\u00a7cPurchase failed: " + e.getMessage());
         } finally {
-            busy = false;
+            if (purchaseAttempted && !purchaseSucceeded) {
+                scheduleBuyRecovery(recoveryTag, recoveryName, recoveryValue,
+                        recoveryPrice, id);
+            }
+            purchaseInProgress = false;
             releaseAhPriorityIfIdle();
         }
+    }
+
+    private static void scheduleBuyRecovery(String tag, String name, long value,
+                                            long price, String excludeUuid) {
+        String recoveryKey = listingKey(tag, name, excludeUuid);
+        if (recentlyListed(recoveryKey) || ACTIVE_LISTINGS.contains(recoveryKey)) {
+            return;
+        }
+        synchronized (AhFlipperMod.class) {
+            if (recoveryRunning) {
+                ensureListingWorker();
+                return;
+            }
+            recoveryRunning = true;
+        }
+        Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.acquire("recovery", false, 5000L);
+            try {
+                if (!running || lease == null) {
+                    return;
+                }
+                ensureAhPriority();
+                ScreenUtil.closeAndWait(250);
+                claimBlocking(name);
+                if (tag != null && !tag.isBlank() && name != null && !name.isBlank()
+                        && AhScreenUtil.findInventorySlot(tag, name) >= 0) {
+                    enqueueListing(tag, name, value, price, excludeUuid);
+                }
+                ensureListingWorker();
+            } catch (Exception e) {
+                System.out.println("[AH-Flipper] Kauf-Recovery Fehler: " + e.getMessage());
+            } finally {
+                AutomationGate.release(lease);
+                releaseAhPriorityIfIdle();
+                recoveryRunning = false;
+            }
+        }, "skycofl-ah-buy-recover");
+        thread.setDaemon(true);
+        thread.start();
     }
 
     private static int sellCommand(CommandContext<FabricClientCommandSource> context) {
@@ -1456,26 +2447,32 @@ public class AhFlipperMod {
             }
         }
         if (tag == null || tag.isBlank()) {
-            message("§cKein Item bekannt – erst kaufen oder BIN-View öffnen.");
+            message("Ãƒâ€šÃ‚Â§cKein Item bekannt ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ erst kaufen oder BIN-View ÃƒÆ’Ã‚Â¶ffnen.");
             return 0;
         }
         if (price <= 0) {
-            message("§cKein Preis – nutze /ahflip sell <preis>.");
+            message("Ãƒâ€šÃ‚Â§cKein Preis ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ nutze /ahflip sell <preis>.");
             return 0;
         }
-        if (busy) {
-            message("§cEs läuft bereits ein Kauf/Listing.");
+        if (isBusy()) {
+            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf/Listing.");
             return 0;
         }
-        busy = true;
         String finalTag = tag;
         String finalName = name;
         long finalPrice = price;
         Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("sell", false);
+            if (lease == null) {
+                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                return;
+            }
+            ensureAhPriority();
             try {
                 listFlow(finalTag, finalName, finalPrice);
             } finally {
-                busy = false;
+                AutomationGate.release(lease);
+                releaseAhPriorityIfIdle();
             }
         }, "skycofl-ah-list");
         thread.setDaemon(true);
@@ -1492,10 +2489,8 @@ public class AhFlipperMod {
         try {
             System.out.println("[AH-Flipper] listFlow: tag=" + tag + " name=" + displayName
                     + " preis=" + price + " skipItemClick=" + skipItemClick);
-            ScreenUtil.sleep(300);
             if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
-                ScreenUtil.closeCurrentScreen();
-                sleepUntil(deadline, 300);
+                ScreenUtil.closeAndWait(250);
             }
             sendCommandSilent("/ah");
             if (!waitForScreenUntil(deadline, 4000, AhScreenUtil.AhScreen.AH_MAIN,
@@ -1507,18 +2502,17 @@ public class AhFlipperMod {
                     return false;
                 }
             }
-            sleepUntil(deadline, 450);
             AhScreenUtil.AhScreen screen = AhScreenUtil.currentScreen();
             if (screen == AhScreenUtil.AhScreen.AH_MAIN
                     || screen == AhScreenUtil.AhScreen.OTHER) {
-                int mgmt = findManageAuctionsButton();
+                int mgmt = waitForManageAuctionsButton(
+                        Math.max(500L, remainingMs(deadline, 2500)));
                 if (mgmt < 0) {
                     message("\u00a7c'Manage Auctions' nicht gefunden.");
                     AhScreenUtil.dumpScreen();
                     return false;
                 }
                 ScreenUtil.clickSlot(mgmt, 0);
-                sleepUntil(deadline, 700);
                 if (!waitForScreenUntil(deadline, 3500,
                         AhScreenUtil.AhScreen.MANAGE_AUCTIONS,
                         AhScreenUtil.AhScreen.MANAGE_ORDERS)) {
@@ -1555,33 +2549,36 @@ public class AhFlipperMod {
                 AhScreenUtil.dumpScreen();
                 return false;
             }
-            boolean previewOk = previewMatchesTag(tag);
-            if (previewOk) {
-                System.out.println("[AH-Flipper] Listing: Item bereits im Create-Slot, "
-                        + "Rechtsklick wird \u00fcbersprungen.");
-            } else if (skipItemClick) {
-                System.out.println("[AH-Flipper] Listing-Fallback: Item nicht im Create-Slot "
-                        + "erkannt - fahre ohne Inventar-Rechtsklick fort.");
+            if (skipItemClick) {
+                System.out.println("[AH-Flipper] Listing-Fallback: Item wird nicht angefasst, "
+                        + "nur Duration, Preis und Erstellen.");
             } else {
-                int slot = AhScreenUtil.findInventorySlot(tag, displayName);
-                if (slot < 0) {
-                    message("\u00a7cItem im Inventar nicht gefunden: " + tag);
-                    AhScreenUtil.dumpScreen();
-                    return false;
-                }
-                ScreenUtil.clickSlot(slot, 1);
-                sleepUntil(deadline, 500);
-                long clickEnd = deadline > 0
-                        ? Math.min(deadline, System.currentTimeMillis() + 2000)
-                        : System.currentTimeMillis() + 2000;
-                while (System.currentTimeMillis() < clickEnd && !previewMatchesTag(tag)) {
-                    ScreenUtil.sleep(100);
-                }
-                previewOk = previewMatchesTag(tag);
-                if (!previewOk) {
-                    message("\u00a7cItem wurde nicht in den Verkaufs-Slot gelegt.");
-                    AhScreenUtil.dumpScreen();
-                    return false;
+                boolean previewOk = previewMatchesTag(tag);
+                if (previewOk) {
+                    System.out.println("[AH-Flipper] Listing: Item bereits im Create-Slot, "
+                            + "Rechtsklick wird \u00fcbersprungen.");
+                } else {
+                    int slot = AhScreenUtil.findInventorySlot(tag, displayName);
+                    if (slot < 0) {
+                        message("\u00a7cItem im Inventar nicht gefunden: " + tag);
+                        AhScreenUtil.dumpScreen();
+                        return false;
+                    }
+                    ScreenUtil.clickSlot(slot, 1);
+                    sleepUntil(deadline, 500);
+                    long clickEnd = deadline > 0
+                            ? Math.min(deadline, System.currentTimeMillis() + 2000)
+                            : System.currentTimeMillis() + 2000;
+                    while (System.currentTimeMillis() < clickEnd
+                            && !previewMatchesTag(tag)) {
+                        ScreenUtil.sleep(100);
+                    }
+                    previewOk = previewMatchesTag(tag);
+                    if (!previewOk) {
+                        message("\u00a7cItem wurde nicht in den Verkaufs-Slot gelegt.");
+                        AhScreenUtil.dumpScreen();
+                        return false;
+                    }
                 }
             }
             if (!selectDuration(deadline)) {
@@ -1602,9 +2599,9 @@ public class AhFlipperMod {
                 AhScreenUtil.dumpScreen();
                 return false;
             }
-            SignInput.set(String.valueOf(price));
+            SignInput.set(String.valueOf(price), 700L);
             ScreenUtil.clickSlot(priceButton, 0);
-            sleepUntil(deadline, 800);
+            sleepUntil(deadline, 1300);
             int create = ScreenUtil.findButton("create bin auction");
             if (create < 0) {
                 create = ScreenUtil.findButton("create auction");
@@ -1641,13 +2638,11 @@ public class AhFlipperMod {
     }
 
     private static void closeOpenScreens() {
-        for (int attempt = 0; attempt < 3; attempt++) {
-            ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(150);
-            if (AhScreenUtil.currentScreen() == AhScreenUtil.AhScreen.NONE) {
-                return;
-            }
-        }
+        ScreenUtil.closeAndWait(300);
+    }
+
+    private static boolean waitForNoScreen(long timeoutMs) {
+        return ScreenUtil.closeAndWait(timeoutMs);
     }
 
     private static boolean previewMatchesTag(String tag) {
@@ -1733,6 +2728,9 @@ public class AhFlipperMod {
                     return price;
                 }
             }
+            if (AhScreenUtil.currentAuctionUnavailable()) {
+                return -1;
+            }
             ScreenUtil.sleep(10);
         }
         return -1;
@@ -1792,6 +2790,7 @@ public class AhFlipperMod {
     private static boolean spamBuyButton() {
         long start = System.currentTimeMillis();
         long deadline = start + 25_000;
+        long lastUnavailableCheck = start;
         boolean loggedCooldown = false;
         while (running && System.currentTimeMillis() <= deadline) {
             if (isConfirmPurchaseScreen()) {
@@ -1800,6 +2799,15 @@ public class AhFlipperMod {
             AhScreenUtil.AhScreen screen = AhScreenUtil.currentScreen();
             if (screen != AhScreenUtil.AhScreen.BIN_VIEW) {
                 return false;
+            }
+            long now = System.currentTimeMillis();
+            if (now - lastUnavailableCheck >= 500) {
+                lastUnavailableCheck = now;
+                if (AhScreenUtil.currentAuctionUnavailable()) {
+                    System.out.println("[AH-Flipper] Kauf abgebrochen: "
+                            + "Auktion nicht mehr verf\u00fcgbar");
+                    return false;
+                }
             }
             int buySlot = findBuyButtonSlot();
             boolean cooldown = false;
@@ -1847,19 +2855,6 @@ public class AhFlipperMod {
         return 29 + java.util.concurrent.ThreadLocalRandom.current().nextInt(5);
     }
 
-    private static int autoBuyCommand(CommandContext<FabricClientCommandSource> context) {
-        autoBuy = !autoBuy;
-        if (!autoBuy) {
-            synchronized (AUTO_QUEUE) {
-                AUTO_QUEUE.clear();
-            }
-            releaseAhPriorityIfIdle();
-        }
-        message("§6[AH-Flipper] §7Auto-Buy " + (autoBuy ? "§aan" : "§caus")
-                + " §7(Profit-Gate: §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent) + "§7)");
-        return 1;
-    }
-
     private static int streamCommand(CommandContext<FabricClientCommandSource> context) {
         CONFIG.liveFeed = !CONFIG.liveFeed;
         CONFIG.save();
@@ -1867,10 +2862,10 @@ public class AhFlipperMod {
             if (running) {
                 AhLiveScanner.start();
             }
-            message("§6[AH-Flipper] §7Live-Feed §aan");
+            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Live-Feed Ãƒâ€šÃ‚Â§aan");
         } else {
             AhLiveScanner.stop();
-            message("§6[AH-Flipper] §7Live-Feed §caus");
+            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Live-Feed Ãƒâ€šÃ‚Â§caus");
         }
         return 1;
     }
@@ -1881,24 +2876,16 @@ public class AhFlipperMod {
         return 1;
     }
 
-    private static int tooltipCommand(CommandContext<FabricClientCommandSource> context) {
-        CONFIG.tooltipValue = !CONFIG.tooltipValue;
-        CONFIG.save();
-        message("\u00a76[AH-Flipper] \u00a77Item-Wert-Tooltip "
-                + (CONFIG.tooltipValue ? "\u00a7aan" : "\u00a7caus"));
-        return 1;
-    }
-
     private static int scanCommand(CommandContext<FabricClientCommandSource> context) {
         if (AhScanner.isRunning()) {
             AhScanner.stop();
-            message("§6[AH-Flipper] §7Scanner " + (running ? "§caus §7(nur Auto-Scan)" : "§caus"));
+            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Scanner " + (running ? "Ãƒâ€šÃ‚Â§caus Ãƒâ€šÃ‚Â§7(nur Auto-Scan)" : "Ãƒâ€šÃ‚Â§caus"));
         } else {
             AhScanner.start();
-            message("§6[AH-Flipper] §7Scanner §aan §7· §f" + CONFIG.scanMaxTags
-                    + " §7Tags/Zyklus · Volumen ≥ §f"
+            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Scanner Ãƒâ€šÃ‚Â§aan Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§f" + CONFIG.scanMaxTags
+                    + " Ãƒâ€šÃ‚Â§7Tags/Zyklus Ãƒâ€šÃ‚Â· Volumen ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f"
                     + String.format(java.util.Locale.US, "%.0f", CONFIG.scanMinVolume)
-                    + " §7· Delay §f" + CONFIG.scanRequestDelayMs + "ms");
+                    + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Delay Ãƒâ€šÃ‚Â§f" + CONFIG.scanRequestDelayMs + "ms");
         }
         return 1;
     }
@@ -1908,10 +2895,7 @@ public class AhFlipperMod {
         System.out.println("[AH-Flipper] Scan-Treffer: id=" + id + " tag=" + tag
                 + " preis=" + price + " wert=" + itemValue + " profit=" + profit
                 + " pct=" + String.format(java.util.Locale.US, "%.1f", profitPercent));
-        message("§6[Scan] §f" + tag + " §7@ §f" + ScreenUtil.formatCoins(price)
-                + " §7· Wert §f" + ScreenUtil.formatCoins(itemValue)
-                + " §a+" + ScreenUtil.formatCoins(profit)
-                + " §7(" + String.format(java.util.Locale.US, "%.0f", profitPercent) + "%)");
+        message("\u00a76[Scan] \u00a7f" + tag + " \u00a77@ \u00a7f" + ScreenUtil.formatCoins(price) + " \u00a77Value \u00a7f" + ScreenUtil.formatCoins(itemValue) + " \u00a7a+" + ScreenUtil.formatCoins(profit) + " \u00a77(" + String.format(java.util.Locale.US, "%.0f", profitPercent) + "%)");
         if (!running || !autoBuy) {
             return;
         }
@@ -1927,69 +2911,67 @@ public class AhFlipperMod {
         ensureAutoWorker();
     }
 
-    private static int analyze5Command(CommandContext<FabricClientCommandSource> context) {
-        debugAnalyze = !debugAnalyze;
-        if (!debugAnalyze) {
-            synchronized (DEBUG_QUEUE) {
-                DEBUG_QUEUE.clear();
-            }
-        }
-        message("§6[AH-Flipper] §7Top-5-Analyse " + (debugAnalyze ? "§aan" : "§caus")
-                + " §7(kauft nichts, loggt nur).");
-        return 1;
-    }
-
     private static int buyCurrentCommand(CommandContext<FabricClientCommandSource> context) {
         if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.BIN_VIEW) {
-            message("§cÖffne zuerst eine BIN-Auktion.");
+            message("Ãƒâ€šÃ‚Â§cÃƒÆ’Ã¢â‚¬â€œffne zuerst eine BIN-Auktion.");
             return 0;
         }
         long price = AhScreenUtil.currentPriceAt(31);
         if (price <= 0) {
-            message("§cKein Preis erkannt.");
+            message("Ãƒâ€šÃ‚Â§cKein Preis erkannt.");
             return 0;
         }
-        if (busy) {
-            message("§cEs läuft bereits ein Kauf.");
+        if (isBusy()) {
+            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
             return 0;
         }
-        busy = true;
         Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("buy-current", false);
+            if (lease == null) {
+                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                return;
+            }
+            ensureAhPriority();
             try {
                 buyFlow("current", 0, false, true);
             } finally {
-                busy = false;
+                AutomationGate.release(lease);
                 releaseAhPriorityIfIdle();
             }
         }, "skycofl-ah-buy");
         thread.setDaemon(true);
         thread.start();
-        message("§7Kaufe aktuelle Auktion für §f" + ScreenUtil.formatCoins(price) + "§7 ...");
+        message("Ãƒâ€šÃ‚Â§7Kaufe aktuelle Auktion fÃƒÆ’Ã‚Â¼r Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(price) + "Ãƒâ€šÃ‚Â§7 ...");
         return 1;
     }
 
     private static int buyPlayerAuctionCommand(CommandContext<FabricClientCommandSource> context) {
         String player = com.mojang.brigadier.arguments.StringArgumentType.getString(context, "spieler").trim();
         if (player.isBlank()) {
-            message("§cSpielername fehlt.");
+            message("Ãƒâ€šÃ‚Â§cSpielername fehlt.");
             return 0;
         }
-        if (busy) {
-            message("§cEs läuft bereits ein Kauf.");
+        if (isBusy()) {
+            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
             return 0;
         }
-        busy = true;
         Thread thread = new Thread(() -> {
+            AutomationGate.Lease lease = AutomationGate.tryAcquire("buy-player", false);
+            if (lease == null) {
+                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                return;
+            }
+            ensureAhPriority();
             try {
                 buyPlayerAuctionFlow(player);
             } finally {
-                busy = false;
+                AutomationGate.release(lease);
                 releaseAhPriorityIfIdle();
             }
         }, "skycofl-ah-buyauktion");
         thread.setDaemon(true);
         thread.start();
-        message("§7Öffne Auktionen von §f" + player + "§7 ...");
+        message("Ãƒâ€šÃ‚Â§7ÃƒÆ’Ã¢â‚¬â€œffne Auktionen von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§7 ...");
         return 1;
     }
 
@@ -2010,7 +2992,7 @@ public class AhFlipperMod {
             int slot = waitForPlayerAuctionSlot(player, 2000);
             if (slot < 0) {
                 System.out.println("[AH-Flipper] buyauktion: keine Auktion gefunden");
-                message("§cKeine Auktion von §f" + player + "§c gefunden.");
+                message("Ãƒâ€šÃ‚Â§cKeine Auktion von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§c gefunden.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
@@ -2018,14 +3000,14 @@ public class AhFlipperMod {
             ScreenUtil.clickSlot(slot, 0);
             if (!waitForTitle(1500, "bin auction view")) {
                 System.out.println("[AH-Flipper] buyauktion: keine BIN-Ansicht");
-                message("§cAuktion von §f" + player + "§c ist keine BIN-Auktion oder wurde nicht geöffnet.");
+                message("Ãƒâ€šÃ‚Â§cAuktion von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§c ist keine BIN-Auktion oder wurde nicht geÃƒÆ’Ã‚Â¶ffnet.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
             buyFlow("player:" + player, -1, false, true, true, 0);
         } catch (Exception e) {
             System.out.println("[AH-Flipper] buyauktion Fehler: " + e);
-            message("§cBuyauktion fehlgeschlagen: " + e.getMessage());
+            message("Ãƒâ€šÃ‚Â§cBuyauktion fehlgeschlagen: " + e.getMessage());
         }
     }
 
@@ -2057,12 +3039,12 @@ public class AhFlipperMod {
                 worth = lastFlipWorth;
                 ageSeconds = (System.currentTimeMillis() - lastFlipAt) / 1000;
             } else {
-                message("§cKein letzter Flip vorhanden – erst §f/ahflip start §cund auf einen Flip warten.");
+                message("Ãƒâ€šÃ‚Â§cKein letzter Flip vorhanden ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ erst Ãƒâ€šÃ‚Â§f/ahflip start Ãƒâ€šÃ‚Â§cund auf einen Flip warten.");
                 return 0;
             }
             System.out.println("[AH-Flipper] buy last: id=" + flipId + " worth=" + worth
                     + " alter=" + ageSeconds + "s");
-            message("§7Kaufe letzten Flip: §f" + flipId + (ageSeconds >= 0 ? " §7(" + ageSeconds + "s alt)" : ""));
+            message("Ãƒâ€šÃ‚Â§7Kaufe letzten Flip: Ãƒâ€šÃ‚Â§f" + flipId + (ageSeconds >= 0 ? " Ãƒâ€šÃ‚Â§7(" + ageSeconds + "s alt)" : ""));
             startBuy(flipId, worth, false);
         } else {
             startBuy(id, -1, false);
@@ -2070,7 +3052,8 @@ public class AhFlipperMod {
         return 1;
     }
 
-    private static int openCommand(CommandContext<FabricClientCommandSource> context) {        String player = com.mojang.brigadier.arguments.StringArgumentType.getString(context, "spieler");
+    private static int openCommand(CommandContext<FabricClientCommandSource> context) {
+        String player = com.mojang.brigadier.arguments.StringArgumentType.getString(context, "spieler");
         sendCommand("/ah " + player);
         return 1;
     }
@@ -2083,21 +3066,24 @@ public class AhFlipperMod {
 
     private static void sendCommand(String command) {
         if (sendCommandSilent(command)) {
-            message("§7Sende: §f" + command);
+            message("Ãƒâ€šÃ‚Â§7Sende: Ãƒâ€šÃ‚Â§f" + command);
         }
     }
 
-    private static boolean sendCommandSilent(String command) {
+    static boolean sendCommandSilent(String command) {
         Minecraft client = Minecraft.getInstance();
         if (client.getConnection() == null) {
-            message("§cNicht verbunden.");
+            message("Ãƒâ€šÃ‚Â§cNicht verbunden.");
             return false;
         }
         client.getConnection().sendChat(command);
         return true;
     }
 
-    static void message(String text) {
+    public static void message(String text) {
         CoflModClient.displayModMessage(Component.literal(text));
     }
 }
+
+
+

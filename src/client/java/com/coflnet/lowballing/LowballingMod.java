@@ -2,6 +2,7 @@ package com.coflnet.lowballing;
 
 import com.coflnet.CoflModClient;
 import com.coflnet.ahflipper.AhAnalyzer;
+import com.coflnet.ahflipper.AhFlipperMod;
 import com.coflnet.ahflipper.AhItem;
 import com.coflnet.ahflipper.AhValuation;
 import com.coflnet.flipper.trading.ScreenUtil;
@@ -16,6 +17,7 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -28,6 +30,12 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,13 +56,25 @@ public final class LowballingMod {
         IDLE, GO_HUB, FIND_SELECTOR, OPEN_SELECTOR, HUB_MENU, WAIT_HUB_WARP,
         HUB_SETTLE, ADVERTISE,
         RETURN_ISLAND, ISLAND_SCAN, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU,
-        OPEN_OFFER, VALUING, OFFER_READY, SET_COINS, WAIT_TRADE, CHAT_OFFER,
-        KICK_WAIT, NEXT_PLAYER, RECONNECTING
+        OPEN_OFFER, VALUING, OFFER_READY, SET_COINS, WAIT_TRADE, LISTING,
+        CHAT_OFFER, KICK_WAIT, NEXT_PLAYER, RECONNECTING
     }
 
     private record Offer(String tag, String displayName, long expectedValue,
                          long maxAhPrice, long firstOffer, long chatOffer,
                          boolean buyable, List<String> reasons) {
+    }
+
+    private record TradeItem(String tag, String name, long saleValue) {
+    }
+
+    public record ItemView(String tag, String name, long value) {
+    }
+
+    public record Snapshot(String state, String target, String itemTag,
+                           String itemName, long estimatedValue, long firstOffer,
+                           long chatOffer, boolean buyable, String note,
+                           int queueSize, List<ItemView> items) {
     }
 
     private static final class PlayerTrack {
@@ -68,7 +88,7 @@ public final class LowballingMod {
 
     private static KeyMapping toggleKey;
     private static volatile boolean running;
-    private static State state = State.IDLE;
+    private static volatile State state = State.IDLE;
     private static long stateAt;
     private static long actionAt;
     private static long phaseAt;
@@ -80,12 +100,17 @@ public final class LowballingMod {
     private static int selectorClicks;
     private static boolean hubMenuStarted;
     private static long warpWatchAt;
+    private static long warpRequestedAt;
+    private static long switchConfirmedAt;
+    private static long levelChangedAt;
+    private static Object lastLevel;
+    private static State stateBeforeDisconnect = State.IDLE;
     private static double warpX;
     private static double warpY;
     private static double warpZ;
 
     private static UUID targetUuid;
-    private static String targetName = "";
+    private static volatile String targetName = "";
     private static Entity targetEntity;
     private static boolean secondOffer;
     private static boolean finalizingSecond;
@@ -101,13 +126,24 @@ public final class LowballingMod {
 
     private static int tradeClicks;
     private static long tradeClickAt;
+    private static String tradeMenuTitle = "";
+    private static boolean tradeGuiSeen;
+    private static long tradeGuiAt;
+    private static long tradeClosedAt;
     private static long offerSearchStartedAt;
     private static boolean chatSent;
     private static long nextChatAt;
+    private static long chatOfferDelayMs;
+    private static long secondOfferDelayMs;
 
     private static volatile Offer valuationOffer;
     private static volatile String valuationError;
-    private static Offer pendingOffer;
+    private static volatile String currentTradeTag = "";
+    private static volatile String currentTradeName = "";
+    private static volatile long currentTradeValue;
+    private static volatile List<TradeItem> pendingTradeItems = List.of();
+    private static volatile boolean listingDone;
+    private static volatile Offer pendingOffer;
 
     private static final Deque<UUID> PLAYER_QUEUE = new ArrayDeque<>();
     private static final Map<UUID, PlayerTrack> TRACKED = new HashMap<>();
@@ -132,6 +168,7 @@ public final class LowballingMod {
             if (!running) {
                 return;
             }
+            stateBeforeDisconnect = state;
             releaseSneak();
             LowballingNavigator.stop();
             SignInput.clear();
@@ -141,14 +178,74 @@ public final class LowballingMod {
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             if (running && state == State.RECONNECTING) {
-                message("§a[Lowballing] §7Reconnect erkannt - starte Sequenz neu.");
-                enterGoHub();
+                if (stateBeforeDisconnect == State.HUB_MENU
+                        || stateBeforeDisconnect == State.WAIT_HUB_WARP
+                        || stateBeforeDisconnect == State.HUB_SETTLE) {
+                    switchConfirmedAt = System.currentTimeMillis();
+                    setState(State.WAIT_HUB_WARP);
+                    actionAt = stateAt;
+                    message("§a[Lowballing] §7Serverwechsel erkannt - warte auf Hub.");
+                } else {
+                    message("§a[Lowballing] §7Reconnect erkannt - starte Sequenz neu.");
+                    enterGoHub();
+                }
+                stateBeforeDisconnect = State.IDLE;
             }
         });
     }
 
     public static boolean isRunning() {
         return running;
+    }
+
+    public static boolean stopForRestart() {
+        boolean wasRunning = running;
+        if (wasRunning) {
+            stop("\u00a76[Lowballing] \u00a77Stopped for server restart.");
+        }
+        return wasRunning;
+    }
+
+    public static void resumeAfterRestart(boolean wasRunning) {
+        if (wasRunning && !running) {
+            start();
+        }
+    }
+
+    public static Snapshot snapshot() {
+        Offer offer = valuationOffer != null ? valuationOffer : pendingOffer;
+        List<ItemView> items = new ArrayList<>();
+        long itemValue = 0;
+        for (TradeItem item : pendingTradeItems) {
+            items.add(new ItemView(item.tag(), item.name(), item.saleValue()));
+            itemValue += Math.max(0, item.saleValue());
+        }
+        String tag = offer != null ? offer.tag()
+                : !currentTradeTag.isBlank() ? currentTradeTag
+                : items.isEmpty() ? "" : items.get(0).tag();
+        String name = offer != null ? offer.displayName()
+                : !currentTradeName.isBlank() ? currentTradeName
+                : items.isEmpty() ? "" : items.get(0).name();
+        long value = offer != null ? offer.expectedValue()
+                : currentTradeValue > 0 ? currentTradeValue : itemValue;
+        String note = valuationError;
+        if (note == null || note.isBlank()) {
+            note = offer != null && !offer.buyable()
+                    ? String.join("; ", offer.reasons()) : "";
+        }
+        return new Snapshot(state.name(), targetName, tag, name, value,
+                offer != null ? offer.firstOffer() : 0,
+                offer != null ? offer.chatOffer() : 0,
+                offer != null && offer.buyable(), note,
+                PLAYER_QUEUE.size(), List.copyOf(items));
+    }
+
+    public static void toggle() {
+        if (running) {
+            stop("§6[Lowballing] §cgestoppt.");
+        } else {
+            start();
+        }
     }
 
     public static KeyMapping toggleKey() {
@@ -161,7 +258,7 @@ public final class LowballingMod {
         toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "keybinding.coflmod.lowballing",
                 InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_F7,
+                GLFW.GLFW_KEY_F6,
                 category));
     }
 
@@ -189,11 +286,7 @@ public final class LowballingMod {
     }
 
     private static int toggleCommand() {
-        if (running) {
-            stop("§6[Lowballing] §cgestoppt.");
-        } else {
-            start();
-        }
+        toggle();
         return 1;
     }
 
@@ -218,7 +311,7 @@ public final class LowballingMod {
                 + " §7· Queue: §f" + PLAYER_QUEUE.size()
                 + " §7· Zyklus: §f" + cycles);
         long bankroll = bankrollCoins();
-        message("§7Bankroll: §f" + (bankroll >= 0 ? formatMillions(bankroll) : "?")
+        message("§7Bankroll: §f" + (bankroll >= 0 ? formatBankroll(bankroll) : "?")
                 + " §7· Reserve: §f" + ScreenUtil.formatCoins(CONFIG.reserveCoins)
                 + " §7· Nächste Werbung: §f" + Math.max(0, nextAdAt - System.currentTimeMillis()) / 1000 + "s");
         if (pendingOffer != null) {
@@ -268,6 +361,9 @@ public final class LowballingMod {
         targetUuid = null;
         targetName = "";
         targetEntity = null;
+        currentTradeTag = "";
+        currentTradeName = "";
+        currentTradeValue = 0;
         pendingOffer = null;
         secondOffer = false;
         finalizingSecond = false;
@@ -300,6 +396,9 @@ public final class LowballingMod {
         kickAfterMenu = false;
         valuationOffer = null;
         valuationError = null;
+        currentTradeTag = "";
+        currentTradeName = "";
+        currentTradeValue = 0;
         setState(State.IDLE);
         if (text != null && !text.isBlank()) {
             message(text);
@@ -345,6 +444,11 @@ public final class LowballingMod {
         LowballingChat.reset();
         setState(State.GO_HUB);
         warpWatchAt = stateAt;
+        warpRequestedAt = 0;
+        switchConfirmedAt = 0;
+        levelChangedAt = 0;
+        lastLevel = null;
+        stateBeforeDisconnect = State.IDLE;
         setWarpPosition();
         sendChat("/hub");
         actionAt = stateAt;
@@ -379,6 +483,9 @@ public final class LowballingMod {
         setState(State.HUB_MENU);
         actionAt = stateAt;
         warpWatchAt = stateAt;
+        warpRequestedAt = 0;
+        switchConfirmedAt = 0;
+        levelChangedAt = 0;
         setWarpPosition();
         debug("Hub-Menü #" + hubNumber);
     }
@@ -396,6 +503,7 @@ public final class LowballingMod {
         LowballingGui.close();
         LowballingRotation.clear();
         setState(State.HUB_SETTLE);
+        switchConfirmedAt = System.currentTimeMillis();
         actionAt = stateAt;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || CONFIG.hubForwardBlocks <= 0.0) {
@@ -424,7 +532,7 @@ public final class LowballingMod {
         LowballingChat.clearWarp();
         setState(State.ADVERTISE);
         advertiseStartedAt = stateAt;
-        nextAdAt = stateAt;
+        nextAdAt = stateAt + 3000L;
         bankrollMissingSince = 0;
         debug("Warp erfolgreich - Werbung");
     }
@@ -466,16 +574,21 @@ public final class LowballingMod {
         kickAfterMenu = false;
         unSneakClicks = 0;
         offerSearchStartedAt = 0;
+        if (!secondOffer) {
+            pendingTradeItems = List.of();
+        }
         debug("Nähere mich " + targetName + (secondOffer ? " (zweites Angebot)" : ""));
     }
 
     private static void enterOpenMenu() {
         setState(State.OPEN_MENU);
-        actionAt = stateAt + CONFIG.sneakHoldMs - CONFIG.menuRightClickIntervalMs;
+        actionAt = kickAfterMenu ? stateAt
+                : stateAt + CONFIG.sneakHoldMs - CONFIG.menuRightClickIntervalMs;
         unSneakClicks = 0;
         coinsClicked = false;
-        setSneak(true);
-        debug("Sneake und rechtsklicke " + targetName);
+        setSneak(!kickAfterMenu);
+        debug((kickAfterMenu ? "Rechtsklicke ohne Sneak " : "Sneake und rechtsklicke ")
+                + targetName);
     }
 
     private static void enterPlayerMenu() {
@@ -497,7 +610,15 @@ public final class LowballingMod {
     }
 
     private static void enterValuing(int slot) {
-        AhItem item = LowballingGui.itemAt(slot);
+        enterValuing(List.of(slot));
+    }
+
+    private static void enterValuing(List<Integer> slots) {
+        if (slots == null || slots.isEmpty()) {
+            requestKick();
+            return;
+        }
+        AhItem item = LowballingGui.itemAt(slots.get(0));
         if (item.tag.isBlank()) {
             requestKick();
             return;
@@ -506,8 +627,12 @@ public final class LowballingMod {
         actionAt = stateAt;
         valuationOffer = null;
         valuationError = null;
-        Thread.startVirtualThread(() -> computeOffer(item, slot));
-        debug("Bewerte " + item.displayName);
+        currentTradeTag = item.tag;
+        currentTradeName = item.displayName;
+        currentTradeValue = 0;
+        Thread.startVirtualThread(() -> computeOffer(slots));
+        debug("Bewerte " + item.displayName
+                + (slots.size() > 1 ? " +" + (slots.size() - 1) : ""));
     }
 
     private static void enterOfferReady() {
@@ -525,6 +650,9 @@ public final class LowballingMod {
         actionAt = stateAt;
         tradeClicks = 0;
         tradeClickAt = stateAt;
+        tradeGuiSeen = false;
+        tradeGuiAt = 0;
+        tradeClosedAt = 0;
         debug("Klicke Trade");
     }
 
@@ -535,6 +663,8 @@ public final class LowballingMod {
         phaseAt = stateAt;
         chatSent = false;
         nextChatAt = 0;
+        chatOfferDelayMs = 5000L + ThreadLocalRandom.current().nextInt(2001);
+        secondOfferDelayMs = 5000L + ThreadLocalRandom.current().nextInt(2001);
         debug("Trade-GUI geschlossen - Chat-Angebot");
     }
 
@@ -548,6 +678,9 @@ public final class LowballingMod {
         releaseForward();
         LowballingRotation.clear();
         LowballingNavigator.stop();
+        currentTradeTag = "";
+        currentTradeName = "";
+        currentTradeValue = 0;
         setState(State.NEXT_PLAYER);
         actionAt = stateAt;
     }
@@ -567,7 +700,10 @@ public final class LowballingMod {
         if (client.player == null || client.level == null) {
             return;
         }
-        LowballingRotation.tick(client.player);
+        if (lastLevel != null && client.level != lastLevel) {
+            levelChangedAt = System.currentTimeMillis();
+        }
+        lastLevel = client.level;
         try {
             long now = System.currentTimeMillis();
             if (LowballingChat.consumeKick(0)) {
@@ -598,6 +734,7 @@ public final class LowballingMod {
                 case OFFER_READY -> tickOfferReady(client, now);
                 case SET_COINS -> tickSetCoins(client, now);
                 case WAIT_TRADE -> tickWaitTrade(client, now);
+                case LISTING -> tickListing(client, now);
                 case CHAT_OFFER -> tickChatOffer(client, now);
                 case KICK_WAIT -> tickKickWait(client, now);
                 case NEXT_PLAYER -> tickNextPlayer(client, now);
@@ -619,6 +756,10 @@ public final class LowballingMod {
     }
 
     private static void tickGoHub(Minecraft client, long now) {
+        if (LowballingChat.consumeAlreadyHere(warpWatchAt)) {
+            enterFindSelector();
+            return;
+        }
         if (LowballingChat.consumeWarp(warpWatchAt) || coordsMoved(5.0)) {
             enterFindSelector();
             return;
@@ -696,9 +837,15 @@ public final class LowballingMod {
     }
 
     private static void tickHubMenu(Minecraft client, long now) {
-        if (LowballingChat.consumeWarp(warpWatchAt) || coordsMoved(5.0)) {
-            enterHubSettle();
+        if (LowballingChat.consumeAlreadyHere(warpWatchAt)) {
+            LowballingGui.close();
+            releaseSneak();
+            debug("Already on this server - skipping hub selector warp");
+            enterAdvertise();
             return;
+        }
+        if (LowballingChat.consumeWarp(warpWatchAt)) {
+            warpRequestedAt = now;
         }
         if (!LowballingGui.isContainerOpen()) {
             enterWaitHubWarp();
@@ -734,13 +881,36 @@ public final class LowballingMod {
     }
 
     private static void tickWaitHubWarp(Minecraft client, long now) {
-        if (LowballingChat.consumeWarp(warpWatchAt) || coordsMoved(5.0) || selectorGone()) {
+        if (LowballingChat.consumeAlreadyHere(warpWatchAt)) {
+            LowballingGui.close();
+            releaseSneak();
+            debug("Already on this server - skipping warp wait");
+            enterAdvertise();
+            return;
+        }
+        if (LowballingChat.consumeWarp(warpWatchAt)) {
+            warpRequestedAt = now;
+        }
+        if (serverSwitchDetected(now) && client.player != null && client.level != null) {
             enterHubSettle();
             return;
         }
         if (now - actionAt > CONFIG.hubMenuCloseGraceMs) {
             enterOpenSelector();
         }
+    }
+
+    private static boolean serverSwitchDetected(long now) {
+        if (switchConfirmedAt > 0 && now - switchConfirmedAt >= 800) {
+            return true;
+        }
+        if (warpRequestedAt <= 0 || now - warpRequestedAt < 1500) {
+            return false;
+        }
+        if (coordsMoved(5.0) || levelChangedAt >= warpRequestedAt) {
+            return true;
+        }
+        return selectorGone();
     }
 
     private static void tickHubSettle(Minecraft client, long now) {
@@ -865,6 +1035,17 @@ public final class LowballingMod {
             enterApproach();
             return;
         }
+        if (kickAfterMenu) {
+            if (now - actionAt < CONFIG.menuUnSneakIntervalMs) {
+                return;
+            }
+            LowballingRotation.lookAt(target);
+            if (rightClickEntity(target)) {
+                actionAt = now;
+                debug("Kick-Menue: Rechtsklick ohne Sneak " + targetName);
+            }
+            return;
+        }
         if (now - stateAt < CONFIG.sneakHoldMs) {
             setSneak(true);
             return;
@@ -880,20 +1061,8 @@ public final class LowballingMod {
             return;
         }
         setSneak(false);
-        if (now - actionAt < CONFIG.menuUnSneakIntervalMs) {
-            return;
-        }
-        if (unSneakClicks >= CONFIG.menuUnSneakAttempts) {
-            fail("Spieler-GUI öffnet nicht");
-            return;
-        }
-        LowballingRotation.lookAt(target);
-        if (!rightClickEntity(target)) {
-            return;
-        }
-        unSneakClicks++;
-        actionAt = now;
-        debug("Rechtsklick ohne Sneak " + unSneakClicks + "/" + CONFIG.menuUnSneakAttempts);
+        message("§e[Lowballing] §7Trade-Request nicht angenommen - kicke Spieler.");
+        requestKick();
     }
 
     private static void tickPlayerMenu(Minecraft client, long now) {
@@ -904,7 +1073,7 @@ public final class LowballingMod {
             }
             if (now - stateAt > 1000) {
                 if (offerSearchStartedAt > 0
-                        && now - offerSearchStartedAt > CONFIG.offerGuiTimeoutMs) {
+                        && now - offerSearchStartedAt > offerWaitMs()) {
                     enterNextPlayer();
                 } else {
                     enterOpenMenu();
@@ -1029,52 +1198,100 @@ public final class LowballingMod {
             }
             return;
         }
+        tradeMenuTitle = LowballingGui.currentTitle();
         LowballingGui.clickSlot(trade, 0);
         enterWaitTrade();
     }
 
     private static void tickWaitTrade(Minecraft client, long now) {
-        if (!LowballingGui.isContainerOpen()) {
-            if (finalizingSecond) {
-                enterNextPlayer();
-            } else {
-                enterChatOffer();
+        boolean container = LowballingGui.isContainerOpen();
+        if (container && !tradeGuiSeen && LowballingGui.isTradeWindow(tradeMenuTitle)) {
+            tradeMenuTitle = LowballingGui.currentTitle();
+            tradeGuiSeen = true;
+            tradeGuiAt = now;
+            tradeClicks = 0;
+            tradeClickAt = now;
+            debug("Trade-GUI offen - warte auf Spieler");
+            return;
+        }
+        if (!container) {
+            if (tradeGuiSeen) {
+                if (tradeClosedAt == 0) {
+                    tradeClosedAt = now;
+                }
+                if (now - tradeClosedAt < 1200L) {
+                    return;
+                }
+                boolean success = LowballingChat.consumeTradeSuccess(tradeGuiAt);
+                tradeGuiSeen = false;
+                if (success) {
+                    message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+                    startListingTradedItems();
+                } else if (finalizingSecond) {
+                    requestKick();
+                } else {
+                    enterChatOffer();
+                }
+                return;
             }
+            if (now - stateAt >= CONFIG.tradeRequestTimeoutMs) {
+                if (!finalizingSecond && pendingOffer != null && pendingOffer.buyable()) {
+                    message("\u00a7e[Lowballing] \u00a77Trade declined - making the second chat offer.");
+                    enterChatOffer();
+                } else {
+                    message("\u00a7e[Lowballing] \u00a77Trade did not open - kicking player.");
+                    requestKick();
+                }
+            }
+            return;
+        }
+        if (tradeGuiSeen) {
+            if (now - tradeGuiAt > CONFIG.tradeGuiTimeoutMs) {
+                message("§e[Lowballing] §7Trade-GUI Timeout - kicke Spieler.");
+                requestKick();
+                return;
+            }
+            long acceptDelay = Math.max(CONFIG.tradeClickIntervalMs,
+                    secondOffer ? CONFIG.secondOfferDealWaitMs : 10_000L);
+            if (tradeClicks == 0 && now - tradeClickAt >= acceptDelay
+                    && !LowballingGui.findTradeItemSlots().isEmpty()) {
+                int accept = LowballingGui.findButtonSlot(
+                        "deal", "accept", "confirm", "trade");
+                if (accept >= 0) {
+                    LowballingGui.clickSlot(accept, 0);
+                    tradeClicks = 1;
+                    tradeClickAt = now;
+                    debug("Deal bestätigt");
+                }
+            }
+            return;
+        }
+        if (now - stateAt >= CONFIG.tradeRequestTimeoutMs) {
+            message("§e[Lowballing] §7Trade-GUI öffnet nicht - kicke Spieler.");
+            requestKick();
             return;
         }
         if (now - tradeClickAt < CONFIG.tradeClickIntervalMs) {
             return;
         }
-        if (tradeClicks >= CONFIG.tradeClickMaxAttempts) {
-            LowballingGui.close();
-            if (finalizingSecond) {
-                enterNextPlayer();
-            } else {
-                enterChatOffer();
-            }
-            return;
-        }
         int trade = LowballingGui.findTradeSlot();
         if (trade < 0) {
-            if (now - stateAt > CONFIG.tradeClickMaxAttempts * CONFIG.tradeClickIntervalMs) {
-                LowballingGui.close();
-                if (finalizingSecond) {
-                    enterNextPlayer();
-                } else {
-                    enterChatOffer();
-                }
-            }
             return;
         }
         LowballingGui.clickSlot(trade, 0);
         tradeClicks++;
         tradeClickAt = now;
-        debug("Trade-Klick " + tradeClicks + "/" + CONFIG.tradeClickMaxAttempts);
+        debug("Trade-Klick " + tradeClicks);
     }
 
     private static void tickChatOffer(Minecraft client, long now) {
         if (!chatSent) {
-            if (now - phaseAt < CONFIG.tradeCloseWaitMs) {
+            if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
+                message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+                startListingTradedItems();
+                return;
+            }
+            if (now - phaseAt < chatOfferDelayMs) {
                 return;
             }
             if (nextChatAt > 0 && now < nextChatAt) {
@@ -1096,7 +1313,12 @@ public final class LowballingMod {
             debug("Chat-Angebot: " + text);
             return;
         }
-        if (now - phaseAt < CONFIG.secondOfferWaitMs) {
+        if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
+            message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+            startListingTradedItems();
+            return;
+        }
+        if (now - phaseAt < secondOfferDelayMs) {
             return;
         }
         Offer offer = pendingOffer;
@@ -1106,6 +1328,44 @@ public final class LowballingMod {
             enterApproach();
         } else {
             enterNextPlayer();
+        }
+    }
+
+    private static void startListingTradedItems() {
+        List<TradeItem> items = pendingTradeItems;
+        if (items == null || items.isEmpty()) {
+            message("§e[Lowballing] §7Keine Trade-Items zum Listen - kicke Spieler.");
+            requestKick();
+            return;
+        }
+        setState(State.LISTING);
+        actionAt = stateAt;
+        listingDone = false;
+        Thread.startVirtualThread(() -> {
+            try {
+                for (TradeItem item : items) {
+                    boolean listed = AhFlipperMod.listLowballedFixed(
+                            item.tag(), item.name(), item.saleValue());
+                    if (!listed) {
+                        message("§c[Lowballing] §7Listing fehlgeschlagen: §f" + item.name());
+                    }
+                }
+            } finally {
+                listingDone = true;
+            }
+        });
+        debug("Liste " + items.size() + " Trade-Item(s) mit Verkaufswert");
+    }
+
+    private static void tickListing(Minecraft client, long now) {
+        if (listingDone) {
+            message("§a[Lowballing] §7Listing fertig - kicke Spieler.");
+            requestKick();
+            return;
+        }
+        if (now - stateAt > 180_000L) {
+            message("§e[Lowballing] §7Listing-Timeout - kicke Spieler.");
+            requestKick();
         }
     }
 
@@ -1122,32 +1382,27 @@ public final class LowballingMod {
         startNextPlayer(client);
     }
 
+    private static long offerWaitMs() {
+        return secondOffer ? CONFIG.secondOfferItemWaitMs
+                : Math.max(10_000L, CONFIG.offerGuiTimeoutMs);
+    }
+
     private static void handleOfferGui(long now) {
-        if (offerSearchStartedAt > 0
-                && now - offerSearchStartedAt > CONFIG.offerGuiTimeoutMs) {
-            message("§e[Lowballing] §7Kein Item in der GUI - kicke Spieler.");
-            requestKick();
+        long searchStart = stateAt;
+        long grace = offerWaitMs();
+        if (now - searchStart < grace) {
             return;
         }
         List<Integer> items = LowballingGui.findTradeItemSlots();
         if (!items.isEmpty()) {
-            int slot = items.get(0);
             if (secondOffer) {
-                handleSecondOffer(slot);
+                handleSecondOffer(items.get(0));
             } else {
-                enterValuing(slot);
+                enterValuing(items);
             }
             return;
         }
-        if (!coinsClicked) {
-            int coins = LowballingGui.findCoinsSlot();
-            if (coins >= 0) {
-                LowballingGui.clickSlot(coins, 0);
-                enterOpenOffer();
-                return;
-            }
-        }
-        if (now - stateAt > CONFIG.offerGuiTimeoutMs) {
+        if (now - searchStart > offerWaitMs()) {
             message("§e[Lowballing] §7Kein Item in der GUI - kicke Spieler.");
             requestKick();
         }
@@ -1161,21 +1416,52 @@ public final class LowballingMod {
         }
         AhItem item = LowballingGui.itemAt(slot);
         if (item.tag.isBlank() || !item.tag.equalsIgnoreCase(offer.tag())) {
-            message("§e[Lowballing] §7Anderes Item - kicke Spieler.");
+            message("§e[Lowballing] §7Different item in second trade - kicking player.");
+            requestKick();
+            return;
+        }
+        long sale = saleValue(item, slot);
+        if (sale <= 0) {
+            message("§c[Lowballing] §7Second item has no valuation - kicking player.");
+            requestKick();
+            return;
+        }
+        AhAnalyzer.Result analysis = AhAnalyzer.analyze(item, Math.max(1, sale), 0, "",
+                CONFIG.minItemCoins);
+        if (!analysis.buyable) {
+            logTradeItem(item.tag, item.displayName, sale, false, analysis.reasons);
+            message("§e[Lowballing] §7Second item no longer passes filters - kicking player.");
+            requestKick();
+            return;
+        }
+        long value = analysis.expectedValue > 1 ? analysis.expectedValue : sale;
+        long secondPrice = floorTo(value * 0.90, CONFIG.chatOfferRoundCoins);
+        if (secondPrice <= 0) {
+            message("§e[Lowballing] §7Second offer too low - kicking player.");
+            requestKick();
+            return;
+        }
+        long bankroll = bankrollCoins();
+        if (CONFIG.enforceBankroll && bankroll >= 0 && secondPrice > bankroll) {
+            message("§e[Lowballing] §7Second offer above bankroll - kicking player.");
             requestKick();
             return;
         }
         int coins = LowballingGui.findCoinsSlot();
         if (coins < 0) {
-            message("§e[Lowballing] §7Coins-Slot nicht gefunden - kicke Spieler.");
+            message("§e[Lowballing] §7Coins slot not found - kicking player.");
             requestKick();
             return;
         }
+        pendingTradeItems = List.of(new TradeItem(item.tag, item.displayName, value));
+        pendingOffer = new Offer(offer.tag(), offer.displayName(), value, value,
+                offer.firstOffer(), secondPrice, true, List.of());
         finalizingSecond = true;
-        SignInput.set(String.valueOf(offer.chatOffer()));
+        SignInput.set(String.valueOf(secondPrice));
         LowballingGui.clickSlot(coins, 0);
         enterSetCoins();
-        debug("Zweites Angebot " + ScreenUtil.formatCoins(offer.chatOffer()));
+        debug("Second offer revalued: " + ScreenUtil.formatCoins(value)
+                + " -> " + ScreenUtil.formatCoins(secondPrice));
     }
 
     private static void requestKick() {
@@ -1193,38 +1479,152 @@ public final class LowballingMod {
         enterOpenMenu();
     }
 
-    private static void computeOffer(AhItem item, int slot) {
+    private static void computeOffer(List<Integer> slots) {
         try {
-            AhValuation.Estimate estimate = AhValuation.estimate(item, "");
-            long value = estimate.estimated;
-            if (value <= 0) {
-                valuationOffer = new Offer(item.tag, item.displayName, 0, 0, 0, 0,
-                        false, List.of("Keine Preisbewertung"));
+            long total = 0;
+            String firstTag = "";
+            String firstName = "";
+            List<String> reasons = new ArrayList<>();
+            List<TradeItem> tradeItems = new ArrayList<>();
+            for (int slot : slots) {
+                AhItem item = LowballingGui.itemAt(slot);
+                if (item.tag.isBlank()) {
+                    List<String> itemReasons = List.of("Item ohne Tag in Slot " + slot);
+                    logTradeItem("", item.displayName, 0, false, itemReasons);
+                    reasons.addAll(itemReasons);
+                    continue;
+                }
+                if (firstTag.isBlank()) {
+                    firstTag = item.tag;
+                    firstName = item.displayName;
+                }
+                item.coflMed = AhItem.parseCoflMed(LowballingGui.tooltipLinesAt(slot));
+                long sale = saleValue(item, slot);
+                if (item.tag.equals(firstTag) && sale > 0) {
+                    currentTradeValue = sale;
+                }
+                if (sale <= 0) {
+                    List<String> itemReasons = List.of("Kein Verkaufswert: " + item.tag);
+                    logTradeItem(item.tag, item.displayName, sale, false, itemReasons);
+                    reasons.addAll(itemReasons);
+                    continue;
+                }
+                AhAnalyzer.Result analysis = AhAnalyzer.analyze(item,
+                        Math.max(1, sale), 0, "", CONFIG.minItemCoins);
+                if (!analysis.buyable) {
+                    logTradeItem(item.tag, item.displayName, sale, false,
+                            analysis.reasons);
+                    reasons.addAll(analysis.reasons);
+                    continue;
+                }
+                long value = analysis.expectedValue > 1 ? analysis.expectedValue : sale;
+                if (item.tag.equals(firstTag)) {
+                    currentTradeValue = value;
+                }
+                logTradeItem(item.tag, item.displayName, value, true, List.of());
+                total += value;
+                tradeItems.add(new TradeItem(item.tag, item.displayName, value));
+            }
+            if (!reasons.isEmpty()) {
+                pendingTradeItems = List.of();
+                valuationOffer = new Offer(firstTag, firstName, 0, 0, 0, 0,
+                        false, reasons);
                 return;
             }
-            double fee = CONFIG.ahFeePercent / 100.0;
-            double margin = CONFIG.minProfitPercent / 100.0;
-            long maxPay = (long) Math.floor(value * (1.0 - fee) / (1.0 + margin));
-            if (maxPay < CONFIG.minItemCoins) {
-                valuationOffer = new Offer(item.tag, item.displayName, value, maxPay, 0, 0,
-                        false, List.of("Maximalpreis unter " + ScreenUtil.formatCoins(CONFIG.minItemCoins)));
+            if (total < CONFIG.minItemCoins) {
+                pendingTradeItems = List.of();
+                valuationOffer = new Offer(firstTag, firstName, total, total, 0, 0,
+                        false, List.of("Verkaufswert unter "
+                        + ScreenUtil.formatCoins(CONFIG.minItemCoins)));
                 return;
             }
-            AhAnalyzer.Result analysis = AhAnalyzer.analyze(item, maxPay, 0);
-            long first = floorTo(maxPay * (1.0 - CONFIG.firstOfferDiscountPercent / 100.0),
-                    CONFIG.firstOfferRoundCoins);
-            long chat = floorTo(maxPay, CONFIG.chatOfferRoundCoins);
-            long net = Math.round(analysis.expectedValue * (1.0 - fee));
-            boolean buyable = analysis.buyable && first > 0 && chat > 0
-                    && net >= Math.round(maxPay * (1.0 + margin));
-            List<String> reasons = new ArrayList<>(analysis.reasons);
-            if (!buyable && reasons.isEmpty()) {
-                reasons.add("Gewinnregel nicht erfüllt");
+            long first = floorTo(total * 0.85, 500_000L);
+            long chat = floorTo(total * 0.90, CONFIG.chatOfferRoundCoins);
+            if (first <= 0 || chat <= 0) {
+                pendingTradeItems = List.of();
+                valuationOffer = new Offer(firstTag, firstName, total, total, first, chat,
+                        false, List.of("Angebot zu niedrig"));
+                return;
             }
-            valuationOffer = new Offer(item.tag, item.displayName, analysis.expectedValue,
-                    maxPay, first, chat, buyable, reasons);
+            String displayName = firstName.isBlank() ? firstTag : firstName;
+            if (slots.size() > 1) {
+                displayName += " +" + (slots.size() - 1);
+            }
+            pendingTradeItems = List.copyOf(tradeItems);
+            valuationOffer = new Offer(firstTag, displayName, total, total,
+                    first, chat, true, List.of());
         } catch (Exception e) {
             valuationError = e.getMessage() == null ? e.toString() : e.getMessage();
+        }
+    }
+
+    private static long saleValue(AhItem item, int slot) {
+        List<String> texts = new ArrayList<>(LowballingGui.tooltipLinesAt(slot));
+        if (texts.isEmpty()) {
+            if (item.displayName != null) {
+                texts.add(item.displayName);
+            }
+            texts.addAll(LowballingGui.loreAt(slot));
+        }
+        long med = parseLabeledCoins(texts, "med");
+        long lbin = parseLabeledCoins(texts, "lbin");
+        long addonAverage = parseLabeledCoins(texts, "addon-vergleich");
+        long addonBin = parseLabeledCoins(texts, "lowest addon-bin");
+        long best = 0;
+        for (long value : new long[]{med, lbin, addonAverage, addonBin}) {
+            if (value > 0 && (best <= 0 || value < best)) {
+                best = value;
+            }
+        }
+        AhValuation.Estimate estimate = AhValuation.estimate(item, "");
+        long ahValue = estimate.estimated;
+        if (best > 0) {
+            return ahValue > 1 ? Math.min(best, ahValue) : best;
+        }
+        return ahValue;
+    }
+
+    private static long parseLabeledCoins(List<String> lines, String label) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "(?i)" + label + "\\s*:?\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            java.util.regex.Matcher matcher = pattern.matcher(
+                    ScreenUtil.cleanName(line));
+            if (matcher.find()) {
+                long value = parseCompactCoins(matcher.group(1));
+                if (value > 0) {
+                    return value;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static long parseCompactCoins(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        String text = raw.trim().toLowerCase(Locale.ROOT).replace(",", "");
+        double multiplier = 1.0;
+        char last = text.charAt(text.length() - 1);
+        if (last == 'k' || last == 'm' || last == 'b' || last == 't') {
+            multiplier = switch (last) {
+                case 'k' -> 1_000.0;
+                case 'm' -> 1_000_000.0;
+                case 'b' -> 1_000_000_000.0;
+                default -> 1_000_000_000_000.0;
+            };
+            text = text.substring(0, text.length() - 1);
+        } else {
+            text = text.replace(".", "");
+        }
+        try {
+            return Math.max(0, Math.round(Double.parseDouble(text) * multiplier));
+        } catch (NumberFormatException ignored) {
+            return 0;
         }
     }
 
@@ -1523,7 +1923,10 @@ public final class LowballingMod {
         return -1;
     }
 
-    private static String formatMillions(long coins) {
+    private static String formatBankroll(long coins) {
+        if (coins >= 1_000_000_000L) {
+            return String.format(Locale.US, "%.2fb", coins / 1_000_000_000.0);
+        }
         long millions = Math.max(0, Math.round(coins / 1_000_000.0));
         return millions + "m";
     }
@@ -1564,7 +1967,7 @@ public final class LowballingMod {
         cooldowns[index] = now + cooldownMs;
         String template = messages.get(index);
         String replacement = messages == CONFIG.bestOfferMessages
-                ? formatMillions(value) : formatMillions(value);
+                ? formatBankroll(value) : formatBankroll(value);
         return template.replace("{bankroll}", replacement).replace("{offer}", replacement);
     }
 
@@ -1583,6 +1986,32 @@ public final class LowballingMod {
             return;
         }
         client.getConnection().sendChat(text);
+    }
+
+    private static final Object TRADE_LOG_LOCK = new Object();
+
+    private static void logTradeItem(String tag, String name, long saleValue,
+                                     boolean accept, List<String> reasons) {
+        try {
+            Path dir = FabricLoader.getInstance().getConfigDir()
+                    .resolve("CoflSky").resolve("lowballing").resolve("items");
+            Files.createDirectories(dir);
+            String stamp = LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            String verdict = accept ? "ANNEHMEN" : "ABLEHNEN";
+            String reason = accept ? "Regeln erfuellt"
+                    : String.join("; ", reasons);
+            String line = stamp + " | " + verdict + " | " + tag + " | "
+                    + name + " | Verkaufswert=" + saleValue + " | "
+                    + reason + System.lineSeparator();
+            synchronized (TRADE_LOG_LOCK) {
+                Files.writeString(dir.resolve("items.txt"), line,
+                        StandardCharsets.UTF_8, StandardOpenOption.CREATE,
+                        StandardOpenOption.APPEND);
+            }
+        } catch (Exception e) {
+            System.out.println("[Lowballing] Item-Log Fehler: " + e.getMessage());
+        }
     }
 
     private static void message(String text) {

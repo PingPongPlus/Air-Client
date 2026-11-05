@@ -1,16 +1,26 @@
 package com.coflnet.ahflipper;
 
+import CoflCore.handlers.DescriptionHandler;
+import com.coflnet.CoflModClient;
+import com.coflnet.flipper.trading.ScreenUtil;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -20,9 +30,65 @@ import java.util.regex.Pattern;
 public class AhItem {
     public static final String ASPECT_OF_THE_VOID = "ASPECT_OF_THE_VOID";
     private static final Pattern PET_LEVEL = Pattern.compile("\\[Lvl\\s+(\\d+)\\]");
+    private static final Pattern RUNE_ROMAN = Pattern.compile(
+            "(?i)\\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\\s*$");
+    private static final Pattern RUNE_ARABIC = Pattern.compile("\\b(\\d{1,2})\\s*$");
+    private static final Pattern COFL_MED = Pattern.compile(
+            "(?i)\\b(?:cofl\\s*)?med(?:ian)?\\s*:?\\s*[~\\u2248]?\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
+    private static final Pattern COFL_ESTIMATED = Pattern.compile(
+            "(?i)\\bestimated\\s+value\\s*:?\\s*[~\\u2248]?\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
+    private static final Pattern COFL_LBIN = Pattern.compile(
+            "(?i)\\b(?:lbin|lowest\\s+(?:addon[\\s-]*)?bin)\\b\\s*:?\\s*[~\\u2248]?\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
     private static final Pattern GEM_KEY = Pattern.compile("^([A-Za-z]+)_(\\d+)$");
     private static final Set<String> CATEGORY_GEM_SLOTS = Set.of(
             "COMBAT", "OFFENSIVE", "DEFENSIVE", "MINING", "UNIVERSAL", "CHISEL");
+
+    public static final class CoflValues {
+        public long med;
+        public long estimated;
+        public long lbin;
+
+        public long median() {
+            return med > 0 ? med : estimated;
+        }
+
+        public long best() {
+            long median = median();
+            if (median > 0 && lbin > 0) {
+                return Math.min(median, lbin);
+            }
+            return median > 0 ? median : lbin;
+        }
+
+        public String pick() {
+            long median = median();
+            if (median <= 0 && lbin <= 0) {
+                return "";
+            }
+            if (median <= 0) {
+                return "LBin";
+            }
+            if (lbin <= 0) {
+                return "Med";
+            }
+            if (lbin < median) {
+                return "LBin";
+            }
+            if (median < lbin) {
+                return "Med";
+            }
+            return "Med/LBin";
+        }
+
+        public void merge(CoflValues other) {
+            if (other == null) {
+                return;
+            }
+            med = Math.max(med, other.med);
+            estimated = Math.max(estimated, other.estimated);
+            lbin = Math.max(lbin, other.lbin);
+        }
+    }
 
     public String tag = "";
     public String displayName = "";
@@ -32,19 +98,63 @@ public class AhItem {
     public String reforge = "";
     public int stars;
     public int hpb;
+    public int fumingHpb;
     public boolean recomb;
     public int artOfWar;
     public int woodSingularity;
+    public String dyeItem = "";
+    public String skin = "";
+    public String petSkin = "";
     public String petItem = "";
     public int petLevel;
+    public int runeLevel;
     public int petCandies;
     public String petRarity = "";
+    public long coinValue;
+    public long coflMed;
+    public long coflLbin;
+    public String coflPick = "";
+    public int coflLbinCount = -1;
     public String killKey = "";
     public int kills;
     public boolean ethermerge;
     public int tunedTransmission;
     public final Map<String, Integer> gemstones = new LinkedHashMap<>();
     public final Set<String> unlockedGemSlots = new LinkedHashSet<>();
+
+    public boolean needsLbinCountCheck() {
+        return coflMed > 0 && coflLbin > 0 && coflLbin < coflMed && coflLbinCount < 0;
+    }
+
+    public long coflValue() {
+        long median = coflMed;
+        if (median > 0 && coflLbin > 0) {
+            if (coflLbin < median) {
+                int required = Math.max(1, AhFlipperMod.CONFIG.coflLbinMinCount);
+                return coflLbinCount >= required ? coflLbin : median;
+            }
+            return Math.min(median, coflLbin);
+        }
+        return median > 0 ? median : coflLbin;
+    }
+
+    public void applyCoflValues(CoflValues values) {
+        if (values == null) {
+            return;
+        }
+        coflMed = values.median();
+        coflLbin = values.lbin;
+        coflPick = values.pick();
+        coflLbinCount = -1;
+    }
+
+    public void applyLbinCount(int count) {
+        coflLbinCount = count;
+        if (coflMed > 0 && coflLbin > 0 && coflLbin < coflMed) {
+            int required = Math.max(1, AhFlipperMod.CONFIG.coflLbinMinCount);
+            coflPick = count >= required ? "LBin" : "Med";
+        }
+    }
 
     public static AhItem fromStack(ItemStack stack) {
         AhItem item = new AhItem();
@@ -57,7 +167,15 @@ public class AhItem {
         if (extra != null) {
             item.tag = extra.getString("id").orElse("").toUpperCase(Locale.ROOT);
             item.reforge = extra.getString("modifier").orElse("");
-            item.hpb = extra.getInt("hot_potato_count").orElse(0);
+            int potatoes = extra.getInt("hot_potato_count").orElse(0);
+            item.hpb = Math.min(10, potatoes);
+            item.fumingHpb = Math.max(0, potatoes - 10);
+            item.fumingHpb = Math.max(item.fumingHpb,
+                    extra.getInt("fuming_potato_count").orElse(0));
+            item.dyeItem = extra.getString("dye_item").orElse("")
+                    .trim().toUpperCase(Locale.ROOT);
+            item.skin = extra.getString("skin").orElse("")
+                    .trim().toUpperCase(Locale.ROOT);
             item.recomb = extra.getInt("rarity_upgrades").orElse(0) > 0;
             item.stars = Math.max(extra.getInt("upgrade_level").orElse(0),
                     extra.getInt("dungeon_item_level").orElse(0));
@@ -77,13 +195,28 @@ public class AhItem {
                             enchantments.getInt(key).orElse(0), Math::max);
                 }
             }
+            item.coinValue = coinValueFromNbt(extra);
+            item.runeLevel = runeLevelFromNbt(extra);
+            if (item.tag.isBlank()) {
+                for (String key : extra.keySet()) {
+                    if (isRuneNbtKey(key)) {
+                        item.tag = key.toUpperCase(Locale.ROOT);
+                        break;
+                    }
+                }
+            }
+            if (item.runeLevel <= 0) {
+                item.runeLevel = runeLevel(item.displayName);
+            }
             item.petLevel = petLevel(item.displayName);
             String petTier = extra.getString("tier").orElse("");
             String heldItem = extra.getString("heldItem").orElse("");
+            String petSkin = "";
             CompoundTag petInfo = extra.getCompound("petInfo").orElse(null);
             if (petInfo != null) {
                 petTier = petInfo.getString("tier").orElse(petTier);
                 heldItem = petInfo.getString("heldItem").orElse(heldItem);
+                petSkin = petInfo.getString("skin").orElse(petSkin);
             }
             String petInfoRaw = extra.getString("petInfo").orElse("");
             if (!petInfoRaw.isBlank()) {
@@ -91,11 +224,13 @@ public class AhItem {
                     JsonObject json = JsonParser.parseString(petInfoRaw).getAsJsonObject();
                     petTier = jsonString(json, "tier", petTier);
                     heldItem = jsonString(json, "heldItem", heldItem);
+                    petSkin = jsonString(json, "skin", petSkin);
                 } catch (Exception ignored) {
                 }
             }
             item.petRarity = petTier.toUpperCase(Locale.ROOT);
             item.petItem = heldItem;
+            item.petSkin = petSkin.trim().toUpperCase(Locale.ROOT);
             String petInfoJson = extra.getString("petInfo").orElse("");
             if (!petInfoJson.isBlank()) {
                 try {
@@ -118,6 +253,9 @@ public class AhItem {
                 }
             }
         }
+        if (item.runeLevel <= 0) {
+            item.runeLevel = runeLevel(item.displayName);
+        }
 
         ItemEnchantments componentEnchants = stack.get(DataComponents.ENCHANTMENTS);
         if (componentEnchants != null) {
@@ -138,6 +276,141 @@ public class AhItem {
         return item;
     }
 
+    public static AhItem fromStackWithTooltip(ItemStack stack) {
+        AhItem item = fromStack(stack);
+        if (stack == null || stack.isEmpty()) {
+            return item;
+        }
+        List<String> lines = ScreenUtil.sync(() -> {
+            List<Component> tooltip = stack.getTooltipLines(Item.TooltipContext.EMPTY,
+                    Minecraft.getInstance().player, TooltipFlag.NORMAL);
+            ItemTooltipCallback.EVENT.invoker().getTooltip(stack,
+                    Item.TooltipContext.EMPTY, TooltipFlag.NORMAL, tooltip);
+            List<String> result = new ArrayList<>();
+            for (Component line : tooltip) {
+                result.add(line.getString());
+            }
+            return result;
+        });
+        CoflValues values = parseCoflValues(lines);
+        values.merge(coflValuesFromDescription(stack));
+        item.applyCoflValues(values);
+        return item;
+    }
+
+    public static AhItem resolveCofl(ItemStack stack, long timeoutMs) {
+        AhItem item = fromStack(stack);
+        if (stack == null || stack.isEmpty()) {
+            return item;
+        }
+        AhScreenUtil.loadCoflDescriptions();
+        long end = System.currentTimeMillis() + Math.max(250, timeoutMs);
+        while (System.currentTimeMillis() < end) {
+            item = fromStackWithTooltip(stack);
+            if (item.coflValue() > 0) {
+                AhMarketData.ensureLbinCount(item);
+                return item;
+            }
+            ScreenUtil.sleep(100);
+        }
+        return item;
+    }
+
+    public static long resolveCoflMed(ItemStack stack, long timeoutMs) {
+        return resolveCofl(stack, timeoutMs).coflValue();
+    }
+
+    public static CoflValues coflValuesFromDescription(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return new CoflValues();
+        }
+        try {
+            String id = CoflModClient.getIdFromStack(stack);
+            String lookupId = CoflModClient.uuidToOriginalUuid
+                    .getOrDefault(id, id);
+            DescriptionHandler.DescModification[] modifications =
+                    DescriptionHandler.getTooltipData(lookupId);
+            if (modifications == null && !lookupId.equals(id)) {
+                modifications = DescriptionHandler.getTooltipData(id);
+            }
+            if (modifications == null) {
+                return new CoflValues();
+            }
+            CoflValues values = new CoflValues();
+            for (DescriptionHandler.DescModification modification : modifications) {
+                if (modification == null || modification.value == null) {
+                    continue;
+                }
+                values.merge(parseCoflValues(List.of(modification.value)));
+            }
+            return values;
+        } catch (Exception ignored) {
+        }
+        return new CoflValues();
+    }
+
+    public static long coflMedFromDescription(ItemStack stack) {
+        return coflValuesFromDescription(stack).best();
+    }
+
+    public static CoflValues parseCoflValues(List<String> lines) {
+        CoflValues values = new CoflValues();
+        if (lines == null || lines.isEmpty()) {
+            return values;
+        }
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            String clean = ScreenUtil.cleanName(line);
+            Matcher estimated = COFL_ESTIMATED.matcher(clean);
+            if (estimated.find()) {
+                values.estimated = Math.max(values.estimated,
+                        parseCompactCoins(estimated.group(1)));
+            }
+            Matcher median = COFL_MED.matcher(clean);
+            if (median.find()) {
+                values.med = Math.max(values.med,
+                        parseCompactCoins(median.group(1)));
+            }
+            Matcher lbin = COFL_LBIN.matcher(clean);
+            if (lbin.find()) {
+                values.lbin = Math.max(values.lbin,
+                        parseCompactCoins(lbin.group(1)));
+            }
+        }
+        return values;
+    }
+
+    public static long parseCoflMed(List<String> lines) {
+        return parseCoflValues(lines).best();
+    }
+
+    private static long parseCompactCoins(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        String text = raw.trim().toLowerCase(Locale.ROOT).replace(",", "");
+        double multiplier = 1.0;
+        char last = text.charAt(text.length() - 1);
+        if (last == 'k' || last == 'm' || last == 'b' || last == 't') {
+            multiplier = switch (last) {
+                case 'k' -> 1_000.0;
+                case 'm' -> 1_000_000.0;
+                case 'b' -> 1_000_000_000.0;
+                default -> 1_000_000_000_000.0;
+            };
+            text = text.substring(0, text.length() - 1);
+        } else {
+            text = text.replace(".", "");
+        }
+        try {
+            return Math.max(0, Math.round(Double.parseDouble(text) * multiplier));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
     public static AhItem fromAuction(AhMarketData.AuctionDetails details) {
         AhItem item = new AhItem();
         if (details == null) {
@@ -149,7 +422,14 @@ public class AhItem {
         item.reforge = details.reforge == null || details.reforge.equalsIgnoreCase("none")
                 ? "" : details.reforge;
         item.enchants.putAll(details.enchants);
-        item.hpb = nbtInt(details, "hpc", "hot_potato_count");
+        int potatoes = Math.max(nbtInt(details, "hpc"),
+                nbtInt(details, "hot_potato_count"));
+        item.hpb = Math.min(10, potatoes);
+        item.fumingHpb = Math.max(0, potatoes - 10);
+        item.fumingHpb = Math.max(item.fumingHpb,
+                nbtInt(details, "fuming_potato_count"));
+        item.dyeItem = nbtText(details, "dye_item").trim().toUpperCase(Locale.ROOT);
+        item.skin = nbtText(details, "skin").trim().toUpperCase(Locale.ROOT);
         item.recomb = nbtInt(details, "rarity_upgrades") > 0;
         item.stars = Math.max(nbtInt(details, "upgrade_level"),
                 nbtInt(details, "dungeon_item_level"));
@@ -158,6 +438,11 @@ public class AhItem {
         item.ethermerge = nbtFlag(details, "ethermerge");
         item.tunedTransmission = nbtInt(details, "tuned_transmission");
         parseFlatGems(details.flatNbt, item.gemstones, item.unlockedGemSlots);
+        item.coinValue = coinValueFromFlat(details.flatNbt);
+        item.runeLevel = runeLevelFromFlat(details.flatNbt);
+        if (item.runeLevel <= 0) {
+            item.runeLevel = runeLevel(details.itemName);
+        }
         item.petLevel = petLevel(details.itemName);
         item.petRarity = petRarity(details);
         item.petItem = nbtText(details, "heldItem");
@@ -169,6 +454,8 @@ public class AhItem {
                 if (item.petItem.isBlank()) {
                     item.petItem = jsonString(petJson, "heldItem", "");
                 }
+                item.petSkin = jsonString(petJson, "skin", item.petSkin)
+                        .trim().toUpperCase(Locale.ROOT);
             } catch (Exception ignored) {
             }
         }
@@ -198,8 +485,189 @@ public class AhItem {
         return (tag != null && tag.toUpperCase(Locale.ROOT).startsWith("PET_")) || petLevel > 0;
     }
 
+    public boolean isRune() {
+        return runeLevel > 0 || isRuneTag(tag);
+    }
+
+    public static boolean isRuneTag(String tag) {
+        String upper = tag == null ? "" : tag.toUpperCase(Locale.ROOT);
+        return upper.equals("RUNE") || upper.startsWith("RUNE_")
+                || upper.startsWith("UNIQUE_RUNE_");
+    }
+
+    private static final String[] COIN_KEYS = {
+            "coins", "collected_coins", "stored_coins", "crown_coins",
+            "avarice_coins", "coin_count", "winning_bid", "gilded_gifted_coins"
+    };
+
+    private static long coinValueFromNbt(CompoundTag tag) {
+        if (tag == null) {
+            return 0;
+        }
+        long total = 0;
+        for (String key : COIN_KEYS) {
+            if (!tag.contains(key)) {
+                continue;
+            }
+            long value = tag.getLong(key).orElse(0L);
+            if (value <= 0) {
+                try {
+                    value = Long.parseLong(tag.getString(key).orElse("0").trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (value > 0) {
+                total += value;
+            }
+        }
+        return total;
+    }
+
+    private static long coinValueFromFlat(JsonObject nbt) {
+        if (nbt == null) {
+            return 0;
+        }
+        long total = 0;
+        for (String key : COIN_KEYS) {
+            com.google.gson.JsonElement element = nbt.get(key);
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            try {
+                long value = element.getAsLong();
+                if (value > 0) {
+                    total += value;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return total;
+    }
+
+    public static String runeMarketTag(String itemName) {
+        if (itemName == null || itemName.isBlank()) {
+            return "";
+        }
+        String clean = itemName.replaceAll("\u00a7.", "").trim();
+        Matcher matcher = Pattern.compile(
+                "(?i)^(.+?)\\s+Rune\\s+(I|II|III|IV|V|VI|VII|VIII|IX|X|\\d{1,2})\\s*$")
+                .matcher(clean);
+        if (!matcher.find()) {
+            return "";
+        }
+        String base = matcher.group(1).trim().toUpperCase(Locale.ROOT)
+                .replaceAll("[^A-Z0-9]+", "_").replaceAll("^_+|_+$", "");
+        return base.isBlank() ? "" : "RUNE_" + base;
+    }
+
+    public static int runeLevel(String itemName) {
+        if (itemName == null || itemName.isBlank()) {
+            return 0;
+        }
+        String clean = itemName.replaceAll("\u00a7.", "").trim().toUpperCase(Locale.ROOT);
+        if (!clean.contains("RUNE")) {
+            return 0;
+        }
+        Matcher roman = RUNE_ROMAN.matcher(clean);
+        if (roman.find()) {
+            return switch (roman.group(1).toUpperCase(Locale.ROOT)) {
+                case "I" -> 1;
+                case "II" -> 2;
+                case "III" -> 3;
+                case "IV" -> 4;
+                case "V" -> 5;
+                case "VI" -> 6;
+                case "VII" -> 7;
+                case "VIII" -> 8;
+                case "IX" -> 9;
+                case "X" -> 10;
+                default -> 0;
+            };
+        }
+        Matcher arabic = RUNE_ARABIC.matcher(clean);
+        if (arabic.find()) {
+            try {
+                return Integer.parseInt(arabic.group(1));
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
+    }
+
+    private static int runeLevelFromNbt(CompoundTag extra) {
+        if (extra == null) {
+            return 0;
+        }
+        for (String key : extra.keySet()) {
+            if (!isRuneNbtKey(key)) {
+                continue;
+            }
+            int level = extra.getInt(key).orElse(0);
+            if (level <= 0) {
+                try {
+                    level = Integer.parseInt(extra.getString(key).orElse("0").trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (level > 0) {
+                return level;
+            }
+        }
+        return 0;
+    }
+
+    private static int runeLevelFromFlat(JsonObject nbt) {
+        if (nbt == null) {
+            return 0;
+        }
+        for (Map.Entry<String, com.google.gson.JsonElement> entry : nbt.entrySet()) {
+            if (!isRuneNbtKey(entry.getKey()) || entry.getValue() == null
+                    || entry.getValue().isJsonNull()) {
+                continue;
+            }
+            try {
+                int level = (int) Double.parseDouble(entry.getValue().getAsString());
+                if (level > 0) {
+                    return level;
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 0;
+    }
+
+    private static boolean isRuneNbtKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        String upper = key.toUpperCase(Locale.ROOT);
+        return upper.startsWith("RUNE_") || upper.startsWith("UNIQUE_RUNE_");
+    }
+
     public boolean isAspectOfTheVoid() {
         return tag != null && ASPECT_OF_THE_VOID.equalsIgnoreCase(tag.trim());
+    }
+
+    public boolean isArmor() {
+        if (tag == null || tag.isBlank()) {
+            return false;
+        }
+        String value = tag.toUpperCase(Locale.ROOT);
+        return value.endsWith("_HELMET")
+                || value.endsWith("_CHESTPLATE")
+                || value.endsWith("_LEGGINGS")
+                || value.endsWith("_BOOTS")
+                || value.endsWith("_CAP")
+                || value.endsWith("_TUNIC")
+                || value.endsWith("_PANTS")
+                || value.endsWith("_SKIRT")
+                || value.endsWith("_MASK")
+                || value.endsWith("_HOOD")
+                || value.endsWith("_CHEST")
+                || value.endsWith("_ROBE")
+                || value.endsWith("_JACKET")
+                || value.endsWith("_CLOAK");
     }
 
     public String petFilter() {
@@ -434,8 +902,7 @@ public class AhItem {
         }
         CompoundTag root = customData.copyTag();
         CompoundTag extra = root.getCompound("ExtraAttributes").orElse(null);
-        if (extra != null && extra.getString("id").isPresent()
-                && !extra.getString("id").orElse("").isBlank()) {
+        if (extra != null && (hasId(extra) || hasRuneKey(extra))) {
             return true;
         }
         CompoundTag components = root.getCompound("components").orElse(null);
@@ -443,12 +910,28 @@ public class AhItem {
             CompoundTag custom = components.getCompound("minecraft:custom_data").orElse(null);
             if (custom != null) {
                 CompoundTag extra2 = custom.getCompound("ExtraAttributes").orElse(null);
-                if (extra2 != null && extra2.getString("id").isPresent()
-                        && !extra2.getString("id").orElse("").isBlank()) {
+                if (extra2 != null && (hasId(extra2) || hasRuneKey(extra2))) {
                     return true;
                 }
             }
         }
-        return root.getString("id").isPresent() && !root.getString("id").orElse("").isBlank();
+        return hasId(root) || hasRuneKey(root);
+    }
+
+    private static boolean hasId(CompoundTag tag) {
+        return tag != null && tag.getString("id").isPresent()
+                && !tag.getString("id").orElse("").isBlank();
+    }
+
+    private static boolean hasRuneKey(CompoundTag tag) {
+        if (tag == null) {
+            return false;
+        }
+        for (String key : tag.keySet()) {
+            if (isRuneNbtKey(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -14,12 +14,6 @@ public final class GlassPipelines {
                     .withVertexShader(id("core/weather_glass"))
                     .withFragmentShader(id("core/weather_glass"))
                     .withCull(false).build());
-    public static final RenderPipeline RAIN = RenderPipelines.register(
-            RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
-                    .withLocation(id("pipeline/glass_rain"))
-                    .withVertexShader(id("core/glass_button"))
-                    .withFragmentShader(id("core/glass_rain"))
-                    .withCull(false).build());
     public static final RenderPipeline LOGO = RenderPipelines.register(
             RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
                     .withLocation(id("pipeline/glass_logo"))

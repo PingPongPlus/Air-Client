@@ -9,23 +9,33 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import pingplus.voicechat.client.AimSmoothing;
 
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class AhMobPathfinder {
+
+    private static final long ONE_HIT_COOLDOWN_MS = 5_000L;
 
     private static long nextAttackAt;
     private static BlockPos lastGoalPos;
     private static Entity currentTarget;
     private static String lastTargetName = "";
-    private static double smoothX;
-    private static double smoothZ;
     private static long lastPathRequestAt;
     private static long lastProgressCheckAt;
     private static double lastX;
     private static double lastZ;
     private static int stuckRepaths;
+
+    private static final Map<UUID, Long> ONE_HIT_UNTIL = new HashMap<>();
+    private static double desiredYaw;
+    private static double desiredPitch;
+    private static boolean hasDesiredAim;
+    private static long lastFrameNanos;
 
     private AhMobPathfinder() {
     }
@@ -34,39 +44,42 @@ public final class AhMobPathfinder {
         AhAutomationConfig config = AhAutomationConfig.get();
         if (!config.enabled || config.targetName.isBlank()) {
             cancelPathing();
+            ONE_HIT_UNTIL.clear();
         }
     }
 
     public static void onClientTick(Minecraft client) {
         if (client.player == null || client.level == null) {
+            hasDesiredAim = false;
             return;
         }
         AhAutomationConfig config = AhAutomationConfig.get();
         if (!config.enabled || config.targetName.isBlank()) {
+            hasDesiredAim = false;
             return;
         }
         IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
         if (baritone == null) {
+            hasDesiredAim = false;
             return;
         }
-        if (config.allowSprint) {
-            BaritoneAPI.getSettings().allowSprint.value = true;
-        }
-        BaritoneAPI.getSettings().allowBreak.value = false;
-        BaritoneAPI.getSettings().allowPlace.value = false;
+        configureBaritone(config);
 
         String wanted = config.targetName.toLowerCase(Locale.ROOT);
         if (!wanted.equals(lastTargetName)) {
             lastTargetName = wanted;
             currentTarget = null;
             lastGoalPos = null;
+            ONE_HIT_UNTIL.clear();
+            hasDesiredAim = false;
         }
 
-        Entity target = findTarget(client, config.targetName);
-        if (target == null || !target.isAlive()) {
+        long now = System.currentTimeMillis();
+        ONE_HIT_UNTIL.entrySet().removeIf(entry -> entry.getValue() <= now);
+        Entity target = findTarget(client, config.targetName, now);
+        if (target == null || !target.isAlive() || target.isRemoved()) {
             currentTarget = null;
             cancelPathing();
-            lastGoalPos = null;
             return;
         }
         currentTarget = target;
@@ -76,15 +89,14 @@ public final class AhMobPathfinder {
             baritone.getCustomGoalProcess().onLostControl();
             baritone.getPathingBehavior().cancelEverything();
             lastGoalPos = null;
-            faceEntity(player, target, 15.0, 10.0);
+            setDesiredAim(player, target.getBoundingBox().getCenter());
             if (config.autoAttack) {
-                maybeAttack(client, player, target, config);
+                maybeAttack(client, player, target, config, baritone, now);
             }
             return;
         }
 
         BlockPos goal = target.blockPosition();
-        long now = System.currentTimeMillis();
         boolean pathing = baritone.getPathingBehavior().isPathing();
         boolean goalMoved = lastGoalPos != null && goal.distSqr(lastGoalPos) > 4;
         boolean repathAllowed = now - lastPathRequestAt > 500;
@@ -114,36 +126,56 @@ public final class AhMobPathfinder {
             lastProgressCheckAt = now;
         }
 
-        faceMovementDirection(player, goal, baritone);
+        aimAlongPath(player, goal, baritone);
     }
 
-    private static void faceMovementDirection(Player player, BlockPos goal, IBaritone baritone) {
+    public static void frame(Minecraft client) {
+        if (client.player == null || client.level == null) {
+            hasDesiredAim = false;
+            lastFrameNanos = 0;
+            return;
+        }
+        AhAutomationConfig config = AhAutomationConfig.get();
+        if (!config.enabled || !hasDesiredAim || config.targetName.isBlank()
+                || pingplus.voicechat.client.PlayerSettings.killAura
+                || client.gui.screen() != null || client.gui.overlay() != null
+                || client.isPaused()) {
+            lastFrameNanos = 0;
+            return;
+        }
+        long now = System.nanoTime();
+        double dt = lastFrameNanos == 0 ? 0 : (now - lastFrameNanos) / 1e9;
+        lastFrameNanos = now;
+        float speed = (float) config.cameraTurnSpeed;
+        Player player = client.player;
+        player.setYRot(AimSmoothing.step(player.getYRot(),
+                (float) desiredYaw, speed, dt));
+        player.setXRot(Math.clamp(AimSmoothing.step(player.getXRot(),
+                (float) desiredPitch, speed, dt), -90.0f, 90.0f));
+    }
+
+    private static void setDesiredAim(Player player, Vec3 point) {
+        Vec3 delta = point.subtract(player.getEyePosition());
+        double horizontal = Math.hypot(delta.x, delta.z);
+        desiredYaw = Math.toDegrees(Math.atan2(-delta.x, delta.z));
+        desiredPitch = Math.toDegrees(-Math.atan2(delta.y, horizontal));
+        hasDesiredAim = true;
+    }
+
+    private static void aimAlongPath(Player player, BlockPos goal, IBaritone baritone) {
         Vec3 ahead = pathAhead(baritone, player);
-        Vec3 velocity = player.getDeltaMovement();
-        double horizontal = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-        if (ahead != null) {
-            double dx = ahead.x - player.getX();
-            double dz = ahead.z - player.getZ();
-            double len = Math.sqrt(dx * dx + dz * dz);
-            if (len > 0.1) {
-                smoothX += (dx / len - smoothX) * 0.35;
-                smoothZ += (dz / len - smoothZ) * 0.35;
-            }
-        } else if (horizontal > 0.02) {
-            smoothX += (velocity.x / horizontal - smoothX) * 0.25;
-            smoothZ += (velocity.z / horizontal - smoothZ) * 0.25;
-        } else {
-            double dx = goal.getX() + 0.5 - player.getX();
-            double dz = goal.getZ() + 0.5 - player.getZ();
-            double len = Math.sqrt(dx * dx + dz * dz);
-            if (len > 0.1) {
-                smoothX += (dx / len - smoothX) * 0.10;
-                smoothZ += (dz / len - smoothZ) * 0.10;
+        if (ahead == null) {
+            Vec3 velocity = player.getDeltaMovement();
+            double horizontal = Math.hypot(velocity.x, velocity.z);
+            if (horizontal > 0.02) {
+                ahead = new Vec3(player.getX() + velocity.x / horizontal * 3.0,
+                        player.getEyeY(),
+                        player.getZ() + velocity.z / horizontal * 3.0);
+            } else {
+                ahead = new Vec3(goal.getX() + 0.5, player.getEyeY(), goal.getZ() + 0.5);
             }
         }
-        double yaw = Math.toDegrees(Math.atan2(-smoothX, smoothZ));
-        player.setYRot((float) rotateToward(player.getYRot(), yaw, 12.0));
-        player.setXRot((float) rotateToward(player.getXRot(), 0, 8.0));
+        setDesiredAim(player, ahead);
     }
 
     private static Vec3 pathAhead(IBaritone baritone, Player player) {
@@ -173,17 +205,19 @@ public final class AhMobPathfinder {
         return null;
     }
 
-    private static Entity findTarget(Minecraft client, String name) {
+    private static Entity findTarget(Minecraft client, String name, long now) {
         String wanted = name.toLowerCase(Locale.ROOT);
         if (currentTarget != null && currentTarget.isAlive()
                 && !currentTarget.isRemoved() && currentTarget != client.player
+                && !isOneHitDone(currentTarget, now)
                 && client.player.distanceToSqr(currentTarget) < 60 * 60) {
             return currentTarget;
         }
         Entity best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
-            if (entity == client.player || !entity.isAlive()) {
+            if (entity == client.player || !entity.isAlive() || entity.isRemoved()
+                    || isOneHitDone(entity, now)) {
                 continue;
             }
             String entityName = entity.getName().getString().toLowerCase(Locale.ROOT);
@@ -199,14 +233,31 @@ public final class AhMobPathfinder {
         return best;
     }
 
+    private static boolean isOneHitDone(Entity entity, long now) {
+        Long until = ONE_HIT_UNTIL.get(entity.getUUID());
+        return until != null && until > now;
+    }
+
     private static void maybeAttack(Minecraft client, Player player, Entity target,
-                                    AhAutomationConfig config) {
-        long now = System.currentTimeMillis();
-        if (now < nextAttackAt) {
+                                    AhAutomationConfig config, IBaritone baritone, long now) {
+        if (player.getAttackStrengthScale(0.0f) < 1.0f) {
+            return;
+        }
+        if (now < nextAttackAt || !player.hasLineOfSight(target)) {
             return;
         }
         client.gameMode.attack(player, target);
         player.swing(InteractionHand.MAIN_HAND);
+        if (config.oneHitMode) {
+            ONE_HIT_UNTIL.put(target.getUUID(), now + ONE_HIT_COOLDOWN_MS);
+            currentTarget = null;
+            lastGoalPos = null;
+            hasDesiredAim = false;
+            nextAttackAt = 0;
+            baritone.getCustomGoalProcess().onLostControl();
+            baritone.getPathingBehavior().cancelEverything();
+            return;
+        }
         double cpsMin = Math.max(0.5, config.attackCpsMin);
         double cpsMax = Math.max(cpsMin, config.attackCpsMax);
         ThreadLocalRandom random = ThreadLocalRandom.current();
@@ -215,31 +266,62 @@ public final class AhMobPathfinder {
         nextAttackAt = now + interval + random.nextLong(60, 220);
     }
 
-    private static void faceEntity(Player player, Entity target, double yawSpeed,
-                                   double pitchSpeed) {
-        Vec3 eye = target.getEyePosition();
-        Vec3 delta = eye.subtract(player.getEyePosition());
-        double targetYaw = Math.toDegrees(Math.atan2(-delta.x, delta.z));
-        double horizontal = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
-        double targetPitch = Math.toDegrees(-Math.atan2(delta.y, horizontal));
-        player.setYRot((float) rotateToward(player.getYRot(), targetYaw, yawSpeed));
-        player.setXRot((float) rotateToward(player.getXRot(), targetPitch, pitchSpeed));
-    }
-
-    private static double rotateToward(double current, double target, double maxDegrees) {
-        double delta = wrapDegrees(target - current);
-        double step = Math.max(-maxDegrees, Math.min(maxDegrees, delta));
-        return current + step;
-    }
-
-    private static double wrapDegrees(double value) {
-        value = value % 360.0;
-        if (value > 180.0) {
-            value -= 360.0;
-        } else if (value < -180.0) {
-            value += 360.0;
-        }
-        return value;
+    private static void configureBaritone(AhAutomationConfig config) {
+        baritone.api.Settings settings = BaritoneAPI.getSettings();
+        settings.allowSprint.value = config.allowSprint;
+        settings.allowBreak.value = false;
+        settings.allowPlace.value = false;
+        settings.allowInventory.value = false;
+        settings.autoTool.value = false;
+        settings.allowParkour.value = true;
+        settings.allowParkourAscend.value = true;
+        settings.allowParkourPlace.value = false;
+        settings.allowDiagonalDescend.value = true;
+        settings.allowDiagonalAscend.value = true;
+        settings.allowDownward.value = true;
+        settings.allowOvershootDiagonalDescend.value = true;
+        settings.allowVines.value = true;
+        settings.allowWalkOnBottomSlab.value = true;
+        settings.sprintAscends.value = true;
+        settings.sprintInWater.value = true;
+        settings.overshootTraverse.value = true;
+        settings.assumeWalkOnWater.value = false;
+        settings.assumeWalkOnLava.value = false;
+        settings.assumeStep.value = false;
+        settings.assumeSafeWalk.value = false;
+        settings.allowWaterBucketFall.value = false;
+        settings.freeLook.value = false;
+        settings.blockFreeLook.value = false;
+        settings.smoothLook.value = false;
+        settings.randomLooking.value = 0.01;
+        settings.antiCheatCompatibility.value = true;
+        settings.considerPotionEffects.value = true;
+        settings.avoidance.value = true;
+        settings.rightClickContainerOnArrival.value = false;
+        settings.enterPortal.value = false;
+        settings.renderPath.value = false;
+        settings.renderGoal.value = false;
+        settings.renderSelectionBoxes.value = false;
+        settings.renderCachedChunks.value = false;
+        settings.chatDebug.value = false;
+        settings.chatControl.value = false;
+        settings.desktopNotifications.value = false;
+        settings.itemSaver.value = false;
+        settings.mineScanDroppedItems.value = false;
+        settings.costHeuristic.value = 3.0;
+        settings.jumpPenalty.value = 1.5;
+        settings.walkOnWaterOnePenalty.value = 3.0;
+        settings.pathingMaxChunkBorderFetch.value = 64;
+        settings.planningTickLookahead.value = 150;
+        settings.primaryTimeoutMS.value = 500L;
+        settings.failureTimeoutMS.value = 2000L;
+        settings.planAheadPrimaryTimeoutMS.value = 2000L;
+        settings.planAheadFailureTimeoutMS.value = 3000L;
+        settings.movementTimeoutTicks.value = 20;
+        settings.maxFallHeightNoWater.value = 3;
+        settings.blockReachDistance.value = 3.0f;
+        settings.chunkCaching.value = true;
+        settings.pruneRegionsFromRAM.value = true;
     }
 
     private static void cancelPathing() {
@@ -251,8 +333,8 @@ public final class AhMobPathfinder {
             }
         } catch (Exception ignored) {
         }
-        smoothX = 0;
-        smoothZ = 0;
         lastGoalPos = null;
+        hasDesiredAim = false;
+        lastFrameNanos = 0;
     }
 }

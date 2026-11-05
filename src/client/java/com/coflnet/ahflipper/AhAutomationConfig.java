@@ -16,6 +16,8 @@ public class AhAutomationConfig {
     public double attackCpsMax = 2.0;
     public double reach = 3.5;
     public boolean allowSprint = true;
+    public boolean oneHitMode;
+    public double cameraTurnSpeed = 240.0;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AhAutomationConfig instance = new AhAutomationConfig();
@@ -42,6 +44,7 @@ public class AhAutomationConfig {
         instance.attackCpsMin = clamp(instance.attackCpsMin, 0.5, 5.0);
         instance.attackCpsMax = clamp(instance.attackCpsMax, instance.attackCpsMin, 5.0);
         instance.reach = clamp(instance.reach, 2.5, 5.0);
+        instance.cameraTurnSpeed = clamp(instance.cameraTurnSpeed, 60.0, 720.0);
         if (instance.targetName == null) {
             instance.targetName = "";
         }

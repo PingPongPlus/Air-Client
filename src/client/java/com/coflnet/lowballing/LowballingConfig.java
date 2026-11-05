@@ -11,6 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class LowballingConfig {
+    private static final String BEST_PRICES_AD =
+            "Lowballing {bankroll} purse /visit me for the best prices taking almost everything";
+
     public boolean loop = true;
     public boolean debug = false;
     public boolean enforceBankroll = true;
@@ -30,7 +33,7 @@ public class LowballingConfig {
     public double hubForwardBlocks = 5.0;
     public int hubForwardTimeoutMs = 3000;
 
-    public int advertiseIntervalSeconds = 10;
+    public int advertiseIntervalSeconds = 30;
     public int advertiseCooldownSeconds = 300;
     public int bestOfferCooldownSeconds = 0;
     public int visitCommandIntervalSeconds = 5;
@@ -42,17 +45,21 @@ public class LowballingConfig {
     public double interactReach = 3.5;
 
     public int sneakHoldMs = 500;
-    public int menuRightClickIntervalMs = 1000;
-    public int menuSneakTimeoutMs = 20000;
+    public int menuRightClickIntervalMs = 3000;
+    public int menuSneakTimeoutMs = 10000;
     public int menuUnSneakAttempts = 3;
     public int menuUnSneakIntervalMs = 1000;
     public int menuOpenTimeoutMs = 60000;
 
     public int offerGuiTimeoutMs = 10000;
+    public int secondOfferItemWaitMs = 30000;
+    public int tradeRequestTimeoutMs = 10000;
+    public int tradeGuiTimeoutMs = 30000;
     public int tradeClickIntervalMs = 2000;
     public int tradeClickMaxAttempts = 10;
     public int tradeCloseWaitMs = 5000;
     public int secondOfferWaitMs = 5000;
+    public int secondOfferDealWaitMs = 20000;
 
     public long reserveCoins = 1_000_000L;
     public int bankrollOverrideMillions = 0;
@@ -64,6 +71,12 @@ public class LowballingConfig {
     public long firstOfferRoundCoins = 500_000L;
     public long chatOfferRoundCoins = 1_000_000L;
     public int maxCycles = 0;
+
+    public boolean panelEnabled = true;
+    public boolean panelGlass = true;
+    public boolean panelEdges = false;
+    public int panelRows = 5;
+    public boolean panelFooter = true;
 
     public int hubSlotOverride = -1;
     public int kickSlotOverride = -1;
@@ -115,7 +128,7 @@ public class LowballingConfig {
         hubForwardBlocks = clamp(hubForwardBlocks, 0.0, 20.0);
         hubForwardTimeoutMs = clamp(hubForwardTimeoutMs, 500, 15000);
 
-        advertiseIntervalSeconds = clamp(advertiseIntervalSeconds, 1, 300);
+        advertiseIntervalSeconds = clamp(advertiseIntervalSeconds, 30, 300);
         advertiseCooldownSeconds = clamp(advertiseCooldownSeconds, 1, 3600);
         bestOfferCooldownSeconds = clamp(bestOfferCooldownSeconds, 0, 3600);
         visitCommandIntervalSeconds = clamp(visitCommandIntervalSeconds, 1, 60);
@@ -127,13 +140,20 @@ public class LowballingConfig {
         interactReach = clamp(interactReach, 2.0, 5.0);
 
         sneakHoldMs = clamp(sneakHoldMs, 0, 5000);
-        menuRightClickIntervalMs = clamp(menuRightClickIntervalMs, 100, 10000);
-        menuSneakTimeoutMs = clamp(menuSneakTimeoutMs, 1000, 120000);
+        menuRightClickIntervalMs = 3000;
+        menuSneakTimeoutMs = 10000;
         menuUnSneakAttempts = clamp(menuUnSneakAttempts, 1, 10);
         menuUnSneakIntervalMs = clamp(menuUnSneakIntervalMs, 100, 10000);
         menuOpenTimeoutMs = clamp(menuOpenTimeoutMs, 5000, 180000);
 
         offerGuiTimeoutMs = clamp(offerGuiTimeoutMs, 1000, 60000);
+        if (tradeRequestTimeoutMs <= 0) {
+            tradeRequestTimeoutMs = 10000;
+        }
+        tradeRequestTimeoutMs = clamp(tradeRequestTimeoutMs, 1000, 60000);
+        tradeGuiTimeoutMs = 30000;
+        secondOfferItemWaitMs = clamp(secondOfferItemWaitMs, 10000, 60000);
+        secondOfferDealWaitMs = clamp(secondOfferDealWaitMs, 10000, 60000);
         tradeClickIntervalMs = clamp(tradeClickIntervalMs, 250, 10000);
         tradeClickMaxAttempts = clamp(tradeClickMaxAttempts, 1, 100);
         tradeCloseWaitMs = clamp(tradeCloseWaitMs, 0, 60000);
@@ -149,6 +169,7 @@ public class LowballingConfig {
         firstOfferRoundCoins = Math.max(1, firstOfferRoundCoins);
         chatOfferRoundCoins = Math.max(1, chatOfferRoundCoins);
         maxCycles = Math.max(0, maxCycles);
+        panelRows = clamp(panelRows, 1, 5);
 
         if (adMessages == null) {
             adMessages = defaultAdMessages();
@@ -161,6 +182,9 @@ public class LowballingConfig {
         if (adMessages.isEmpty()) {
             adMessages = defaultAdMessages();
         }
+        if (!adMessages.contains(BEST_PRICES_AD)) {
+            adMessages.add(BEST_PRICES_AD);
+        }
         if (bestOfferMessages.isEmpty()) {
             bestOfferMessages = defaultBestOfferMessages();
         }
@@ -172,7 +196,8 @@ public class LowballingConfig {
                 "Lowballing {bankroll} coins /visit me",
                 "Lowballing {bankroll} coins no pet items",
                 "Lowballing {bankroll} coins no skins or minions !!!!",
-                "Lowballing {bankroll} !!!! look at my island"
+                "Lowballing {bankroll} !!!! look at my island",
+                BEST_PRICES_AD
         ));
     }
 

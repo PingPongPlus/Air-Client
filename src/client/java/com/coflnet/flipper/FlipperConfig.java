@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class FlipperConfig {
@@ -40,6 +41,7 @@ public class FlipperConfig {
     public double blacklistMinutes = 5.0;
     public double maxLiquidityShare = 0.25;
     public double coinsPerHourWeight = 1.6;
+    public double minCoinsPerHour = 0.0;
     public double profitPercentWeight = 1.4;
     public int cycleIntervalSeconds = 15;
     public int apiRefreshSeconds = 5;
@@ -50,18 +52,91 @@ public class FlipperConfig {
     public double stakeMultiplier = 2.0;
     public List<String> blacklist = new ArrayList<>();
     public Map<String, String> searchNameOverrides = new HashMap<>();
+    public boolean bazaarPanelEnabled = false;
+    public boolean bazaarPanelGlass = true;
+    public boolean bazaarPanelEdges = false;
+    public int bazaarPanelRows = 5;
+    public boolean bazaarPanelFooter = true;
+    public int configVersion = 0;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final int CURRENT_CONFIG_VERSION = 2;
 
     private static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("CoflSky").resolve("flipper.json");
+    }
+
+    public boolean isBlocked(String productId, String displayName) {
+        if (blacklist == null || blacklist.isEmpty()) {
+            return false;
+        }
+        String id = normalize(productId);
+        String name = normalize(displayName);
+        for (String entry : blacklist) {
+            String blocked = normalize(entry);
+            if (blocked.isEmpty()) {
+                continue;
+            }
+            if ((!id.isEmpty() && id.contains(blocked))
+                    || (!name.isEmpty() && name.contains(blocked))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean addBlocked(String value) {
+        String display = value == null ? "" : value.trim();
+        if (display.isEmpty()) {
+            return false;
+        }
+        if (blacklist == null) {
+            blacklist = new ArrayList<>();
+        }
+        String normalized = normalize(display);
+        for (String entry : blacklist) {
+            if (normalize(entry).equals(normalized)) {
+                return false;
+            }
+        }
+        blacklist.add(display);
+        return true;
+    }
+
+    public boolean removeBlocked(String value) {
+        if (blacklist == null || value == null) {
+            return false;
+        }
+        String normalized = normalize(value);
+        return blacklist.removeIf(entry -> normalize(entry).equals(normalized));
+    }
+
+    private static String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("(?i)\u00a7[0-9A-FK-OR]", "").trim().toLowerCase(Locale.ROOT);
     }
 
     public static FlipperConfig load() {
         try {
             Path path = file();
             if (Files.exists(path)) {
-                FlipperConfig loaded = GSON.fromJson(Files.readString(path), FlipperConfig.class);
+                FlipperConfig loaded;
+                try {
+                    loaded = GSON.fromJson(Files.readString(path), FlipperConfig.class);
+                } catch (Exception parseError) {
+                    Path broken = path.resolveSibling(path.getFileName()
+                            + ".broken-" + System.currentTimeMillis());
+                    try {
+                        Files.copy(path, broken,
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    } catch (Exception ignored) {
+                    }
+                    System.out.println("[Flipper] Config defekt, Backup: " + broken
+                            + " (" + parseError.getMessage() + ")");
+                    return new FlipperConfig();
+                }
                 if (loaded != null) {
                     if (loaded.apiRefreshSeconds > 5) {
                         loaded.apiRefreshSeconds = 5;
@@ -72,17 +147,14 @@ public class FlipperConfig {
                     if (loaded.maxOrders > 14) {
                         loaded.maxOrders = 14;
                     }
-                    if (loaded.maxNewOrdersPerCycle < 3) {
+                    if (loaded.maxNewOrdersPerCycle < 1) {
                         loaded.maxNewOrdersPerCycle = 3;
                     }
-                    if (loaded.minWeeklyVolume == 2_000L) {
-                        loaded.minWeeklyVolume = 168L;
+                    if (loaded.minUnitCoins < 0) {
+                        loaded.minUnitCoins = 0;
                     }
-                    if (loaded.minUnitCoins < 600_000.0) {
-                        loaded.minUnitCoins = 600_000.0;
-                    }
-                    if (loaded.minOrderCoins < 10_000_000.0) {
-                        loaded.minOrderCoins = 10_000_000.0;
+                    if (loaded.minOrderCoins < 0) {
+                        loaded.minOrderCoins = 0;
                     }
                     if (loaded.maxBankFractionPerItem <= 0 || loaded.maxBankFractionPerItem > 1) {
                         loaded.maxBankFractionPerItem = 0.5;
@@ -105,23 +177,46 @@ public class FlipperConfig {
                     if (loaded.coinsPerHourWeight <= 0) {
                         loaded.coinsPerHourWeight = 1.6;
                     }
+                    if (!Double.isFinite(loaded.minCoinsPerHour) || loaded.minCoinsPerHour < 0) {
+                        loaded.minCoinsPerHour = 0.0;
+                    }
                     if (loaded.profitPercentWeight <= 0) {
                         loaded.profitPercentWeight = 1.4;
                     }
+                    if (loaded.blacklist == null) {
+                        loaded.blacklist = new ArrayList<>();
+                    }
+                    loaded.bazaarPanelRows = Math.max(1,
+                            Math.min(5, loaded.bazaarPanelRows));
+                    loaded.configVersion = CURRENT_CONFIG_VERSION;
                     return loaded;
                 }
             }
         } catch (Exception ignored) {
         }
-        return new FlipperConfig();
+        FlipperConfig defaults = new FlipperConfig();
+        defaults.configVersion = CURRENT_CONFIG_VERSION;
+        return defaults;
     }
 
     public void save() {
         try {
             Path path = file();
             Files.createDirectories(path.getParent());
-            Files.writeString(path, GSON.toJson(this));
-        } catch (IOException ignored) {
+            Path temp = path.resolveSibling(path.getFileName() + ".tmp");
+            Files.writeString(temp, GSON.toJson(this),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, path,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(temp, path,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            System.out.println("[Flipper] Config speichern fehlgeschlagen: "
+                    + e.getMessage());
         }
     }
 }

@@ -7,6 +7,8 @@ import com.coflnet.flipper.data.BazaarApi;
 import com.coflnet.flipper.data.BazaarPriceHistory;
 import com.coflnet.flipper.data.ItemNames;
 import com.coflnet.flipper.data.MarketData;
+import com.coflnet.profit.ProfitTracker;
+
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -25,11 +27,25 @@ public class Trader {
     private static final long STUCK_LIMIT_MS = 90_000L;
     private static final long SCAN_MIN_INTERVAL_MS = 15_000L;
     private static final long CLAIM_LIST_RETRY_MS = 30_000L;
+    private static final long AH_PRIORITY_DEFAULT_MS = 60_000L;
+    private static final long AH_PRIORITY_MIN_MS = 2_000L;
+    private static final long AH_PRIORITY_MAX_MS = 60_000L;
+
+    public enum State {
+        IDLE, RUNNING, STOPPING
+    }
+
+    private static final class TraderStoppedException extends RuntimeException {
+        private TraderStoppedException() {
+            super("Trader stopped");
+        }
+    }
 
     private static volatile Trader instance;
 
     private final FlipperConfig cfg;
     private final OrderLedger ledger;
+    private volatile State state = State.IDLE;
     private volatile boolean running;
     private volatile boolean paused;
     private volatile boolean ahPriorityActive;
@@ -55,10 +71,58 @@ public class Trader {
     private volatile boolean recentFillChat;
     private volatile boolean orderLimitReached;
     private volatile int lastScannedOrderCount;
+    private volatile long lastDailyLimitLogAt;
     private volatile long heartbeat = System.currentTimeMillis();
     private Thread supervisor;
     private final List<ScreenUtil.GuiOrder> lastScannedBuyOrders = new ArrayList<>();
     private volatile List<ScreenUtil.GuiOrder> lastScannedOrders = List.of();
+    private volatile List<PlanView> lastPlans = List.of();
+
+    public record OrderView(String itemName, String productId, boolean sellSide,
+                            double unitPrice, long amount, long filled) {
+    }
+
+    public record PlanView(String itemName, String productId, double buyPrice,
+                           double sellPrice, double marginPercent,
+                           long expectedProfit, double coinsPerHour) {
+    }
+
+    public static List<OrderView> ordersView() {
+        List<OrderView> result = new ArrayList<>();
+        Trader trader = instance;
+        if (trader == null) {
+            return result;
+        }
+        for (ScreenUtil.GuiOrder order : trader.lastScannedOrders) {
+            if (order == null || order.itemName == null || order.itemName.isBlank()) {
+                continue;
+            }
+            result.add(new OrderView(order.itemName, com.coflnet.flipper.data.ItemNames.productId(order.itemName), order.sellSide,
+                    order.unitPrice, order.amount, order.filled));
+        }
+        return result;
+    }
+
+    public static List<PlanView> lastPlansView() {
+        return Trader.instance == null ? List.of() : Trader.instance.lastPlans;
+    }
+
+    public static int scannedOrderCount() {
+        Trader trader = instance;
+        return trader == null ? 0 : trader.lastScannedOrderCount;
+    }
+
+    private void cachePlans(List<FlipAnalyzer.FlipPlan> plans) {
+        List<PlanView> views = new ArrayList<>();
+        if (plans != null) {
+            for (FlipAnalyzer.FlipPlan plan : plans) {
+                views.add(new PlanView(plan.displayName, plan.productId,
+                        plan.buyPrice, plan.sellPrice, plan.marginPercent,
+                        (long) plan.expectedProfit(), (long) plan.coinsPerHour));
+            }
+        }
+        lastPlans = List.copyOf(views);
+    }
     private final Map<String, MarketData.Product> productByName = new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<String> scannedOrderProductIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final java.util.Map<String, Long> itemBlacklist = new java.util.concurrent.ConcurrentHashMap<>();
@@ -79,7 +143,11 @@ public class Trader {
     }
 
     public synchronized boolean isRunning() {
-        return running;
+        return state == State.RUNNING;
+    }
+
+    public State state() {
+        return state;
     }
 
     public boolean isPaused() {
@@ -87,12 +155,13 @@ public class Trader {
     }
 
     public synchronized void start() {
-        if (running) {
+        if (state != State.IDLE) {
             return;
         }
         running = true;
         paused = false;
         stopRequested = false;
+        state = State.RUNNING;
         heartbeat = System.currentTimeMillis();
         thread = Thread.ofVirtual().name("skycofl-flipper").start(this::run);
         supervisor = Thread.ofVirtual().name("skycofl-flipper-supervisor").start(this::supervise);
@@ -101,7 +170,7 @@ public class Trader {
     private void supervise() {
         while (!stopRequested) {
             ScreenUtil.sleep(10_000);
-            if (stopRequested) return;
+            if (stopRequested || state != State.RUNNING) return;
             long idle = System.currentTimeMillis() - heartbeat;
             if (idle > 45_000L) {
                 log("SUPERVISOR: Trader seit " + idle + "ms ohne Herzschlag. screen="
@@ -112,7 +181,7 @@ public class Trader {
                 SignInput.clear();
                 flowStartAt = 0;
                 heartbeat = System.currentTimeMillis();
-                if (thread == null || !thread.isAlive()) {
+                if ((thread == null || !thread.isAlive()) && state == State.RUNNING) {
                     log("SUPERVISOR: Trader-Thread tot - starte neu");
                     stopRequested = false;
                     running = true;
@@ -123,12 +192,24 @@ public class Trader {
     }
 
     public synchronized void stop() {
+        if (state == State.IDLE) {
+            return;
+        }
+        state = State.STOPPING;
         stopRequested = true;
         ahPriorityActive = false;
         ahPriorityUntil = 0;
+        SignInput.clear();
+        traderOwnsGui = false;
+        ScreenUtil.onClient(() -> {
+            if (isBazaarScreen(ScreenUtil.currentScreen())) {
+                ScreenUtil.closeCurrentScreen();
+            }
+        });
         // Stop requests also come from the GUI; never sleep on the render thread.
         if (thread != null) thread.interrupt();
         if (supervisor != null) supervisor.interrupt();
+        chat("\u00a76[Flipper] \u00a7cStopping.");
     }
 
     public void setPaused(boolean value) {
@@ -147,15 +228,23 @@ public class Trader {
     }
 
     public void yieldToAhFlipper() {
+        yieldToAhFlipper(AH_PRIORITY_DEFAULT_MS);
+    }
+
+    public void yieldToAhFlipper(long holdMs) {
         boolean wasActive = isAhPriority();
+        long hold = Math.max(AH_PRIORITY_MIN_MS, Math.min(AH_PRIORITY_MAX_MS, holdMs));
+        long until = System.currentTimeMillis() + hold;
         ahPriorityActive = true;
-        ahPriorityUntil = System.currentTimeMillis() + 60_000L;
+        if (until > ahPriorityUntil) {
+            ahPriorityUntil = until;
+        }
         traderOwnsGui = false;
         SignInput.clear();
         flowStartAt = 0;
         closeBazaarGui();
         if (!wasActive) {
-            log("AH-Priority aktiv - Bazaar-GUI geschlossen und pausiert");
+            log("AH-Priority aktiv (" + hold + "ms) - Bazaar-GUI geschlossen und pausiert");
         }
     }
 
@@ -172,6 +261,10 @@ public class Trader {
 
     public boolean hasBazaarGui() {
         return isBazaarScreen(ScreenUtil.currentScreen());
+    }
+
+    public boolean isGuiOwned() {
+        return traderOwnsGui;
     }
 
     public void closeBazaarGui() {
@@ -228,7 +321,7 @@ public class Trader {
         if (count >= 3 && !cfg.blacklist.contains(productId)) {
             cfg.blacklist.add(productId);
             cfg.save();
-            chat("§6[Flipper] §cItem dauerhaft ausgeschlossen (3 Fehlschläge in Folge): §f" + displayName);
+            chat("\u00a76[Flipper] \u00a7cItem permanently blacklisted after repeated failures: \u00a7f" + displayName);
         }
     }
 
@@ -258,10 +351,47 @@ public class Trader {
         heartbeat = System.currentTimeMillis();
     }
 
+    private void checkStop() {
+        if (stopRequested || Thread.currentThread().isInterrupted()) {
+            throw new TraderStoppedException();
+        }
+    }
+
+    private boolean isStopRequested() {
+        return stopRequested || Thread.currentThread().isInterrupted();
+    }
+
+    private boolean waitForScreenCancel(ScreenUtil.BzScreen target, long timeoutMs) {
+        return ScreenUtil.waitForScreen(target, timeoutMs, this::isStopRequested);
+    }
+
+    private boolean waitForChatCancel(String contains, long timeoutMs) {
+        return BazaarChatListener.waitForChat(contains, timeoutMs, this::isStopRequested);
+    }
+
+    private void sleepOrStop(long ms) {
+        long end = System.currentTimeMillis() + Math.max(1L, ms);
+        while (System.currentTimeMillis() < end) {
+            checkStop();
+            long remaining = end - System.currentTimeMillis();
+            if (remaining <= 0) {
+                break;
+            }
+            try {
+                Thread.sleep(Math.min(remaining, 100L));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                checkStop();
+            }
+        }
+    }
+
+    private void jitterSleepOrStop(long base, long spread) {
+        sleepOrStop(ScreenUtil.jitterAround(base, spread));
+    }
+
     private void run() {
-        chat("§6[Flipper] §aBazaar Flipper gestartet. §7Reserve: §f" + ScreenUtil.formatCoins(cfg.reserveCoins)
-                + " §7· Max. Orders: §f" + cfg.maxOrders
-                + " §7· Steuer: §f" + cfg.taxPercent + "%");
+        chat("\u00a76[Flipper] \u00a7aBazaar flipper started \u00a77\u00b7 reserve \u00a7f" + ScreenUtil.formatCoins(cfg.reserveCoins) + " \u00a77\u00b7 max orders \u00a7f" + cfg.maxOrders + " \u00a77\u00b7 tax \u00a7f" + cfg.taxPercent + "%");
         long lastCycleAt = 0;
         long lastHeartbeatAt = System.currentTimeMillis();
         int watchdogStrikes = 0;
@@ -270,6 +400,7 @@ public class Trader {
         long pauseMs = cfg.pauseMinutes * 60_000L;
         while (!stopRequested) {
             try {
+                checkStop();
                 heartbeat = System.currentTimeMillis();
                 long heartbeatNow = System.currentTimeMillis();
                 if (heartbeatNow - lastHeartbeatAt > 30_000L) {
@@ -280,7 +411,7 @@ public class Trader {
                             + " market=" + (market != null ? market.products.size() : -1)
                             + " ownsGui=" + traderOwnsGui + " stop=" + stopRequested);
                     if (watchdogStrikes >= 3) {
-                        log("WATCHDOG: Selbstheilung - schließe GUI und setze Flags zurück");
+                        log("WATCHDOG: Selbstheilung - schlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸e GUI und setze Flags zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck");
                         ScreenUtil.closeCurrentScreen();
                         traderOwnsGui = false;
                         SignInput.clear();
@@ -290,13 +421,13 @@ public class Trader {
                 }
                 if (sessionMs > 0 && System.currentTimeMillis() - sessionStartAt >= sessionMs) {
                     cleanupGui();
-                    chat("§6[Flipper] §7Session beendet - Pause für §f" + cfg.pauseMinutes + " §7Min");
+                    chat("\u00a76[Flipper] \u00a77Session ended - pause " + cfg.pauseMinutes + " min.");
                     pauseInterruptibly(pauseMs);
                     if (stopRequested) {
                         break;
                     }
                     sessionStartAt = System.currentTimeMillis();
-                    chat("§6[Flipper] §aNeue Session gestartet");
+                    chat("\u00a76[Flipper] \u00a7aNew session started.");
                     continue;
                 }
                 if (!waitUntilSafe()) {
@@ -305,7 +436,7 @@ public class Trader {
                 refreshMarketIfStale();
                 MarketData data = market;
                 if (data == null) {
-                    ScreenUtil.sleep(5000);
+                    sleepOrStop(5000);
                     continue;
                 }
                 long now = System.currentTimeMillis();
@@ -319,7 +450,9 @@ public class Trader {
                 }
                 watchdogStrikes = 0;
                 lastHeartbeatAt = System.currentTimeMillis();
-                ScreenUtil.jitterSleep(2500, 2500);
+                jitterSleepOrStop(1000, 500);
+            } catch (TraderStoppedException stopped) {
+                break;
             } catch (InterruptedException e) {
                 stopRequested = true;
             } catch (Exception e) {
@@ -329,10 +462,8 @@ public class Trader {
             }
         }
         running = false;
+        state = State.IDLE;
         cleanupGui();
-        double profit = ledger.realizedProfit();
-        chat("§6[Flipper] §cGestoppt. §7Abgeschlossene Trades: §f" + ledger.tradesCompleted()
-                + " §7· Realisierter Gewinn: §f" + (profit >= 0 ? "§a+" : "§c") + ScreenUtil.formatCoins(profit));
     }
 
     private void runTradingCycle(MarketData data) {
@@ -343,11 +474,11 @@ public class Trader {
         }
         long purse = ScreenUtil.readPurse();
         for (int attempt = 0; attempt < 3 && purse < 0; attempt++) {
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
             purse = ScreenUtil.readPurse();
         }
         if (purse < 0) {
-            log("Purse nicht lesbar - Zyklus übersprungen");
+            log("Purse nicht lesbar - Zyklus ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼bersprungen");
             return;
         }
         log("Zyklus: Purse=" + purse + " Bankroll=" + (purse - cfg.reserveCoins)
@@ -364,7 +495,7 @@ public class Trader {
                 replaceWorstOrderIfWorthwhile(data, purse);
             }
         } else {
-            log("Orders noch nicht up-to-date - keine neuen Käufe");
+            log("Orders noch nicht up-to-date - keine neuen KÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ufe");
         }
         maybeReconcile();
         beat();
@@ -374,8 +505,7 @@ public class Trader {
     private void cleanupGui() {
         if (traderOwnsGui) {
             traderOwnsGui = false;
-            ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(600);
+            ScreenUtil.closeAndWait(250);
         }
         SignInput.clear();
         flowStartAt = 0;
@@ -386,10 +516,11 @@ public class Trader {
     }
 
     private void pauseInterruptibly(long totalMs) {
+        checkStop();
         long deadline = System.currentTimeMillis() + totalMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
-            ScreenUtil.sleep(500);
+            sleepOrStop(500);
         }
     }
 
@@ -409,6 +540,7 @@ public class Trader {
     }
 
     private boolean waitUntilSafe() throws InterruptedException {
+        checkStop();
         long lastHeartbeatAt = System.currentTimeMillis();
         int watchdogStrikes = 0;
         while (!stopRequested) {
@@ -422,7 +554,7 @@ public class Trader {
                         + " market=" + (market != null ? market.products.size() : -1)
                         + " ownsGui=" + traderOwnsGui + " stop=" + stopRequested);
                 if (watchdogStrikes >= 3) {
-                    log("WATCHDOG: Selbstheilung - schließe GUI und setze Flags zurück");
+                    log("WATCHDOG: Selbstheilung - schlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸e GUI und setze Flags zurÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼ck");
                     ScreenUtil.closeCurrentScreen();
                     traderOwnsGui = false;
                     SignInput.clear();
@@ -432,26 +564,25 @@ public class Trader {
             }
             if (isAhPriority()) {
                 closeBazaarGui();
-                ScreenUtil.sleep(100);
+                sleepOrStop(100);
                 continue;
             }
             if (paused) {
-                ScreenUtil.sleep(2000);
+                sleepOrStop(500);
                 continue;
             }
             if (!ScreenUtil.onSkyBlock()) {
-                ScreenUtil.sleep(2000);
+                sleepOrStop(1000);
                 continue;
             }
             if (ScreenUtil.inCombatOrDead()) {
-                ScreenUtil.sleep(2000);
+                sleepOrStop(1000);
                 continue;
             }
             ScreenUtil.BzScreen screen = ScreenUtil.currentScreen();
             if (traderOwnsGui) {
                 traderOwnsGui = false;
-                ScreenUtil.closeCurrentScreen();
-                ScreenUtil.sleep(800);
+                ScreenUtil.closeAndWait(250);
                 continue;
             }
             if (screen == ScreenUtil.BzScreen.BAZAAR || screen == ScreenUtil.BzScreen.PRODUCT
@@ -460,15 +591,14 @@ public class Trader {
                     || screen == ScreenUtil.BzScreen.BUY_PRICE || screen == ScreenUtil.BzScreen.BUY_CONFIRM
                     || screen == ScreenUtil.BzScreen.SELL_AMOUNT || screen == ScreenUtil.BzScreen.SELL_PRICE
                     || screen == ScreenUtil.BzScreen.SELL_CONFIRM || screen == ScreenUtil.BzScreen.SIGN) {
-                log("Übrig gebliebene Bazaar-GUI geschlossen: " + screen);
-                ScreenUtil.closeCurrentScreen();
-                ScreenUtil.jitterSleep(600, 300);
+                log("ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“brig gebliebene Bazaar-GUI geschlossen: " + screen);
+                ScreenUtil.closeAndWait(250);
                 continue;
             }
             if (screen == ScreenUtil.BzScreen.NONE) {
                 return true;
             }
-            ScreenUtil.sleep(1500);
+            sleepOrStop(250);
         }
         return false;
     }
@@ -489,13 +619,14 @@ public class Trader {
     }
 
     private void sendCommand(String command) {
+        checkStop();
         if (isAhPriority()) {
             return;
         }
         long now = System.currentTimeMillis();
         long wait = lastChatAt + CHAT_MIN_INTERVAL_MS - now;
         if (wait > 0) {
-            ScreenUtil.sleep(wait + 150);
+            sleepOrStop(wait + 150);
         }
         ScreenUtil.onClient(() -> {
             net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
@@ -507,6 +638,7 @@ public class Trader {
     }
 
     private void click(int slot, int button) {
+        checkStop();
         if (isAhPriority()) {
             return;
         }
@@ -518,7 +650,7 @@ public class Trader {
         long now = System.currentTimeMillis();
         long wait = lastClickAt + CLICK_MIN_INTERVAL_MS - now;
         if (wait > 0) {
-            ScreenUtil.sleep(wait + 100);
+            sleepOrStop(wait + 100);
         }
         String name = ScreenUtil.slotName(slot);
         log("Klick Slot " + slot + " (button " + button + ") Item: " + name);
@@ -527,10 +659,11 @@ public class Trader {
     }
 
     private void clickDelay() {
+        checkStop();
         long now = System.currentTimeMillis();
         long wait = lastClickAt + CLICK_MIN_INTERVAL_MS - now;
         if (wait > 0) {
-            ScreenUtil.jitterSleep(wait + 100, 150);
+            jitterSleepOrStop(wait + 100, 150);
         }
         lastClickAt = System.currentTimeMillis();
     }
@@ -546,6 +679,7 @@ public class Trader {
     }
 
     private boolean clickByName(String text, int button, long timeoutMs, String what) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
@@ -561,13 +695,14 @@ public class Trader {
                 log("Klick verifiziert: " + what);
                 return true;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         log("Klick-Ziel nicht gefunden: " + what);
         return false;
     }
 
     private boolean clickExactName(String text, int button, long timeoutMs, String what) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
@@ -583,13 +718,14 @@ public class Trader {
                 log("Klick verifiziert (exakt): " + what);
                 return true;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         log("Exaktes Klick-Ziel nicht gefunden: " + what);
         return false;
     }
 
     private boolean clickSign(long timeoutMs, String what) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
@@ -605,13 +741,14 @@ public class Trader {
                 log("Klick verifiziert: " + what);
                 return true;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         log("Sign nicht gefunden: " + what);
         return false;
     }
 
     private boolean clickOrder(String displayName, boolean sellSide, int button, long timeoutMs, String what) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
@@ -627,13 +764,14 @@ public class Trader {
                 log("Klick verifiziert: " + what);
                 return true;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         log("Order-Eintrag nicht gefunden: " + what);
         return false;
     }
 
     private boolean clickConfirmAtomic(String acceptContains, long timeoutMs) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
@@ -649,7 +787,7 @@ public class Trader {
                 log("Klick verifiziert: Confirm (" + acceptContains + ")");
                 return true;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         log("Confirm-Button nicht gefunden: " + acceptContains);
         return false;
@@ -666,20 +804,20 @@ public class Trader {
                 return false;
             }
             sendCommand("bz");
-            if (ScreenUtil.waitForScreen(ScreenUtil.BzScreen.BAZAAR, 10_000)) {
+            if (waitForScreenCancel(ScreenUtil.BzScreen.BAZAAR, 10_000)) {
                 traderOwnsGui = true;
                 flowStartAt = System.currentTimeMillis();
-                ScreenUtil.sleep(400);
+                sleepOrStop(400);
                 return true;
             }
-            if (ScreenUtil.waitForScreen(ScreenUtil.BzScreen.PRODUCT, 3000)) {
+            if (waitForScreenCancel(ScreenUtil.BzScreen.PRODUCT, 3000)) {
                 traderOwnsGui = true;
                 flowStartAt = System.currentTimeMillis();
-                ScreenUtil.sleep(400);
+                sleepOrStop(400);
                 return true;
             }
             lastBazaarFailAt = now;
-            chat("§6[Flipper] §cBazaar konnte nicht geöffnet werden (Booster Cookie aktiv?).");
+            chat("\u00a76[Flipper] \u00a7cCould not open Bazaar (Booster Cookie active?).");
             return false;
         }
         if (screen == ScreenUtil.BzScreen.BAZAAR || screen == ScreenUtil.BzScreen.PRODUCT
@@ -689,14 +827,14 @@ public class Trader {
         }
         if (screen == ScreenUtil.BzScreen.ORDERS || screen == ScreenUtil.BzScreen.ORDER_OPTIONS) {
             ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(600);
+            sleepOrStop(600);
             return openBazaar();
         }
-        log("Fremder Screen offen - warte auf Schließen: " + screen);
+        log("Fremder Screen offen - warte auf SchlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸en: " + screen);
         long deadline = System.currentTimeMillis() + 25_000;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
-            ScreenUtil.sleep(1000);
+            sleepOrStop(1000);
             screen = ScreenUtil.currentScreen();
             if (screen == ScreenUtil.BzScreen.NONE) {
                 return openBazaar();
@@ -708,7 +846,7 @@ public class Trader {
             }
             if (screen == ScreenUtil.BzScreen.ORDERS || screen == ScreenUtil.BzScreen.ORDER_OPTIONS) {
                 ScreenUtil.closeCurrentScreen();
-                ScreenUtil.sleep(600);
+                sleepOrStop(600);
             }
         }
         log("Fremder Screen blieb offen");
@@ -726,15 +864,15 @@ public class Trader {
                 return false;
             }
             sendCommand("managebazaarorders");
-            if (ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDERS, 12_000)) {
+            if (waitForScreenCancel(ScreenUtil.BzScreen.ORDERS, 12_000)) {
                 lastOrdersFailAt = 0;
                 traderOwnsGui = true;
                 flowStartAt = System.currentTimeMillis();
-                ScreenUtil.sleep(400);
+                sleepOrStop(400);
                 return true;
             }
             lastOrdersFailAt = now;
-            chat("§6[Flipper] §cOrders-GUI konnte nicht geöffnet werden.");
+            chat("\u00a76[Flipper] \u00a7cCould not open Orders GUI.");
             return false;
         }
         if (screen == ScreenUtil.BzScreen.ORDERS) {
@@ -744,14 +882,14 @@ public class Trader {
         if (screen == ScreenUtil.BzScreen.BAZAAR || screen == ScreenUtil.BzScreen.PRODUCT
                 || screen == ScreenUtil.BzScreen.SEARCH || screen == ScreenUtil.BzScreen.ORDER_OPTIONS) {
             ScreenUtil.closeCurrentScreen();
-            ScreenUtil.sleep(600);
+            sleepOrStop(600);
             return openOrdersGui();
         }
-        log("Fremder Screen offen - warte auf Schließen: " + screen);
+        log("Fremder Screen offen - warte auf SchlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸en: " + screen);
         long deadline = System.currentTimeMillis() + 25_000;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
-            ScreenUtil.sleep(1000);
+            sleepOrStop(1000);
             screen = ScreenUtil.currentScreen();
             if (screen == ScreenUtil.BzScreen.NONE) {
                 return openOrdersGui();
@@ -797,7 +935,7 @@ public class Trader {
         }
         String expected = productId != null ? ItemNames.displayName(productId) : fallbackName;
         if (!ScreenUtil.sameName(actual, expected)) {
-            log("Falsche Produktseite: erwartet='" + expected + "' tatsächlich='" + actual + "'");
+            log("Falsche Produktseite: erwartet='" + expected + "' tatsÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤chlich='" + actual + "'");
             return false;
         }
         return true;
@@ -882,11 +1020,11 @@ public class Trader {
                     signSeen = true;
                     break;
                 }
-                ScreenUtil.sleep(120);
+                sleepOrStop(120);
             }
         }
         if (!signSeen) {
-            log("Such-Sign öffnete sich nicht. " + ScreenUtil.screenDebugInfo());
+            log("Such-Sign ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¶ffnete sich nicht. " + ScreenUtil.screenDebugInfo());
             return false;
         }
         long deadline = System.currentTimeMillis() + 3500;
@@ -910,30 +1048,33 @@ public class Trader {
                 long clickStart = System.currentTimeMillis();
                 if (clickExactName(displayName, 0, 2500, "Such-Ergebnis: " + displayName)) {
                     clicks++;
-                    ScreenUtil.sleep(700);
+                    sleepOrStop(700);
                     for (BazaarChatListener.ChatEntry entry : BazaarChatListener.since(clickStart)) {
                         if (entry.text.toLowerCase().contains("mutation")) {
                             if (productId != null && !cfg.blacklist.contains(productId)) {
                                 cfg.blacklist.add(productId);
                                 cfg.save();
                             }
-                            chat("§6[Flipper] §cKein Bazaar-Item (Mutation) - permanent ausgeschlossen: §f"
-                                    + displayName);
+                            chat("\u00a76[Flipper] \u00a7cNo Bazaar item - permanently blacklisted: \u00a7f" + displayName);
                             cleanupGui();
                             return false;
                         }
                     }
-                    ScreenUtil.sleep(600);
+                    sleepOrStop(600);
                     continue;
                 }
             }
-            ScreenUtil.sleep(200);
+            sleepOrStop(200);
         }
         log("Produktseite nach Suche nicht erreicht. " + ScreenUtil.screenDebugInfo());
         return false;
     }
 
     private boolean placeBuyOrder(Trade trade, FlipAnalyzer.FlipPlan plan) {
+        checkStop();
+        if (BazaarDailyLimit.reached()) {
+            return false;
+        }
         beat();
         log("Platziere Buy Order: " + plan.qty + "x " + plan.displayName + " @ " + plan.buyPrice);
         if (!openBazaar()) {
@@ -942,7 +1083,7 @@ public class Trader {
         }
         if (!searchProduct(plan.displayName, plan.productId)) {
             log("searchProduct fehlgeschlagen: " + plan.displayName);
-            chat("§6[Flipper] §cItem nicht gefunden: §f" + plan.displayName);
+            ;
             cleanupGui();
             return false;
         }
@@ -952,14 +1093,14 @@ public class Trader {
             return false;
         }
         if (!productPageMatches(plan.productId, plan.displayName)) {
-            chat("��6[Flipper] ��cFalsches Produkt erkannt - Kauf abgebrochen: ��f" + plan.displayName);
+            chat("\u00a76[Flipper] \u00a7cWrong product detected - purchase cancelled: \u00a7f" + plan.displayName);
             blacklistProduct(plan.productId, plan.displayName);
             cleanupGui();
             return false;
         }
         String actualId = ItemNames.productId(ScreenUtil.productName());
         if (!actualProductPriceSane(actualId, plan.buyPrice, plan.sellPrice)) {
-            chat("��6[Flipper] ��cWeekly-Avg-Check fehlgeschlagen - Kauf abgebrochen: ��f" + plan.displayName);
+            chat("\u00a76[Flipper] \u00a7cWeekly average check failed - purchase cancelled: \u00a7f" + plan.displayName);
             blacklistProduct(plan.productId, plan.displayName);
             cleanupGui();
             return false;
@@ -969,7 +1110,7 @@ public class Trader {
             cleanupGui();
             return false;
         }
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.BUY_AMOUNT, 6000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.BUY_AMOUNT, 6000)) {
             log("BUY_AMOUNT Screen nicht erreicht");
             cleanupGui();
             return false;
@@ -980,31 +1121,31 @@ public class Trader {
             cleanupGui();
             return false;
         }
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.BUY_PRICE, 6000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.BUY_PRICE, 6000)) {
             log("BUY_PRICE Screen nicht erreicht");
             cleanupGui();
             return false;
         }
-        ScreenUtil.sleep(ScreenUtil.jitter(400));
+        sleepOrStop(ScreenUtil.jitter(400));
         SignInput.set(ScreenUtil.formatPrice(plan.buyPrice));
         if (!clickSign(5000, "Preis-Sign")) {
             log("Preis-Sign nicht gefunden");
             cleanupGui();
             return false;
         }
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.BUY_CONFIRM, 6000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.BUY_CONFIRM, 6000)) {
             log("BUY_CONFIRM Screen nicht erreicht");
             cleanupGui();
             return false;
         }
-        ScreenUtil.sleep(ScreenUtil.jitter(400));
+        sleepOrStop(ScreenUtil.jitter(400));
         if (!clickConfirmAtomic("Buy Order", 8000)) {
             log("Confirm-Button nicht gefunden");
             cleanupGui();
             return false;
         }
-        if (!BazaarChatListener.waitForChat("Buy Order Setup!", 12_000)) {
-            log("Keine 'Buy Order Setup!' Bestätigung im Chat");
+        if (!waitForChatCancel("Buy Order Setup!", 12_000)) {
+            log("Keine 'Buy Order Setup!' BestÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤tigung im Chat");
             cleanupGui();
             return false;
         }
@@ -1017,8 +1158,18 @@ public class Trader {
     }
 
     private boolean placeNewBuyOrders(MarketData data, long purse) {
+        if (BazaarDailyLimit.reached()) {
+            long now = System.currentTimeMillis();
+            if (now - lastDailyLimitLogAt > 60_000L) {
+                lastDailyLimitLogAt = now;
+                chat("\u00a76[Flipper] \u00a7cDaily sell limit reached ("
+                        + ScreenUtil.formatCoins(BazaarDailyLimit.LIMIT_COINS)
+                        + "). No new buy orders until 02:00 Europe/Berlin.");
+            }
+            return false;
+        }
         if (orderLimitReached) {
-            log("Order-Limit erreicht - warte auf Claim/Cancel, keine neuen Käufe");
+            log("Order-Limit erreicht - warte auf Claim/Cancel, keine neuen KÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ufe");
             return false;
         }
         double bankroll = Math.max(0, purse - cfg.reserveCoins);
@@ -1026,9 +1177,7 @@ public class Trader {
             long now = System.currentTimeMillis();
             if (now - lastLowBankrollAt > 10 * 60 * 1000L) {
                 lastLowBankrollAt = now;
-                chat("§6[Flipper] §cZu wenig Geld: §fPurse " + ScreenUtil.formatCoins(purse)
-                        + " §7· Reserve " + ScreenUtil.formatCoins(cfg.reserveCoins)
-                        + " §7(Reserve in config/CoflSky/flipper.json änderbar)");
+                chat("\u00a76[Flipper] \u00a7cNot enough coins \u00a77\u00b7 purse \u00a7f" + ScreenUtil.formatCoins(purse) + " \u00a77\u00b7 reserve \u00a7f" + ScreenUtil.formatCoins(cfg.reserveCoins));
             }
             return false;
         }
@@ -1044,8 +1193,9 @@ public class Trader {
             }
         }
         existing.addAll(scannedOrderProductIds);
-        List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, availableSlots);
-        log("Neue Käufe: " + plans.size() + " Kandidaten, Bankroll=" + bankroll + ", Slots=" + availableSlots);
+        List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, availableSlots, this::isStopRequested, 3000L);
+        cachePlans(plans);
+        log("Neue KÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ufe: " + plans.size() + " Kandidaten, Bankroll=" + bankroll + ", Slots=" + availableSlots);
         int placed = 0;
         for (FlipAnalyzer.FlipPlan plan : plans) {
             if (placed >= cfg.maxNewOrdersPerCycle || stopRequested) {
@@ -1062,15 +1212,10 @@ public class Trader {
             if (placeBuyOrder(trade, plan)) {
                 trade.state = Trade.State.BUY_OPEN;
                 ledger.update(trade);
-                chat("§6[Flipper] §7Buy Order: §f" + plan.qty + "x " + plan.displayName
-                        + " §7@ §f" + ScreenUtil.formatPrice(plan.buyPrice)
-                        + " §7(§f" + ScreenUtil.formatCoins(trade.cost) + "§7)"
-                        + " §7→ erwarteter Gewinn: §a" + ScreenUtil.formatCoins(plan.expectedProfit())
-                        + " §7· Coins/h: §a" + ScreenUtil.formatCoins(plan.coinsPerHour)
-                        + " §7· Volumen: §f" + formatHourly(plan.hourlyVolume) + "/h");
+                chat("\u00a76[Flipper] \u00a7aBuy Order: \u00a7f" + plan.qty + "x " + plan.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(plan.buyPrice));
                 log(String.format(java.util.Locale.US,
                         "Formel %s: B=%.1f S=%.1f m=%.2f v=%.2f/h u=%.2f/%.2f c=%.3f q=%d "
-                                + "P=%.0f r=%.2f e=%.4f Lim/h=%.0f λ=%.4f Score=%.0f",
+                                + "P=%.0f r=%.2f e=%.4f Lim/h=%.0f ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â½ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â»=%.4f Score=%.0f",
                         plan.displayName, plan.buyPrice, plan.sellPrice, plan.profitPerUnit,
                         plan.hourlyVolume, plan.uBuy, plan.uSell, plan.c, plan.qty,
                         plan.coinsPerHour, plan.r, plan.e, plan.limitPerHour, plan.lambda, plan.score));
@@ -1079,12 +1224,11 @@ public class Trader {
                 trade.state = Trade.State.ABANDONED;
                 ledger.update(trade);
                 if (orderLimitReached) {
-                    chat("§6[Flipper] §eOrder-Limit erreicht – keine neuen Orders bis Claim/Cancel.");
+                    chat("\u00a76[Flipper] \u00a7eOrder limit reached - no new orders until claim/cancel.");
                     break;
                 }
                 blacklistProduct(plan.productId, plan.displayName);
-                chat("§6[Flipper] §cBuy Order fehlgeschlagen: §f" + plan.displayName
-                        + " §7– Item " + (int) Math.max(1.0, cfg.blacklistMinutes) + " Min. geblacklistet");
+                chat("\u00a76[Flipper] \u00a7cBuy order failed: \u00a7f" + plan.displayName + " \u00a77(blacklisted " + (int) Math.max(1.0, cfg.blacklistMinutes) + "m)");
                 failPause("Buy Order fehlgeschlagen: " + plan.displayName);
                 break;
             }
@@ -1111,6 +1255,9 @@ public class Trader {
     }
 
     private void replaceWorstOrderIfWorthwhile(MarketData data, long purse) {
+        if (BazaarDailyLimit.reached()) {
+            return;
+        }
         int open = lastScannedOrderCount;
         int availableSlots = Math.max(0, cfg.maxOrders - open);
         if (availableSlots > 0 || orderLimitReached || lastScannedBuyOrders.isEmpty()) {
@@ -1139,7 +1286,8 @@ public class Trader {
             }
         }
         existing.addAll(scannedOrderProductIds);
-        List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, 1);
+        List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, 1, this::isStopRequested, 3000L);
+        cachePlans(plans);
         if (plans.isEmpty()) {
             return;
         }
@@ -1151,15 +1299,14 @@ public class Trader {
                     + " alt=" + ScreenUtil.formatCoins(worstScore) + " (" + worst.itemName + ")");
             return;
         }
-        log("Ersetze schwächste Buy Order: " + worst.itemName + " (" + ScreenUtil.formatCoins(worstScore)
+        log("Ersetze schwÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤chste Buy Order: " + worst.itemName + " (" + ScreenUtil.formatCoins(worstScore)
                 + ") durch " + best.displayName + " (" + ScreenUtil.formatCoins(newScore) + ")");
         Trade base = ensureTradeFor(worst);
         if (!cancelBuyOrder(base, "Ersatz", data)) {
             failPause("Ersatz-Cancel fehlgeschlagen: " + worst.itemName);
             return;
         }
-        chat("§6[Flipper] §cBuy Order ersetzt: §f" + worst.itemName
-                + " §8(" + ScreenUtil.formatCoins(worstScore) + "§8)");
+        chat("\u00a76[Flipper] \u00a7cBuy order replaced: \u00a7f" + worst.itemName + " \u00a77(" + ScreenUtil.formatCoins(worstScore) + ")");
         Trade trade = new Trade();
         trade.productId = best.productId;
         trade.displayName = best.displayName;
@@ -1171,19 +1318,16 @@ public class Trader {
         if (placeBuyOrder(trade, best)) {
             trade.state = Trade.State.BUY_OPEN;
             ledger.update(trade);
-            chat("§6[Flipper] §7Neue Buy Order: §f" + best.qty + "x " + best.displayName
-                    + " §7@ §f" + ScreenUtil.formatPrice(best.buyPrice)
-                    + " §7→ erwarteter Gewinn: §a" + ScreenUtil.formatCoins(best.expectedProfit()));
+            chat("\u00a76[Flipper] \u00a7aNew Buy Order: \u00a7f" + best.qty + "x " + best.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(best.buyPrice));
         } else {
             trade.state = Trade.State.ABANDONED;
             ledger.update(trade);
             if (orderLimitReached) {
-                chat("§6[Flipper] §eOrder-Limit erreicht – Ersatz-Kauf abgebrochen.");
+                chat("\u00a76[Flipper] \u00a7eOrder limit reached - replacement cancelled.");
                 return;
             }
             blacklistProduct(best.productId, best.displayName);
-            chat("§6[Flipper] §cErsatz-Kauf fehlgeschlagen: §f" + best.displayName
-                    + " §7– " + (int) Math.max(1.0, cfg.blacklistMinutes) + " Min. geblacklistet");
+            chat("\u00a76[Flipper] \u00a7cReplacement buy failed: \u00a7f" + best.displayName + " \u00a77(blacklisted " + (int) Math.max(1.0, cfg.blacklistMinutes) + "m)");
         }
     }
 
@@ -1246,7 +1390,7 @@ public class Trader {
         for (List<ScreenUtil.GuiOrder> group : sellGroups.values()) {
             String itemName = group.get(0).itemName;
             if (group.size() > 1) {
-                log("Mehrere Sell Offers für " + itemName + " (" + group.size() + ") - zusammenführen");
+                log("Mehrere Sell Offers fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r " + itemName + " (" + group.size() + ") - zusammenfÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼hren");
                 busy |= !mergeSellOrders(group, data);
             } else {
                 ScreenUtil.GuiOrder order = group.get(0);
@@ -1292,7 +1436,7 @@ public class Trader {
                 continue;
             }
             group.sort(Comparator.comparingDouble(o -> o.unitPrice));
-            log("Mehrere Buy Orders für " + group.get(0).itemName + " (" + group.size()
+            log("Mehrere Buy Orders fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r " + group.get(0).itemName + " (" + group.size()
                     + ") - behalte beste, cancel Rest");
             for (int i = 1; i < group.size(); i++) {
                 ScreenUtil.GuiOrder extra = group.get(i);
@@ -1363,7 +1507,7 @@ public class Trader {
                 break;
             }
             if (ScreenUtil.freeInventorySlots() < 4) {
-                log("Inventar fast voll - verlasse GUI, Rest später");
+                log("Inventar fast voll - verlasse GUI, Rest spÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ter");
                 break;
             }
             int slot = findOrderSlotRetry(trade.displayName, false, 2500);
@@ -1393,7 +1537,7 @@ public class Trader {
                 trade.qty = Math.max(0, trade.qty - claimedNow);
                 trade.cost = trade.qty * trade.buyPrice;
                 ledger.update(trade);
-                chat("§6[Flipper] §7Geclaimt: §f" + claimedNow + "x " + trade.displayName);
+                chat("\u00a76[Flipper] \u00a7aClaimed: \u00a7f" + claimedNow + "x " + trade.displayName);
                 if (ScreenUtil.freeInventorySlots() < 4) {
                     log("Inventar voll nach Claim - verlasse GUI");
                     cleanupGui();
@@ -1401,11 +1545,11 @@ public class Trader {
                 }
             }
             if (ScreenUtil.currentScreen() != ScreenUtil.BzScreen.ORDER_OPTIONS
-                    && !ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 2000)) {
+                    && !waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 2000)) {
                 if (!clickOrder(trade.displayName, false, 1, 4000, "Batch-Cancel (Rechtsklick): " + trade.displayName)) {
                     continue;
                 }
-                if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 2500)) {
+                if (!waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 2500)) {
                     continue;
                 }
             }
@@ -1420,12 +1564,12 @@ public class Trader {
                 trade.state = Trade.State.CANCELLED;
                 ledger.update(trade);
                 cancelled++;
-                chat("§6[Flipper] §cBuy Order gecancelt (§7" + reason + "§c): §f" + trade.displayName);
+                chat("\u00a76[Flipper] \u00a7cBuy order cancelled: \u00a7f" + trade.displayName + " \u00a77(" + reason + ")");
             }
             ScreenUtil.BzScreen screen = ScreenUtil.currentScreen();
             if (screen != ScreenUtil.BzScreen.ORDERS) {
                 ScreenUtil.closeCurrentScreen();
-                ScreenUtil.jitterSleep(400, 200);
+                jitterSleepOrStop(400, 200);
             }
         }
         cleanupGui();
@@ -1433,6 +1577,7 @@ public class Trader {
     }
 
     private boolean mergeSellOrders(List<ScreenUtil.GuiOrder> group, MarketData data) {
+        checkStop();
         String itemName = group.get(0).itemName;
         for (ScreenUtil.GuiOrder order : group) {
             if (!order.coinsClaimable || order.claimable <= 0) {
@@ -1453,15 +1598,12 @@ public class Trader {
             }
             if (target != null) {
                 ScreenUtil.clickOrderSlotByIndex(target.slot, target.itemName, true, 0);
-                if (BazaarChatListener.waitForChat("Claimed", 3000)) {
+                if (waitForChatCancel("Claimed", 3000)) {
                     Trade trade = findLedgerTrade(itemName, true, order.amount);
                     if (trade != null) {
                         trade.state = Trade.State.DONE;
                         markProductSuccess(trade.productId);
                         ledger.update(trade);
-                        double profit = trade.revenue - trade.cost;
-                        chat("§6[Flipper] §aTrade abgeschlossen: §f" + trade.displayName
-                                + " §7· Gewinn: §a+" + ScreenUtil.formatCoins(profit));
                     }
                 }
             }
@@ -1508,8 +1650,7 @@ public class Trader {
         boolean listed = createSellOfferFromInventory(merged, fresh);
         if (listed) {
             sellRepriceCooldown.put(merged.displayName.toLowerCase(), System.currentTimeMillis());
-            chat("§6[Flipper] §7Sell Offers zusammengeführt: §f" + merged.qty + "x " + merged.displayName
-                    + " §7@ §f" + ScreenUtil.formatPrice(merged.sellPrice));
+            chat("\u00a76[Flipper] \u00a7aMerged sell offers: \u00a7f" + merged.qty + "x " + merged.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(merged.sellPrice));
             return true;
         }
         return false;
@@ -1549,18 +1690,15 @@ public class Trader {
             cleanupGui();
             return false;
         }
-        boolean claimed = BazaarChatListener.waitForChat("Claimed", 3000);
+        boolean claimed = waitForChatCancel("Claimed", 3000);
         if (claimed) {
             Trade trade = findLedgerTrade(order.itemName, true, order.amount);
             if (trade != null) {
                 trade.state = Trade.State.DONE;
                 markProductSuccess(trade.productId);
                 ledger.update(trade);
-                double profit = trade.revenue - trade.cost;
-                chat("§6[Flipper] §aTrade abgeschlossen: §f" + trade.displayName
-                        + " §7· Gewinn: §a+" + ScreenUtil.formatCoins(profit));
             } else {
-                chat("§6[Flipper] §aCoins geclaimt: §f" + order.itemName);
+                chat("\u00a76[Flipper] \u00a7aCoins claimed: \u00a7f" + order.itemName);
             }
             cleanupGui();
             return true;
@@ -1568,7 +1706,7 @@ public class Trader {
         ScreenUtil.BzScreen screen = ScreenUtil.currentScreen();
         if (screen != ScreenUtil.BzScreen.ORDERS) {
             ScreenUtil.closeCurrentScreen();
-            ScreenUtil.jitterSleep(400, 200);
+            jitterSleepOrStop(400, 200);
         }
         MarketData.Product product = productFor(order.itemName);
         boolean outdated = product != null && product.bestAsk > 0 && product.bestAsk < order.unitPrice - 0.05;
@@ -1594,8 +1732,7 @@ public class Trader {
             base.lastRelistedAt = System.currentTimeMillis();
             ledger.update(base);
             sellRepriceCooldown.put(order.itemName.toLowerCase(), System.currentTimeMillis());
-            chat("§6[Flipper] §7Sell Offer aktualisiert: §f" + base.displayName
-                    + " §7@ §f" + ScreenUtil.formatPrice(base.sellPrice));
+            chat("\u00a76[Flipper] \u00a7aSell offer updated: \u00a7f" + base.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(base.sellPrice));
             return true;
         }
         return false;
@@ -1624,7 +1761,7 @@ public class Trader {
         batch.state = Trade.State.CLAIMED;
         batch.createdAt = System.currentTimeMillis();
         ledger.add(batch);
-        chat("§6[Flipper] §7Geclaimt: §f" + claimed + "x " + order.itemName);
+        chat("\u00a76[Flipper] \u00a7aClaimed: \u00a7f" + claimed + "x " + order.itemName);
         if (data != null) {
             createSellOfferFromInventory(batch, data);
         }
@@ -1646,7 +1783,7 @@ public class Trader {
             }
         }
         if (target == null) {
-            log("Buy Order nicht mehr vorhanden - überspringe: " + order.itemName);
+            log("Buy Order nicht mehr vorhanden - ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼berspringe: " + order.itemName);
             cleanupGui();
             return true;
         }
@@ -1662,7 +1799,7 @@ public class Trader {
             return true;
         }
         if (!fullyFilled && !outdated && !unprofitable && (claimable || partiallyFilled)) {
-            log("Buy Order teilgefüllt - claime gefüllten Teil: " + order.itemName);
+            log("Buy Order teilgefÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼llt - claime gefÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼llten Teil: " + order.itemName);
             claimEntryItems(target, order, data);
             cleanupGui();
             return true;
@@ -1695,7 +1832,7 @@ public class Trader {
                 createSellOfferFromInventory(batch, data);
                 return true;
             }
-            if (ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
+            if (waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
                 if (clickByName("Flip Order", 0, 3000, "Flip Order")) {
                     double targetSell = 0;
                     if (product != null && product.bestAsk > 0) {
@@ -1712,10 +1849,10 @@ public class Trader {
                         trade.sellPrice = targetSell;
                         trade.revenue = trade.qty * targetSell * (1.0 - cfg.taxPercent / 100.0);
                         trade.state = Trade.State.SELL_OPEN;
+                        BazaarDailyLimit.addSale(Math.round(trade.qty * targetSell));
                         trade.listedAt = System.currentTimeMillis();
                         ledger.update(trade);
-                        chat("§6[Flipper] §7Sell Offer erstellt (Flip): §f" + order.itemName
-                                + " §7@ §f" + ScreenUtil.formatPrice(targetSell));
+                        chat("\u00a76[Flipper] \u00a7aSell offer created (flip): \u00a7f" + order.itemName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(targetSell));
                         cleanupGui();
                         return true;
                     }
@@ -1724,25 +1861,26 @@ public class Trader {
                     return false;
                 }
                 ScreenUtil.closeCurrentScreen();
-                ScreenUtil.jitterSleep(400, 200);
+                jitterSleepOrStop(400, 200);
             }
         }
-        String reason = outdated ? "überboten" : "nicht profitabel";
+        String reason = outdated ? "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼berboten" : "nicht profitabel";
         Trade base = ensureTradeFor(order);
         boolean cancelled = cancelBuyOrder(base, reason, data);
         if (cancelled) {
-            chat("§6[Flipper] §cBuy Order gecancelt (§7" + reason + "§c): §f" + order.itemName);
+            chat("\u00a76[Flipper] \u00a7cBuy order cancelled: \u00a7f" + order.itemName + " \u00a77(" + reason + ")");
             return true;
         }
         return false;
     }
 
     private void waitForOrderGuiStable(long timeoutMs) {
+        checkStop();
         long deadline = System.currentTimeMillis() + timeoutMs;
         String previous = ScreenUtil.containerSignature();
         while (System.currentTimeMillis() < deadline && !stopRequested) {
             beat();
-            ScreenUtil.jitterSleep(300, 200);
+            jitterSleepOrStop(300, 200);
             String current = ScreenUtil.containerSignature();
             if (current != null && current.equals(previous)) {
                 return;
@@ -1824,7 +1962,7 @@ public class Trader {
             if (slot >= 0) {
                 return slot;
             }
-            ScreenUtil.sleep(400);
+            sleepOrStop(400);
         }
         return -1;
     }
@@ -1849,19 +1987,19 @@ public class Trader {
                 noneStreak++;
                 if (noneStreak > 18) {
                     traderOwnsGui = false;
-                    log("GUI extern geschlossen während Claim-Warten");
+                    log("GUI extern geschlossen wÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤hrend Claim-Warten");
                     return 0;
                 }
             } else {
                 noneStreak = 0;
                 if (current != ScreenUtil.BzScreen.ORDERS && current != ScreenUtil.BzScreen.ORDER_OPTIONS
                         && current != ScreenUtil.BzScreen.SIGN) {
-                    log("Screen verließ Orders-GUI während Claim-Warten: " + current
+                    log("Screen verlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ Orders-GUI wÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤hrend Claim-Warten: " + current
                             + " " + ScreenUtil.screenDebugInfo());
                     return 0;
                 }
             }
-            ScreenUtil.sleep(150);
+            sleepOrStop(150);
         }
         return 0;
     }
@@ -1887,6 +2025,7 @@ public class Trader {
 
 
     private boolean waitForFlipChat(long timeoutMs) {
+        checkStop();
         long start = System.currentTimeMillis();
         long deadline = start + timeoutMs;
         while (System.currentTimeMillis() < deadline && !stopRequested) {
@@ -1904,7 +2043,7 @@ public class Trader {
                     continue;
                 }
             }
-            ScreenUtil.sleep(150);
+            sleepOrStop(150);
         }
         for (BazaarChatListener.ChatEntry entry : BazaarChatListener.since(start)) {
             if (entry.text.contains("Order Flipped!") || entry.text.contains("Sell Offer Setup!")) {
@@ -1920,12 +2059,13 @@ public class Trader {
         ledger.update(trade);
         if (trade.notFoundChecks >= 5) {
             ledger.remove(trade);
-            log("Order existiert nicht mehr - Trade gelöscht: " + trade.displayName);
+            log("Order existiert nicht mehr - Trade gelÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¶scht: " + trade.displayName);
         }
         cleanupGui();
     }
 
     private boolean waitForCancelled(long timeoutMs) {
+        checkStop();
         long start = System.currentTimeMillis();
         long deadline = start + timeoutMs;
         long lastConfirmClick = 0;
@@ -1948,7 +2088,7 @@ public class Trader {
                     || current == ScreenUtil.BzScreen.SELL_CONFIRM || current == ScreenUtil.BzScreen.SIGN) {
                 foreignStreak++;
                 if (foreignStreak > 20) {
-                    log("Screen verließ Orders-Flow während Cancel-Warten");
+                    log("Screen verlieÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ Orders-Flow wÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤hrend Cancel-Warten");
                     return false;
                 }
             } else {
@@ -1965,7 +2105,7 @@ public class Trader {
                     }
                 }
             }
-            ScreenUtil.sleep(150);
+            sleepOrStop(150);
         }
         for (BazaarChatListener.ChatEntry entry : BazaarChatListener.since(start)) {
             if (entry.text.toLowerCase().contains("cancelled")) {
@@ -1976,6 +2116,7 @@ public class Trader {
     }
 
     private boolean cancelBuyOrder(Trade trade, String reason, MarketData data) {
+        checkStop();
         for (int round = 0; round < 4 && !stopRequested; round++) {
             if (!openOrdersGui()) {
                 return false;
@@ -2009,7 +2150,7 @@ public class Trader {
                 trade.qty = Math.max(0, trade.qty - claimedNow);
                 trade.cost = trade.qty * trade.buyPrice;
                 ledger.update(trade);
-                chat("§6[Flipper] §7Geclaimt: §f" + claimedNow + "x " + trade.displayName);
+                chat("\u00a76[Flipper] \u00a7aClaimed: \u00a7f" + claimedNow + "x " + trade.displayName);
                 cleanupGui();
                 if (data != null) {
                     createSellOfferFromInventory(batch, data);
@@ -2017,7 +2158,7 @@ public class Trader {
                 continue;
             }
             if (ScreenUtil.currentScreen() == ScreenUtil.BzScreen.ORDER_OPTIONS
-                    || ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 2000)) {
+                    || waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 2000)) {
                 return confirmCancel(trade, reason);
             }
             if (!clickOrder(trade.displayName, false, 1, 5000, "Order-Eintrag Rechtsklick (Cancel): " + trade.displayName)) {
@@ -2027,7 +2168,7 @@ public class Trader {
                 continue;
             }
             if (ScreenUtil.currentScreen() == ScreenUtil.BzScreen.ORDER_OPTIONS
-                    || ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
+                    || waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
                 return confirmCancel(trade, reason);
             }
             break;
@@ -2051,17 +2192,17 @@ public class Trader {
         if (cancelled) {
             trade.state = Trade.State.CANCELLED;
             ledger.update(trade);
-            chat("§6[Flipper] §cBuy Order gecancelt (§7" + reason + "§c): §f" + trade.displayName
-                    + " §7· §f" + ScreenUtil.formatCoins(trade.cost) + " §7zurück");
+            chat("\u00a76[Flipper] \u00a7cBuy order cancelled: \u00a7f" + trade.displayName + " \u00a77(" + ScreenUtil.formatCoins(trade.cost) + ")");
             cleanupGui();
             return true;
         }
-        failPause("Cancel nicht bestätigt: " + trade.displayName);
+        failPause("Cancel nicht bestÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤tigt: " + trade.displayName);
         cleanupGui();
         return false;
     }
 
     private void cancelSellOffer(Trade trade) {
+        checkStop();
         if (!openOrdersGui()) {
             return;
         }
@@ -2077,12 +2218,12 @@ public class Trader {
             failPause("Order-Eintrag nicht klickbar (Sell-Cancel): " + trade.displayName);
             return;
         }
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
             if (!clickOrder(trade.displayName, true, 1, 5000, "Sell-Eintrag Rechtsklick: " + trade.displayName)) {
                 failPause("Order-Options nicht erreichbar (Sell-Cancel): " + trade.displayName);
                 return;
             }
-            if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
+            if (!waitForScreenCancel(ScreenUtil.BzScreen.ORDER_OPTIONS, 3000)) {
                 failPause("Order-Options nicht erreichbar (Sell-Cancel): " + trade.displayName);
                 return;
             }
@@ -2097,21 +2238,22 @@ public class Trader {
         if (cancelled) {
             trade.state = Trade.State.CLAIMED;
             ledger.update(trade);
-            chat("§6[Flipper] §cSell Offer gecancelt (abgelaufen): §f" + trade.displayName);
+            chat("\u00a76[Flipper] \u00a7cSell offer cancelled (expired): \u00a7f" + trade.displayName);
         } else {
-            failPause("Sell-Cancel nicht bestätigt: " + trade.displayName);
+            failPause("Sell-Cancel nicht bestÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤tigt: " + trade.displayName);
         }
         cleanupGui();
     }
 
     private boolean createSellOfferFromInventory(Trade trade, MarketData data) {
+        checkStop();
         refreshMarketIfStale();
         MarketData fresh = market != null ? market : data;
         if (!openBazaar()) {
             return false;
         }
         if (!searchProduct(trade.displayName, trade.productId)) {
-            chat("§6[Flipper] §cItem nicht gefunden: §f" + trade.displayName);
+            ;
             failPause("Item nicht gefunden (Sell): " + trade.displayName);
             return false;
         }
@@ -2136,7 +2278,7 @@ public class Trader {
                     && !slot16.toLowerCase().contains("close") && !slot16.toLowerCase().contains("go back")
                     && !slot16.toLowerCase().contains("instantly")
                     && !slot16.toLowerCase().contains("create buy")) {
-                log("Fallback: Klick Slot 16 (Sell) für " + trade.displayName + " Item: " + slot16);
+                log("Fallback: Klick Slot 16 (Sell) fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r " + trade.displayName + " Item: " + slot16);
                 clickDelay();
                 if (!isAhPriority()) {
                     ScreenUtil.clickSlot(16, 0);
@@ -2150,7 +2292,7 @@ public class Trader {
         }
         long inInventory = ScreenUtil.countItemsInInventory(trade.displayName);
         if (inInventory <= 0) {
-            log("Keine Items im Inventar für " + trade.displayName + ". Inventar-Namen: "
+            log("Keine Items im Inventar fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r " + trade.displayName + ". Inventar-Namen: "
                     + ScreenUtil.inventoryItemNames());
             failPause("Keine Items im Inventar: " + trade.displayName);
             return false;
@@ -2159,14 +2301,14 @@ public class Trader {
         trade.qty = qty;
         trade.cost = qty * trade.buyPrice;
         ledger.update(trade);
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.SELL_PRICE, 4000)) {
-            if (ScreenUtil.waitForScreen(ScreenUtil.BzScreen.SELL_AMOUNT, 4000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.SELL_PRICE, 4000)) {
+            if (waitForScreenCancel(ScreenUtil.BzScreen.SELL_AMOUNT, 4000)) {
                 SignInput.set(String.valueOf(qty));
                 if (!clickSign(5000, "Mengen-Sign (Sell)")) {
                     failPause("Mengen-Sign nicht gefunden (Sell): " + trade.displayName);
                     return false;
                 }
-                if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.SELL_PRICE, 6000)) {
+                if (!waitForScreenCancel(ScreenUtil.BzScreen.SELL_PRICE, 6000)) {
                     failPause("SELL_PRICE nicht erreicht: " + trade.displayName);
                     return false;
                 }
@@ -2175,8 +2317,8 @@ public class Trader {
                 return false;
             }
         }
-        ScreenUtil.sleep(ScreenUtil.jitter(400));
-        log("SELL_PRICE Seite für: " + trade.displayName + " " + ScreenUtil.screenDebugInfo());
+        sleepOrStop(ScreenUtil.jitter(400));
+        log("SELL_PRICE Seite fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r: " + trade.displayName + " " + ScreenUtil.screenDebugInfo());
         double targetSell = trade.sellPrice;
         MarketData.Product product = fresh.products.get(trade.productId);
         if (product == null) {
@@ -2196,7 +2338,7 @@ public class Trader {
             usedUndercut = clickByName("0.1 Coins Less", 0, 3000, "0.1 Coins Less");
         }
         if (usedUndercut) {
-            log("Nutze -0.1-Preset für: " + trade.displayName);
+            log("Nutze -0.1-Preset fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r: " + trade.displayName);
         } else {
             boolean usedPreset = clickByName("Best Offer", 0, 3000, "Best Offer");
             if (!usedPreset) {
@@ -2209,7 +2351,7 @@ public class Trader {
                 usedPreset = clickByName("Best", 0, 3000, "Best");
             }
             if (usedPreset) {
-                log("Nutze Preis-Preset für: " + trade.displayName);
+                log("Nutze Preis-Preset fÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼r: " + trade.displayName);
                 targetSell = Math.round((targetSell + 0.1) * 10.0) / 10.0;
             } else {
                 log("Kein Preis-Preset gefunden - nutze Sign: " + trade.displayName);
@@ -2220,26 +2362,26 @@ public class Trader {
                 }
             }
         }
-        if (!ScreenUtil.waitForScreen(ScreenUtil.BzScreen.SELL_CONFIRM, 6000)) {
+        if (!waitForScreenCancel(ScreenUtil.BzScreen.SELL_CONFIRM, 6000)) {
             failPause("SELL_CONFIRM nicht erreicht: " + trade.displayName);
             return false;
         }
-        ScreenUtil.sleep(ScreenUtil.jitter(400));
+        sleepOrStop(ScreenUtil.jitter(400));
         if (!clickConfirmAtomic("Sell Offer", 8000)) {
             failPause("Sell-Confirm-Button nicht gefunden: " + trade.displayName);
             return false;
         }
-        if (!BazaarChatListener.waitForChat("Sell Offer Setup!", 12_000)) {
-            failPause("Keine 'Sell Offer Setup!' Bestätigung: " + trade.displayName);
+        if (!waitForChatCancel("Sell Offer Setup!", 12_000)) {
+            failPause("Keine 'Sell Offer Setup!' BestÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤tigung: " + trade.displayName);
             return false;
         }
         trade.sellPrice = targetSell;
         trade.revenue = trade.qty * targetSell * (1.0 - cfg.taxPercent / 100.0);
         trade.state = Trade.State.SELL_OPEN;
+        BazaarDailyLimit.addSale(Math.round(trade.qty * targetSell));
         trade.listedAt = System.currentTimeMillis();
         ledger.update(trade);
-        chat("§6[Flipper] §7Sell Offer erstellt: §f" + trade.qty + "x " + trade.displayName
-                + " §7@ §f" + ScreenUtil.formatPrice(targetSell));
+        chat("\u00a76[Flipper] \u00a7aSell offer created: \u00a7f" + trade.qty + "x " + trade.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(targetSell));
         cleanupGui();
         return true;
     }
@@ -2258,8 +2400,7 @@ public class Trader {
                 trade.lastRelistedAt = nowMs;
                 ledger.update(trade);
                 if (ScreenUtil.countItemsInInventory(trade.displayName) <= 0) {
-                    chat("§6[Flipper] §cKeine Items im Inventar für §f" + trade.displayName
-                            + " §7(möglicherweise im Stash) – Trade übersprungen.");
+                    ;
                     trade.state = Trade.State.ABANDONED;
                     ledger.update(trade);
                     continue;
@@ -2307,7 +2448,7 @@ public class Trader {
                 ledger.update(trade);
                 if (trade.notFoundChecks >= 5) {
                     ledger.remove(trade);
-                    chat("§6[Flipper] §cOrder existiert nicht mehr - Trade gelöscht: §f" + trade.displayName);
+                    ;
                 }
                 continue;
             }
@@ -2317,14 +2458,13 @@ public class Trader {
             if (trade.state == Trade.State.BUY_OPEN && match.filled >= match.amount && match.amount > 0) {
                 trade.state = Trade.State.FILLED;
                 trade.filledAt = System.currentTimeMillis();
-                chat("§6[Flipper] §aBuy Order gefüllt: §f" + trade.qty + "x " + trade.displayName);
+                chat("\u00a76[Flipper] \u00a7aBuy order filled: \u00a7f" + trade.qty + "x " + trade.displayName);
             }
             if (trade.state == Trade.State.SELL_OPEN && match.filled >= match.amount && match.amount > 0) {
                 trade.state = Trade.State.SOLD;
                 trade.soldAt = System.currentTimeMillis();
                 markProductSuccess(trade.productId);
-                chat("§6[Flipper] §aSell Offer verkauft: §f" + trade.displayName
-                        + " §7· Umsatz: §f" + ScreenUtil.formatCoins(trade.revenue));
+                chat("\u00a76[Flipper] \u00a7aSell offer sold: \u00a7f" + trade.displayName + " \u00a77Revenue \u00a7f" + ScreenUtil.formatCoins(trade.revenue));
             }
             ledger.update(trade);
         }
@@ -2383,10 +2523,10 @@ public class Trader {
                             trade.filledQty = event.qty;
                         }
                         ledger.update(trade);
-                        chat("§6[Flipper] §aBuy Order gefüllt: §f" + trade.filledQty + "x " + trade.displayName);
+                        chat("\u00a76[Flipper] \u00a7aBuy order filled: \u00a7f" + trade.filledQty + "x " + trade.displayName);
                     } else {
                         recentFillChat = true;
-                        log("Gefüllte Order erkannt (kein Ledger-Match): " + event.item);
+                        log("GefÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¼llte Order erkannt (kein Ledger-Match): " + event.item);
                     }
                 }
                 case SELL_FILLED -> {
@@ -2396,8 +2536,7 @@ public class Trader {
                         trade.soldAt = System.currentTimeMillis();
                         markProductSuccess(trade.productId);
                         ledger.update(trade);
-                        chat("§6[Flipper] §aSell Offer verkauft: §f" + trade.displayName
-                                + " §7· Umsatz: §f" + ScreenUtil.formatCoins(trade.revenue));
+                        chat("\u00a76[Flipper] \u00a7aSell offer sold: \u00a7f" + trade.displayName + " \u00a77Revenue \u00a7f" + ScreenUtil.formatCoins(trade.revenue));
                     } else {
                         recentFillChat = true;
                         log("Verkaufte Order erkannt (kein Ledger-Match): " + event.item);
@@ -2405,6 +2544,7 @@ public class Trader {
                 }
                 case CLAIMED_COINS -> {
                     orderLimitReached = false;
+                    ProfitTracker.receive(ProfitTracker.BAZAAR, event.coins);
                     Trade trade = null;
                     if (event.item != null && !event.item.isBlank()) {
                         trade = ledger.firstMatching(event.item, Trade.State.SOLD);
@@ -2419,9 +2559,6 @@ public class Trader {
                         trade.state = Trade.State.DONE;
                         markProductSuccess(trade.productId);
                         ledger.update(trade);
-                        double profit = trade.revenue - trade.cost;
-                        chat("§6[Flipper] §aTrade abgeschlossen: §f" + trade.displayName
-                                + " §7· Gewinn: §a+" + ScreenUtil.formatCoins(profit));
                     }
                 }
                 case CLAIMED_ITEMS -> {
@@ -2443,7 +2580,7 @@ public class Trader {
                         trade.state = wasBuy ? Trade.State.CANCELLED : Trade.State.CLAIMED;
                         ledger.update(trade);
                         if (wasBuy) {
-                            chat("§6[Flipper] §cBuy Order gecancelt: §f" + trade.displayName);
+                            chat("\u00a76[Flipper] \u00a7cBuy order cancelled: \u00a7f" + trade.displayName);
                         }
                     }
                 }
@@ -2460,3 +2597,10 @@ public class Trader {
         }
     }
 }
+
+
+
+
+
+
+

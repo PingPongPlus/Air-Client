@@ -25,7 +25,6 @@ public final class MenuBackground {
 
     public static void draw(GuiGraphicsExtractor graphics) {
         drawWallpaper(graphics);
-        GlassRain.draw(graphics);
     }
 
     public static void drawWallpaper(GuiGraphicsExtractor graphics) {

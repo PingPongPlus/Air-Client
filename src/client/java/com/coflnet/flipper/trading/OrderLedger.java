@@ -92,7 +92,8 @@ public class OrderLedger {
     public synchronized int openOrderCount() {
         int count = 0;
         for (Trade trade : trades) {
-            if (trade.isOpen()) {
+            if (trade.state == Trade.State.BUY_OPEN
+                    || trade.state == Trade.State.SELL_OPEN) {
                 count++;
             }
         }

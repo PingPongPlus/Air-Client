@@ -22,6 +22,7 @@ public final class AhLiveScanner {
         public String reason = "";
         public long price;
         public long cleanAverage;
+        public long referenceValue;
         public long cleanSales;
         public double cleanCv;
         public long craftCost;
@@ -41,6 +42,33 @@ public final class AhLiveScanner {
         public long updatedAt = System.currentTimeMillis();
     }
 
+    public record CandidateView(String uuid, String tag, String name, long price,
+                                long estimatedValue, long profit, double profitPercent,
+                                long updatedAt) {
+    }
+
+    public static List<CandidateView> buyableView() {
+        long now = System.currentTimeMillis();
+        List<CandidateView> result = new ArrayList<>();
+        for (Candidate candidate : CANDIDATES.values()) {
+            if (!"BUY".equals(candidate.stage) || now - candidate.updatedAt > 90_000L) {
+                continue;
+            }
+            if (AhFlipperMod.CONFIG.isBlockedItem(candidate.tag, candidate.name)) {
+                continue;
+            }
+            result.add(new CandidateView(candidate.uuid, candidate.tag,
+                    candidate.name, candidate.price, candidate.estimatedValue,
+                    candidate.profit, candidate.profitPercent, candidate.updatedAt));
+        }
+        result.sort((first, second) ->
+                Long.compare(second.profit(), first.profit()));
+        if (result.size() > 5) {
+            return new ArrayList<>(result.subList(0, 5));
+        }
+        return result;
+    }
+
     private record SortEntry(Candidate candidate, int buy, double score, long updatedAt) {
     }
 
@@ -50,7 +78,6 @@ public final class AhLiveScanner {
         public int overBankroll;
         public int queued;
         public int cleanRejected;
-        public int craftRejected;
         public int valueRejected;
         public int addonRejected;
         public int buyable;
@@ -123,7 +150,7 @@ public final class AhLiveScanner {
         return running;
     }
 
-    static Snapshot snapshot() {
+    public static Snapshot snapshot() {
         Snapshot snapshot = new Snapshot();
         snapshot.running = running;
         snapshot.feedStatus = CoflAuctionFeed.status();
@@ -135,7 +162,6 @@ public final class AhLiveScanner {
             snapshot.stats.overBankroll = STATS.overBankroll;
             snapshot.stats.queued = STATS.queued;
             snapshot.stats.cleanRejected = STATS.cleanRejected;
-            snapshot.stats.craftRejected = STATS.craftRejected;
             snapshot.stats.valueRejected = STATS.valueRejected;
             snapshot.stats.addonRejected = STATS.addonRejected;
             snapshot.stats.buyable = STATS.buyable;
@@ -169,15 +195,14 @@ public final class AhLiveScanner {
     static String status() {
         Snapshot snapshot = snapshot();
         Stats s = snapshot.stats;
-        return (running ? "§aan" : "§caus")
-                + " §7· Feed " + snapshot.feedStatus
-                + " §7· " + s.received + " neu"
-                + " §7· " + s.queued + " geprüft"
-                + " §7· " + s.buyable + " kaufbar"
-                + " §7· " + s.cleanRejected + " clean"
-                + " §7· " + s.craftRejected + " craft"
-                + " §7· " + s.valueRejected + " value"
-                + " §7· " + s.addonRejected + " addon";
+        return (running ? "\u00a7aan" : "\u00a7caus")
+                + " \u00a77\u00b7 Feed " + snapshot.feedStatus
+                + " \u00a77\u00b7 " + s.received + " neu"
+                + " \u00a77\u00b7 " + s.queued + " gepr\u00fcft"
+                + " \u00a77\u00b7 " + s.buyable + " kaufbar"
+                + " \u00a77\u00b7 " + s.cleanRejected + " clean"
+                + " \u00a77\u00b7 " + s.valueRejected + " value"
+                + " \u00a77\u00b7 " + s.addonRejected + " addon";
     }
 
     private static void onAuction(CoflAuctionFeed.Auction auction) {
@@ -185,6 +210,10 @@ public final class AhLiveScanner {
             return;
         }
         if (auction.tag.isBlank() || auction.price <= 0) {
+            return;
+        }
+        if (auction.tag.toUpperCase(Locale.ROOT).startsWith("PET_")
+                || (auction.itemName != null && auction.itemName.startsWith("[Lvl"))) {
             return;
         }
         if (AhFlipperMod.isOwnSeller(auction.seller, auction.playerName)) {
@@ -199,6 +228,13 @@ public final class AhLiveScanner {
             STATS.received++;
         }
         if (!auction.bin) {
+            return;
+        }
+        if (AhFlipperMod.CONFIG.isBlockedItem(auction.tag, auction.itemName)) {
+            Candidate candidate = candidate(auction);
+            candidate.stage = "REJECT:BLOCKED";
+            candidate.reason = "Blocked item";
+            put(candidate);
             return;
         }
         if (auction.price < AhFlipperMod.CONFIG.liveMinPrice) {
@@ -280,20 +316,23 @@ public final class AhLiveScanner {
             long liveMax = liveBank > 0
                     ? Math.round(liveBank * AhFlipperMod.CONFIG.liveMaxBankrollFraction) : -1;
             if (liveMax > 0 && candidate.price > liveMax) {
-                reject(candidate, "DETAILS", "über Bankroll-Limit");
+                reject(candidate, "DETAILS", "ÃƒÂ¼ber Bankroll-Limit");
                 return;
             }
             update(candidate, "CLEAN", "");
+            AhItem item = AhItem.fromAuction(details);
+            boolean rune = item.isRune();
             boolean pet = candidate.tag.toUpperCase(Locale.ROOT).startsWith("PET_")
                     || (candidate.name != null && candidate.name.startsWith("[Lvl"));
             String petFilter = "";
+            if (!rune) {
             if (pet) {
                 AhItem petItem = AhItem.fromAuction(details);
                 candidate.petLevel = petItem.petLevel;
                 candidate.petRarity = petItem.petRarity;
                 petFilter = petItem.petFilter();
                 if (petFilter.isBlank()) {
-                    reject(candidate, "CLEAN", "Pet-Level/Rarität nicht erkannt");
+                    reject(candidate, "CLEAN", "Pet-Level/RaritÃƒÂ¤t nicht erkannt");
                     return;
                 }
                 AhMarketData.Analysis level1 = AhMarketData.analysis(candidate.tag, "&PetLevel=1");
@@ -334,30 +373,35 @@ public final class AhLiveScanner {
                 cleanSales = clean == null ? 0 : clean.totalSales;
             } else {
                 clean = AhMarketData.analysis(candidate.tag, "&Clean=true");
-                if (clean == null || clean.totalSales < 5) {
-                    AhMarketData.Analysis fallback = AhMarketData.analysis(candidate.tag,
-                            "&Enchantment=None&Reforge=None");
-                    if (fallback != null && fallback.totalSales > (clean == null ? 0 : clean.totalSales)) {
-                        clean = fallback;
-                    }
-                }
-                cleanSales = clean == null ? 0 : clean.totalSales;
+                cleanSales = AhMarketData.cleanSaleCount(candidate.tag);
             }
+            AhMarketData.RuneStats cleanRef = AhMarketData.referenceMedian(item);
             if (clean == null || clean.totalSales <= 0) {
-                reject(candidate, "CLEAN", "Preisdaten nicht abrufbar");
-                return;
-            }
-            long sevenDayAverage = clean.avgPrice > 0
-                    ? Math.round(clean.avgPrice) : clean.medianPrice;
-            long cleanAverage = AhMarketData.lowestCleanAverage(candidate.tag,
-                    candidate.petLevel, candidate.petRarity, sevenDayAverage);
-            candidate.cleanAverage = cleanAverage;
-            candidate.cleanSales = cleanSales;
-            candidate.cleanCv = clean.coeffVariation;
-            AhMarketData.RobustCv robust = AhMarketData.robustCv(candidate.tag,
-                    candidate.petLevel, candidate.petRarity, !pet);
-            if (robust != null) {
-                candidate.cleanCv = robust.cv;
+                if (cleanRef == null || cleanRef.median <= 0) {
+                    reject(candidate, "CLEAN", "Preisdaten nicht abrufbar");
+                    return;
+                }
+                candidate.cleanAverage = cleanRef.median;
+                candidate.cleanSales = cleanRef.sales;
+                candidate.cleanCv = cleanRef.coeffVariation;
+            } else {
+                long sevenDayAverage = clean.avgPrice > 0
+                        ? Math.round(clean.avgPrice) : clean.medianPrice;
+                long cleanAverage = AhMarketData.lowestCleanAverage(candidate.tag,
+                        candidate.petLevel, candidate.petRarity, sevenDayAverage);
+                candidate.cleanAverage = cleanAverage;
+                candidate.cleanSales = cleanSales;
+                candidate.cleanCv = clean.coeffVariation;
+                AhMarketData.RobustCv robust = AhMarketData.robustCv(candidate.tag,
+                        candidate.petLevel, candidate.petRarity, !pet);
+                if (robust != null) {
+                    candidate.cleanCv = robust.cv;
+                }
+                if (cleanRef != null && cleanRef.median > 0) {
+                    candidate.cleanAverage = cleanRef.median;
+                    candidate.cleanSales = Math.max(candidate.cleanSales, cleanRef.sales);
+                    candidate.cleanCv = cleanRef.coeffVariation;
+                }
             }
             if (candidate.cleanCv > AhFlipperMod.CONFIG.maxDeviationPercent / 100.0) {
                 reject(candidate, "CLEAN", String.format(Locale.US, "%sCV %.1f%% > %.0f%%",
@@ -365,14 +409,22 @@ public final class AhLiveScanner {
                         candidate.cleanCv * 100, AhFlipperMod.CONFIG.maxDeviationPercent));
                 return;
             }
+            }
 
-            AhItem item = AhItem.fromAuction(details);
+            if (item.isPet()) {
+                reject(candidate, "PET", "Pets im AH-Flipper deaktiviert");
+                return;
+            }
+            if (AhFlipperMod.CONFIG.isBlockedItem(item.tag, item.displayName)) {
+                reject(candidate, "BLOCKED", "Blocked item");
+                return;
+            }
             AhMarketData.CraftCost craft = AhMarketData.craftCost(candidate.tag);
             candidate.craftCost = craft == null ? 0 : Math.max(0, craft.craftCost);
 
             update(candidate, "VALUE", "");
             AhValuation.Estimate estimate = AhValuation.estimate(item, candidate.uuid);
-            candidate.cleanAverage = estimate.reference;
+            candidate.referenceValue = estimate.reference;
             candidate.breakdownValue = 0;
             candidate.addonValue = estimate.addonValue;
             candidate.craftDiscount = discount(candidate.price, candidate.craftCost);
@@ -385,28 +437,34 @@ public final class AhLiveScanner {
                     + " Slots=" + estimate.slotUnlockValue
                     + " Comparable=" + estimate.comparableAverage + " ("
                     + estimate.comparableSales + " Sales, "
-                    + estimate.comparableExcluded + " Ausrei\u00dfer) AskSafety="
+                    + estimate.comparableExcluded + " Ausrei\u00dfer) Bin="
+                    + estimate.comparableBin + " AskSafety="
                     + estimate.askSafetyValue
                     + " Ceiling=" + estimate.ceiling + " -> " + estimated);
             if (estimated <= 0) {
                 reject(candidate, "VALUE", "Keine belastbare Bewertung");
                 return;
             }
-            if (estimate.addonValueUnbacked) {
-                reject(candidate, "VALUE", "Addon-Vergleich unbrauchbar "
-                        + "(zu wenige belastbare Verkäufe / zu viele Ausreißer)");
-                return;
-            }
             if (estimate.candyPet) {
                 reject(candidate, "VALUE", "Pet mit Candies - kein Kauf");
                 return;
             }
-            AhMarketData.Breakdown breakdown = candidate.addonValue > 0
-                    ? AhMarketData.breakdown(details) : null;
+            boolean hasCosmetic = (item.skin != null && !item.skin.isBlank())
+                    || (item.dyeItem != null && !item.dyeItem.isBlank())
+                    || (item.petSkin != null && !item.petSkin.isBlank());
+            AhMarketData.Breakdown breakdown = null;
+            if ((candidate.addonValue > 0 || hasCosmetic)
+                    && !estimate.addonValueUnbacked) {
+                breakdown = AhMarketData.breakdown(details);
+                if (breakdown == null || breakdown.parts.isEmpty()) {
+                    reject(candidate, "ADDONS", "Addon-Breakdown nicht abrufbar");
+                    return;
+                }
+            }
             candidate.estimatedValue = estimated;
             candidate.estimatedDiscount = discount(candidate.price, estimated);
 
-            if (!pet
+            if (!rune && !pet
                     && candidate.addonValue <= AhFlipperMod.CONFIG.cleanSalesAddonValueCoins
                     && candidate.cleanSales < AhFlipperMod.CONFIG.minCleanSales) {
                 reject(candidate, "CLEAN", "Clean-Sales " + candidate.cleanSales
@@ -416,7 +474,8 @@ public final class AhLiveScanner {
             }
 
             update(candidate, "ADDONS", "");
-            if (!checkBreakdown(candidate, breakdown, item, candidate.tag)) {
+            if (!estimate.addonValueUnbacked
+                    && !checkBreakdown(candidate, breakdown, item, candidate.tag)) {
                 return;
             }
 
@@ -426,9 +485,19 @@ public final class AhLiveScanner {
             candidate.profitPercent = candidate.price > 0
                     ? candidate.profit * 100.0 / candidate.price : -1;
 
-            if (candidate.profitPercent < AhFlipperMod.CONFIG.minProfitPercent) {
-                reject(candidate, "PROFIT", String.format(Locale.US, "Gewinn %.1f%% < %.0f%%",
-                        candidate.profitPercent, AhFlipperMod.CONFIG.minProfitPercent));
+            double lowPrice = Math.max(1, AhFlipperMod.CONFIG.liveMinPrice);
+            double highPrice = bankroll > 0
+                    ? bankroll * AhFlipperMod.CONFIG.maxBankFractionPerOrder
+                    : Math.max(lowPrice, candidate.price);
+            double priceRatio = highPrice > lowPrice
+                    ? Math.max(0, Math.min(1,
+                    (candidate.price - lowPrice) / (highPrice - lowPrice)))
+                    : 1.0;
+            double preselectProfit = 15.0 + priceRatio * (-5.0 - 15.0);
+            if (candidate.profitPercent < preselectProfit) {
+                reject(candidate, "PROFIT", String.format(Locale.US,
+                        "Vorauswahl-Gewinn %.1f%% < %.1f%%",
+                        candidate.profitPercent, preselectProfit));
                 return;
             }
             if (candidate.estimatedDiscount * 100.0 < AhFlipperMod.CONFIG.minDiscountPercent) {
@@ -464,7 +533,7 @@ public final class AhLiveScanner {
             synchronized (STATS) {
                 STATS.errors++;
             }
-            System.out.println("[AH-Flipper] Live-Fehler für " + candidate.tag + ": " + e);
+            System.out.println("[AH-Flipper] Live-Fehler fÃƒÂ¼r " + candidate.tag + ": " + e);
             reject(candidate, "ERROR", e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }
@@ -475,6 +544,22 @@ public final class AhLiveScanner {
             return true;
         }
         List<AhMarketData.Sold> sold = AhMarketData.sold(tag);
+        if (item.skin != null && !item.skin.isBlank()) {
+            int count = countNbtText(sold, "skin", item.skin);
+            if (count < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
+                reject(candidate, "ADDONS", "Skin " + item.skin + " nur " + count
+                        + "x/Woche < " + AhFlipperMod.CONFIG.addonMinSalesPerWeek);
+                return false;
+            }
+        }
+        if (item.dyeItem != null && !item.dyeItem.isBlank()) {
+            int count = countNbtText(sold, "dye_item", item.dyeItem);
+            if (count < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
+                reject(candidate, "ADDONS", "Dye " + item.dyeItem + " nur " + count
+                        + "x/Woche < " + AhFlipperMod.CONFIG.addonMinSalesPerWeek);
+                return false;
+            }
+        }
         candidate.addonParts = 0;
         candidate.addonPartsPassed = 0;
         candidate.minAddonSales = Integer.MAX_VALUE;
@@ -483,15 +568,6 @@ public final class AhLiveScanner {
                 continue;
             }
             candidate.addonParts++;
-            if (!part.itemTag.isBlank()) {
-                double volume = AhAddonValues.weeklyVolume(part.itemTag);
-                if (volume > 0 && volume < AhFlipperMod.CONFIG.addonMinBazaarVolume) {
-                    reject(candidate, "ADDONS", part.itemTag + " Bazaar-Volumen "
-                            + Math.round(volume) + "/Woche < "
-                            + AhFlipperMod.CONFIG.addonMinBazaarVolume);
-                    return false;
-                }
-            }
             int count = countAddonSales(part, item, sold);
             if (count >= 0) {
                 candidate.minAddonSales = Math.min(candidate.minAddonSales, count);
@@ -731,7 +807,7 @@ public final class AhLiveScanner {
                 synchronized (BUY_LOCK) {
                     BUYABLE.entrySet().removeIf(entry -> entry.getValue().updatedAt < cutoff);
                     for (Candidate candidate : BUYABLE.values()) {
-                        if (next == null || candidate.at < next.at) {
+                        if (next == null || candidate.at > next.at) {
                             next = candidate;
                         }
                     }
@@ -762,15 +838,16 @@ public final class AhLiveScanner {
         synchronized (STATS) {
             switch (stage) {
                 case "CLEAN" -> STATS.cleanRejected++;
-                case "CRAFT" -> STATS.craftRejected++;
                 case "VALUE" -> STATS.valueRejected++;
                 case "ADDONS" -> STATS.addonRejected++;
                 default -> {
                 }
             }
         }
-        update(candidate, "REJECT", reason);
         candidate.stage = "REJECT:" + stage;
+        candidate.reason = reason == null ? "" : reason;
+        candidate.updatedAt = System.currentTimeMillis();
+        put(candidate);
     }
 
     private static long currentBankroll() {
@@ -781,6 +858,9 @@ public final class AhLiveScanner {
         long purse = ScreenUtil.readPurse();
         if (purse > 0) {
             bankroll = Math.max(0, purse - AhFlipperMod.CONFIG.reserveCoins);
+            if (AhFlipperMod.CONFIG.maxBankrollCoins > 0) {
+                bankroll = Math.min(bankroll, AhFlipperMod.CONFIG.maxBankrollCoins);
+            }
             bankrollAt = now;
         }
         return bankroll;
@@ -802,3 +882,5 @@ public final class AhLiveScanner {
         return false;
     }
 }
+
+

@@ -8,5 +8,11 @@
   "key.voicechat.zoom": "Zoom",
   "key.voicechat.shoulder_cam": "Shoulder cam (hold)",
   "key.voicechat.killaura": "Killaura",
-  "key.category.voicechat.client": "PingPlus Client"
+  "key.category.voicechat.client": "PingPlus Client",
+  "keybinding.coflmod.ahflipper": "AH-Flipper",
+  "keybinding.coflmod.investment": "Investment GUI",
+  "keybinding.coflmod.firesale": "Fire Sale GUI",
+  "keybinding.coflmod.blacklist_hovered": "Blacklist hovered item",
+  "keybinding.coflmod.mouse_ungrab": "Release mouse",
+  "key.category.coflnet.ahflipper": "CoflNet AH"
 }
