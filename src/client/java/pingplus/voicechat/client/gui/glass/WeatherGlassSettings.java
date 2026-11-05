@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.*;
 import java.util.Properties;
 
-/** Independent from the existing full-screen menu rain preference. */
+/** Preferences for rain and frost on glass surfaces. */
 public final class WeatherGlassSettings {
     public enum Mode {
         AUTOMATIC("Automatic"), RAIN("Rain"), FROST("Frost");

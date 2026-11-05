@@ -40,7 +40,7 @@ import java.util.*;
 import java.util.function.*;
 
 /** Floating category ClickGUI. All input and narration use native widget semantics. */
-public final class ClickGuiScreen extends Screen {
+public final class  ClickGuiScreen extends Screen {
     /** Render and hit-test in the same logical space, independently of Minecraft GUI scale. */
     public static final float UI_SCALE = 0.60f;
     private int canvasWidth, canvasHeight;
@@ -60,6 +60,7 @@ public final class ClickGuiScreen extends Screen {
     private String mobEspInput = "", mobEspMessage = "";
     private Button optionsClose;
     private Button allOff;
+    private Button profiles;
     private int optionsX, optionsY, optionsWidth, optionsHeight, optionsScroll, optionsMaxScroll;
     private boolean draggingOptions;
     private int scroll, maxScroll, panelWidth;
@@ -89,6 +90,15 @@ public final class ClickGuiScreen extends Screen {
             }
         });
         allOff.setTooltip(Tooltip.create(Component.literal("Turn off every toggle, including extra settings.")));
+        profiles = addRenderableWidget(new Button(canvasWidth-242,7,72,18,Component.literal("Profiles"),
+                b->minecraft.gui.setScreen(new ProfilesScreen(this,VoicechatClient.profiles())),supplier->supplier.get()) {
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                GlassButtonRenderer.draw(g,this);
+                g.nextStratum();
+                text(g,"Profiles",getX()+12,getY()+4,GlassStyle.TEXT);
+            }
+        });
+        profiles.setTooltip(Tooltip.create(Component.literal("Save, load, rename and delete settings profiles.")));
         int columns = Math.clamp((canvasWidth-16)/148,2,4);
         panelWidth = Math.min(140, (canvasWidth-24-(columns-1)*8)/columns);
         int startX = 16;
@@ -947,6 +957,7 @@ public final class ClickGuiScreen extends Screen {
         optionsY = Math.clamp(optionsY,28,canvasHeight-optionsHeight-18);
         for (Entry e : entries) e.widget.active = false;
         allOff.active = false;
+        profiles.active = false;
         for (OptionEntry e : panel.entries) {
             if (!(e.widget instanceof EditBox) || e.widget instanceof MobNameBox) e.widget.setWidth(optionsWidth-20);
             addRenderableWidget(e.widget);
@@ -1264,6 +1275,8 @@ public final class ClickGuiScreen extends Screen {
         text(g,"UNTITLED",16,13,GlassStyle.TEXT);text(g,"/  CONTROL CENTER  \u00b7  INVEST",74,13,GlassStyle.MUTED);
         allOff.setAlpha(opacity);
         allOff.extractRenderState(g,mx,my,dt);
+        profiles.setAlpha(opacity);
+        profiles.extractRenderState(g,mx,my,dt);
         text(g,"ESC  /  CLOSE",canvasWidth-78,13,GlassStyle.MUTED);
         g.enableScissor(0,26,canvasWidth,canvasHeight-16);
         for(Category c:categories){
@@ -1334,6 +1347,7 @@ public final class ClickGuiScreen extends Screen {
         }
         if(e.y()<26){
             if(allOff.mouseClicked(e,twice))return true;
+            if(profiles.mouseClicked(e,twice))return true;
             if(e.x()>canvasWidth-85)onClose();
             return true;
         }
@@ -1386,7 +1400,7 @@ public final class ClickGuiScreen extends Screen {
         if(openOptions!=null && e.key()==GLFW.GLFW_KEY_ESCAPE){closeOptions();return true;}
         if(openGuiKey != null && openGuiKey.matches(e)){onClose();return true;}
         boolean handled=super.keyPressed(e);
-        if(getFocused()!=allOff && getFocused() instanceof AbstractWidget w){
+        if(getFocused()!=allOff && getFocused()!=profiles && getFocused() instanceof AbstractWidget w){
             if(openOptions!=null){
                 if(w.getY()<optionsY+26)optionsScroll=Math.max(0,optionsScroll+w.getY()-(optionsY+26));
                 if(w.getBottom()>optionsY+optionsHeight-8)optionsScroll=Math.min(optionsMaxScroll,optionsScroll+w.getBottom()-(optionsY+optionsHeight-8));

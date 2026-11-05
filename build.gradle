@@ -188,6 +188,14 @@ tasks.register('hudMetricsTest', JavaExec) {
 }
 tasks.named('check') { dependsOn 'hudMetricsTest' }
 
+tasks.register('profileTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'pingplus.voicechat.client.ProfileTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'profileTest' }
+
 
 jar {
     from("LICENSE")
