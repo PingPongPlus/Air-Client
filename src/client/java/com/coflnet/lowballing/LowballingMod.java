@@ -1416,21 +1416,52 @@ public final class LowballingMod {
         }
         AhItem item = LowballingGui.itemAt(slot);
         if (item.tag.isBlank() || !item.tag.equalsIgnoreCase(offer.tag())) {
-            message("§e[Lowballing] §7Anderes Item - kicke Spieler.");
+            message("§e[Lowballing] §7Different item in second trade - kicking player.");
+            requestKick();
+            return;
+        }
+        long sale = saleValue(item, slot);
+        if (sale <= 0) {
+            message("§c[Lowballing] §7Second item has no valuation - kicking player.");
+            requestKick();
+            return;
+        }
+        AhAnalyzer.Result analysis = AhAnalyzer.analyze(item, Math.max(1, sale), 0, "",
+                CONFIG.minItemCoins);
+        if (!analysis.buyable) {
+            logTradeItem(item.tag, item.displayName, sale, false, analysis.reasons);
+            message("§e[Lowballing] §7Second item no longer passes filters - kicking player.");
+            requestKick();
+            return;
+        }
+        long value = analysis.expectedValue > 1 ? analysis.expectedValue : sale;
+        long secondPrice = floorTo(value * 0.90, CONFIG.chatOfferRoundCoins);
+        if (secondPrice <= 0) {
+            message("§e[Lowballing] §7Second offer too low - kicking player.");
+            requestKick();
+            return;
+        }
+        long bankroll = bankrollCoins();
+        if (CONFIG.enforceBankroll && bankroll >= 0 && secondPrice > bankroll) {
+            message("§e[Lowballing] §7Second offer above bankroll - kicking player.");
             requestKick();
             return;
         }
         int coins = LowballingGui.findCoinsSlot();
         if (coins < 0) {
-            message("§e[Lowballing] §7Coins-Slot nicht gefunden - kicke Spieler.");
+            message("§e[Lowballing] §7Coins slot not found - kicking player.");
             requestKick();
             return;
         }
+        pendingTradeItems = List.of(new TradeItem(item.tag, item.displayName, value));
+        pendingOffer = new Offer(offer.tag(), offer.displayName(), value, value,
+                offer.firstOffer(), secondPrice, true, List.of());
         finalizingSecond = true;
-        SignInput.set(String.valueOf(offer.chatOffer()));
+        SignInput.set(String.valueOf(secondPrice));
         LowballingGui.clickSlot(coins, 0);
         enterSetCoins();
-        debug("Zweites Angebot " + ScreenUtil.formatCoins(offer.chatOffer()));
+        debug("Second offer revalued: " + ScreenUtil.formatCoins(value)
+                + " -> " + ScreenUtil.formatCoins(secondPrice));
     }
 
     private static void requestKick() {
@@ -1508,7 +1539,7 @@ public final class LowballingMod {
                 return;
             }
             long first = floorTo(total * 0.85, 500_000L);
-            long chat = floorTo(first * 0.90, CONFIG.chatOfferRoundCoins);
+            long chat = floorTo(total * 0.90, CONFIG.chatOfferRoundCoins);
             if (first <= 0 || chat <= 0) {
                 pendingTradeItems = List.of();
                 valuationOffer = new Offer(firstTag, firstName, total, total, first, chat,

@@ -38,7 +38,7 @@ public class AhFlipperConfig {
     public long addonMinValueCoins = 3_000_000L;
     public double addonMinBazaarVolume = 5.0;
     public double enchantBazaarValueThresholdMillions = 3.0;
-    public double maxDeviationPercent = 60.0;
+    public double maxDeviationPercent = 100.0;
     public double cvOutlierPercent = 50.0;
     public int minTotalSales = 120;
     public int minCleanSales = 60;
@@ -327,6 +327,10 @@ public class AhFlipperConfig {
                     }
                     if (loaded.cvOutlierPercent <= 0) {
                         loaded.cvOutlierPercent = 50.0;
+                    }
+                    if (loaded.maxDeviationPercent <= 0
+                            || loaded.maxDeviationPercent == 60.0) {
+                        loaded.maxDeviationPercent = 100.0;
                     }
                     if (loaded.minTotalSales <= 0) {
                         loaded.minTotalSales = 120;
