@@ -183,8 +183,12 @@ public class VoicechatClient implements ClientModInitializer {
             pingplus.voicechat.client.spotify.MusicGlass.tick(client.player != null);
             if (!active) pingplus.voicechat.client.hud.SpotifyWidget.INSTANCE.clear();
         });
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> HudMetrics.reset());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            handSwap.finish(client);
+            HudMetrics.reset();
+        });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            handSwap.finish(client);
             PlayerSettings.save();
             HudEditor.finish();
             pingplus.voicechat.client.spotify.SpotifyClient.INSTANCE.close();
