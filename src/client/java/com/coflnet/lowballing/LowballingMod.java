@@ -484,8 +484,18 @@ public final class LowballingMod {
         levelChangedAt = 0;
         lastLevel = null;
         stateBeforeDisconnect = State.IDLE;
-        visitorPending = false;
-        visitorPendingName = "";
+        // A visitor that arrived just before /hub must not be forgotten: the
+        // hub sequence returns to the island for them as soon as it can.
+        long lastVisit = LowballingChat.lastVisitorAt();
+        if (lastVisit > 0 && System.currentTimeMillis() - lastVisit < 30_000L) {
+            visitorPending = true;
+            if (visitorPendingName.isBlank()) {
+                visitorPendingName = "Besucher";
+            }
+        } else {
+            visitorPending = false;
+            visitorPendingName = "";
+        }
         setWarpPosition();
         sendChat("/hub");
         actionAt = stateAt;
@@ -763,6 +773,12 @@ public final class LowballingMod {
             }
             if (handleVisitorDuringHubSequence()) {
                 return;
+            }
+            if (onIsland() && now - lastTrackUpdateAt >= 250L) {
+                // Also while trading with someone else: new visitors are tracked
+                // (and queued) right away instead of only between two players.
+                lastTrackUpdateAt = now;
+                updatePlayerTracks(client);
             }
             switch (state) {
                 case GO_HUB -> tickGoHub(client, now);
@@ -1134,6 +1150,19 @@ public final class LowballingMod {
         }
     }
 
+    /** After a "X is visiting your island" message the bot stays at least this long. */
+    private static final long VISITOR_GRACE_MS = 15_000L;
+    private static long lastTrackUpdateAt;
+
+    private static boolean onIsland() {
+        return switch (state) {
+            case ISLAND_SCAN, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU, OPEN_OFFER, VALUING,
+                 OFFER_READY, SET_COINS, WAIT_TRADE, LISTING, CHAT_OFFER, KICK_WAIT,
+                 NEXT_PLAYER -> true;
+            default -> false;
+        };
+    }
+
     private static void tickIslandScan(Minecraft client, long now) {
         updatePlayerTracks(client);
         if (now - islandArrivedAt < CONFIG.islandSettleSeconds * 1000L) {
@@ -1146,6 +1175,10 @@ public final class LowballingMod {
         }
         long wait = (CONFIG.islandSettleSeconds + CONFIG.islandEmptyWaitSeconds) * 1000L;
         if (now - islandArrivedAt >= wait) {
+            long lastVisit = LowballingChat.lastVisitorAt();
+            if (lastVisit > 0 && now - lastVisit < VISITOR_GRACE_MS) {
+                return; // someone just arrived - wait for them instead of leaving
+            }
             finishCycle();
         }
     }
@@ -1171,14 +1204,29 @@ public final class LowballingMod {
         LowballingNavigator.tick(target);
         if (client.player.distanceTo(target) <= CONFIG.interactReach) {
             LowballingNavigator.stop();
+            reachSince = 0;
             enterOpenMenu();
             return;
         }
-        if (now - stateAt > CONFIG.menuOpenTimeoutMs) {
-            message("§e[Lowballing] §7" + targetName + " nicht erreichbar - übersprungen.");
+        if (reachSince == 0) {
+            reachSince = now;
+        }
+        // A visitor we cannot reach within 5 s (no jumping, blocked path ...) is
+        // ignored for this cycle. The timer is not reset when OPEN_MENU bounces
+        // back here, so we can no longer get stuck on one player. The player we
+        // are already negotiating with gets the longer config timeout.
+        long limit = secondOffer ? CONFIG.menuOpenTimeoutMs : REACH_TIMEOUT_MS;
+        if (now - reachSince > limit) {
+            message("§e[Lowballing] §7" + targetName + " in " + (limit / 1000)
+                    + "s nicht erreichbar - ignoriert.");
+            reachSince = 0;
             enterNextPlayer();
         }
     }
+
+    private static final long REACH_TIMEOUT_MS = 5_000L;
+    /** Since when we try to get within reach of the current target (0 = in reach). */
+    private static long reachSince;
 
     private static void tickOpenMenu(Minecraft client, long now) {
         if (LowballingGui.isContainerOpen()) {
@@ -1393,6 +1441,9 @@ public final class LowballingMod {
             return;
         }
         setCoinsClosedAt = 0;
+        if (handleWrongTradePartner(client)) {
+            return;
+        }
         if (now - stateAt < 1000) {
             return;
         }
@@ -1424,6 +1475,9 @@ public final class LowballingMod {
 
     private static void tickWaitTrade(Minecraft client, long now) {
         boolean container = LowballingGui.isContainerOpen();
+        if (container && handleWrongTradePartner(client)) {
+            return;
+        }
         if (container && !tradeGuiSeen && LowballingGui.isTradeWindow(tradeMenuTitle)) {
             tradeMenuTitle = LowballingGui.currentTitle();
             tradeGuiSeen = true;
@@ -1550,14 +1604,34 @@ public final class LowballingMod {
             debug("Chat-Angebot: " + text);
             return;
         }
-        // Read what the visitor answers to our chat offer and react to it.
-        LowballingChat.PlayerLine reply = LowballingChat.lastLineFrom(targetName, chatSentAt);
-        if (reply != null && reply.at() > lastReplyHandledAt) {
-            lastReplyHandledAt = reply.at();
+        // Read what the visitor answers to our chat offer and react to it. All
+        // new lines are read together, and only once the visitor stopped typing
+        // for a moment: "20m" + "for both" is one answer, and we no longer react
+        // (or rush into a trade request) on the first half of it.
+        List<LowballingChat.PlayerLine> fresh = LowballingChat.linesFrom(targetName,
+                Math.max(chatSentAt - 1, lastReplyHandledAt));
+        if (!fresh.isEmpty()) {
+            LowballingChat.PlayerLine newest = fresh.get(fresh.size() - 1);
+            if (now - newest.at() < REPLY_SETTLE_MS) {
+                return; // still typing - also holds back the second-offer timeout
+            }
+            lastReplyHandledAt = newest.at();
+            StringBuilder combined = new StringBuilder();
+            for (LowballingChat.PlayerLine line : fresh) {
+                if (combined.length() > 0) {
+                    combined.append(' ');
+                }
+                combined.append(line.text());
+            }
+            debug("Antwort von " + targetName + ": " + combined);
             Offer offer = pendingOffer;
+            LowballingChat.PlayerLine reply = new LowballingChat.PlayerLine(newest.name(),
+                    combined.toString(), newest.at());
             if (offer != null && handleChatReply(offer, reply, now)) {
                 return;
             }
+            // Give them time to answer our reaction before the second offer starts.
+            phaseAt = Math.max(phaseAt, now - secondOfferDelayMs / 2);
         }
         if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
             message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
@@ -1582,6 +1656,8 @@ public final class LowballingMod {
 
     private static long chatSentAt;
     private static long lastReplyHandledAt;
+    /** The visitor must have stopped typing this long before we read the answer. */
+    private static final long REPLY_SETTLE_MS = 1_200L;
     /** Price the visitor agreed to in chat (0 = none). */
     private static long agreedSecondPrice;
     private static boolean counterAnswered;
@@ -1665,6 +1741,7 @@ public final class LowballingMod {
         secondOffer = true;
         finalizingSecond = true;
         secondCoinsPlaced = false;
+        reachSince = 0;
         enterApproach();
     }
 
@@ -1679,7 +1756,7 @@ public final class LowballingMod {
             return partialOfferText(offer);
         }
         long since = Math.max(0, stateAt - 120_000L);
-        LowballingChat.PlayerLine said = LowballingChat.lastLineFrom(targetName, since);
+        LowballingChat.PlayerLine said = combinedLines(targetName, since);
         String item = shortItemName(offer.displayName());
         if (said != null) {
             long ask = LowballingSmartChat.parseAsk(said.text(), offer.expectedValue());
@@ -1750,6 +1827,24 @@ public final class LowballingMod {
         return false;
     }
 
+    /** The last (up to 3) lines of a player since {@code since}, joined; null if none. */
+    private static LowballingChat.PlayerLine combinedLines(String name, long since) {
+        List<LowballingChat.PlayerLine> lines = LowballingChat.linesFrom(name, since - 1);
+        if (lines.isEmpty()) {
+            return null;
+        }
+        int from = Math.max(0, lines.size() - 3);
+        StringBuilder text = new StringBuilder();
+        for (int i = from; i < lines.size(); i++) {
+            if (text.length() > 0) {
+                text.append(' ');
+            }
+            text.append(lines.get(i).text());
+        }
+        LowballingChat.PlayerLine last = lines.get(lines.size() - 1);
+        return new LowballingChat.PlayerLine(last.name(), text.toString(), last.at());
+    }
+
     /** "i'd take the x + y but not the z, 12.3m for the x + y" (first offer). */
     private static String partialOfferText(Offer offer) {
         String take = joinItemNames(pendingTradeItems.stream().map(TradeItem::name).toList());
@@ -1768,7 +1863,15 @@ public final class LowballingMod {
         for (String name : names) {
             shortNames.add(shortItemName(name));
         }
-        return shortNames.isEmpty() ? "item" : String.join(" + ", shortNames);
+        if (shortNames.isEmpty()) {
+            return "item";
+        }
+        if (shortNames.size() == 1) {
+            return shortNames.get(0);
+        }
+        // "a, b and c" - no special characters in the chat text
+        return String.join(", ", shortNames.subList(0, shortNames.size() - 1))
+                + " and " + shortNames.get(shortNames.size() - 1);
     }
 
     /** Partial deal: no answer / no to the first offer -> come up the 5 % to the chat offer. */
@@ -1788,8 +1891,11 @@ public final class LowballingMod {
         if (name == null) {
             return "item";
         }
-        String clean = ScreenUtil.cleanName(name).replaceAll("[^\\p{L}\\p{N}' +-]", " ")
-                .replaceAll("\\s\\+\\d+$", "").trim().replaceAll("\\s+", " ");
+        // Plain chat text only: no stars, symbols, apostrophes or "+2" suffixes.
+        String clean = ScreenUtil.cleanName(name).replaceAll("\\s\\+\\d+$", "")
+                .replace("'", "")
+                .replaceAll("[^A-Za-z0-9 ]", " ")
+                .trim().replaceAll("\\s+", " ");
         return clean.isBlank() ? "item" : clean.toLowerCase(Locale.ROOT);
     }
 
@@ -2130,13 +2236,51 @@ public final class LowballingMod {
     private static final double SECOND_OFFER_FACTOR = 0.90;
     private static final long OFFER_ROUND_COINS = 1_000L;
 
-    /** The value shown in the item tooltip ("[AH-Flipper] Wert"). */
+    /**
+     * The value shown in OUR item tooltip ("[AH-Flipper] Wert: 12.3M"), i.e.
+     * exactly what the player sees. It used to call AhValuation.estimate with
+     * only the Cofl median filled in (no LBin / LBin count), so the offer was
+     * based on a different number than the tooltip. Off the render thread we
+     * wait up to 6 s for the tooltip to finish computing; otherwise the value
+     * is computed with the same Cofl inputs the tooltip uses.
+     */
     private static long tooltipValue(AhItem item, int slot, long fallback) {
+        boolean mayWait = !Minecraft.getInstance().isSameThread();
+        long deadline = System.currentTimeMillis() + (mayWait ? 6_000L : 0L);
+        List<String> lines;
+        while (true) {
+            lines = LowballingGui.tooltipLinesAt(slot);
+            long shown = parseShownTooltipValue(lines);
+            if (shown > 1) {
+                return shown;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                break;
+            }
+            ScreenUtil.sleep(250);
+        }
+        item.applyCoflValues(AhItem.parseCoflValues(lines));
         AhValuation.Estimate estimate = AhValuation.estimate(item, "");
         if (estimate.estimated > 1) {
             return estimate.estimated;
         }
         return fallback > 0 ? fallback : saleValue(item, slot);
+    }
+
+    private static final java.util.regex.Pattern SHOWN_VALUE = java.util.regex.Pattern.compile(
+            "(?i)\\[AH-Flipper\\]\\s*Wert:\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
+
+    private static long parseShownTooltipValue(List<String> lines) {
+        for (String line : lines) {
+            if (line == null) {
+                continue;
+            }
+            java.util.regex.Matcher matcher = SHOWN_VALUE.matcher(ScreenUtil.cleanName(line));
+            if (matcher.find()) {
+                return parseCompactCoins(matcher.group(1));
+            }
+        }
+        return 0;
     }
 
     private static long saleValue(AhItem item, int slot) {
@@ -2249,6 +2393,7 @@ public final class LowballingMod {
             agreedSecondPrice = 0;
             partialStage = 0;
             secondCoinsPlaced = false;
+            reachSince = 0;
             rejectedTradeNames = List.of();
             enterApproach();
             return;
@@ -2319,6 +2464,12 @@ public final class LowballingMod {
                 TRACKED.put(player.getUUID(), track);
             }
             markIfAtSpawn(client, player, track);
+            if (!track.moved && LowballingChat.visitedSince(player.getName().getString(),
+                    islandArrivedAt - 120_000L)) {
+                // "X is visiting your island": a real visitor even if they stand still.
+                track.moved = true;
+                debug("Besucher-Nachricht: " + player.getName().getString());
+            }
             if (!track.moved
                     && player.position().distanceTo(track.start) >= CONFIG.minPlayerMoveBlocks) {
                 track.moved = true;
@@ -2433,6 +2584,44 @@ public final class LowballingMod {
             }
         }
         return best;
+    }
+
+    /**
+     * Players standing inside each other: the trade window ("You ... <name>")
+     * can belong to the other one. Never trade with the wrong person: close it,
+     * queue that player next and continue with the actual target.
+     */
+    private static boolean handleWrongTradePartner(Minecraft client) {
+        String title = LowballingGui.currentTitle().toLowerCase(Locale.ROOT).trim();
+        if (!title.startsWith("you ") || targetName == null || targetName.isBlank()
+                || title.contains(targetName.toLowerCase(Locale.ROOT))) {
+            return false;
+        }
+        String other = "";
+        if (client.level != null) {
+            for (Player player : client.level.players()) {
+                String name = player.getName().getString();
+                if (player != client.player && title.contains(name.toLowerCase(Locale.ROOT))) {
+                    other = name;
+                    if (!PROCESSED.contains(player.getUUID())
+                            && !PLAYER_QUEUE.contains(player.getUUID())) {
+                        PlayerTrack track = TRACKED.computeIfAbsent(player.getUUID(),
+                                ignored -> new PlayerTrack(player.position()));
+                        track.moved = true;
+                        PLAYER_QUEUE.addFirst(player.getUUID());
+                    }
+                    break;
+                }
+            }
+        }
+        message("§e[Lowballing] §7Trade mit falschem Spieler"
+                + (other.isBlank() ? "" : " (" + other + ")") + " geöffnet - schließe, weiter mit "
+                + targetName + ".");
+        SignInput.clear();
+        LowballingGui.close();
+        reachSince = 0;
+        enterApproach();
+        return true;
     }
 
     private static boolean rightClickEntity(Entity target) {

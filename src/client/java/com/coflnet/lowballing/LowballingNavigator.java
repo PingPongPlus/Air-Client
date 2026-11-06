@@ -10,6 +10,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
 public final class LowballingNavigator {
+    /** Baritone's ActionCosts.COST_INF: movements at or above it are never used. */
+    private static final double NO_JUMP_PENALTY = 1_000_000.0;
     private static Entity currentTarget;
     private static BlockPos lastGoal;
     private static long lastPathAt;
@@ -118,22 +120,24 @@ public final class LowballingNavigator {
     private static void configureBaritone() {
         baritone.api.Settings s = BaritoneAPI.getSettings();
         s.allowSprint.value = true;
-        com.coflnet.ahflipper.AhMobPathfinder.setJumpHeight(s,
-                com.coflnet.ahflipper.AhAutomationConfig.get().jumpHeight);
+        // No jumping at all for now: minimal jump height, no parkour/ascends and
+        // a jump penalty of Baritone's COST_INF, so every movement that needs a
+        // jump (ascend, high ascend, parkour, pillar) counts as impossible.
+        com.coflnet.ahflipper.AhMobPathfinder.setJumpHeight(s, 1.25);
         s.allowBreak.value = false;
         s.allowPlace.value = false;
         s.allowInventory.value = false;
         s.autoTool.value = false;
-        s.allowParkour.value = true;
-        s.allowParkourAscend.value = true;
+        s.allowParkour.value = false;
+        s.allowParkourAscend.value = false;
         s.allowParkourPlace.value = false;
         s.allowDiagonalDescend.value = true;
-        s.allowDiagonalAscend.value = true;
+        s.allowDiagonalAscend.value = false;
         s.allowDownward.value = true;
         s.allowOvershootDiagonalDescend.value = true;
         s.allowVines.value = true;
         s.allowWalkOnBottomSlab.value = true;
-        s.sprintAscends.value = true;
+        s.sprintAscends.value = false;
         s.sprintInWater.value = true;
         s.overshootTraverse.value = true;
         s.assumeWalkOnWater.value = false;
@@ -160,7 +164,7 @@ public final class LowballingNavigator {
         s.itemSaver.value = false;
         s.mineScanDroppedItems.value = false;
         s.costHeuristic.value = 3.0;
-        s.jumpPenalty.value = 2.0;
+        s.jumpPenalty.value = NO_JUMP_PENALTY;
         s.walkOnWaterOnePenalty.value = 3.0;
         s.pathingMaxChunkBorderFetch.value = 64;
         s.planningTickLookahead.value = 150;

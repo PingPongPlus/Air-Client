@@ -412,7 +412,8 @@ public class Trader {
     }
 
     private void run() {
-        chat("\u00a76[Flipper] \u00a7aBazaar flipper started \u00a77\u00b7 reserve \u00a7f" + ScreenUtil.formatCoins(cfg.reserveCoins) + " \u00a77\u00b7 max orders \u00a7f" + cfg.maxOrders + " \u00a77\u00b7 tax \u00a7f" + cfg.taxPercent + "%");
+        chat("\u00a76[Flipper] \u00a7aBazaar flipper started \u00a77\u00b7 reserve \u00a7f" + ScreenUtil.formatCoins(cfg.reserveCoins) + " \u00a77\u00b7 max orders \u00a7f" + cfg.maxOrders + " \u00a77\u00b7 tax \u00a7f" + cfg.taxPercent + "%"
+                + (cfg.maxCoinsPerItem > 0 ? " \u00a77\u00b7 max/item \u00a7f" + ScreenUtil.formatCoins(cfg.maxCoinsPerItem) : ""));
         long lastCycleAt = 0;
         long lastHeartbeatAt = System.currentTimeMillis();
         int watchdogStrikes = 0;
