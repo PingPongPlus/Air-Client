@@ -10,57 +10,111 @@ import net.minecraft.client.gui.render.TextureSetup;
 
 import java.util.Optional;
 
-/** Render-thread-owned scene snapshot and shared half-resolution separable blur. */
+/** HUD and screen glass each share a scene snapshot and half-resolution separable blur. */
 public final class GlassBackdrop {
-    private static TextureTarget scene;
-    private static TextureTarget blurX;
-    private static TextureTarget blurred;
-    private static boolean requested;
-    private static boolean captured;
+    private static final Layer HUD = new Layer("HUD");
+    private static final Layer SCREEN = new Layer("screen");
+    private static final ThreadLocal<Layer> EXTRACTING = ThreadLocal.withInitial(() -> HUD);
 
-    public static void request() { requested = true; }
+    /** Keep the extraction layer on each element: textures are resolved later by GuiRenderer. */
+    public static Layer request() {
+        Layer layer = EXTRACTING.get();
+        layer.requested = true;
+        return layer;
+    }
+
+    public static Layer beginScreen() {
+        Layer previous = EXTRACTING.get();
+        EXTRACTING.set(SCREEN);
+        return previous;
+    }
+
+    public static void endScreen(Layer previous) { EXTRACTING.set(previous); }
 
     public static void beginFrame(RenderTarget target) {
-        captured = false;
-        if (!requested) { if (scene != null) close(); return; }
-        requested = false;
-        if (scene != null && scene.width == target.width && scene.height == target.height
-                && scene.getColorTexture().getFormat() == target.getColorTexture().getFormat()) return;
-        close();
-        scene = new TextureTarget("Glass scene", target.width, target.height, false,
-                target.getColorTexture().getFormat());
-        int width = Math.max(1, target.width / 2);
-        int height = Math.max(1, target.height / 2);
-        blurX = new TextureTarget("Glass blur horizontal", width, height, false,
-                target.getColorTexture().getFormat());
-        blurred = new TextureTarget("Glass blur vertical", width, height, false,
-                target.getColorTexture().getFormat());
+        HUD.beginFrame(target);
+        SCREEN.beginFrame(target);
     }
 
-    public static boolean needsCapture() { return !captured; }
-
-    /** Called between GUI render passes, after the backdrop and before the first glass draw. */
-    public static void capture(RenderTarget target) {
-        captureScene(target);
-        if (GlassEffectSettings.blurStep() == 0) { captured = true; return; }
-        blur(scene.getColorTextureView(), blurX, GlassPipelines.blurHorizontal());
-        blur(blurX.getColorTextureView(), blurred, GlassPipelines.blurVertical());
-        captured = true;
+    /** Identify the scene actually bound by this draw, including logos' second sampler. */
+    public static Layer pendingCapture(TextureSetup textures) {
+        if (HUD.needsCapture(textures)) return HUD;
+        if (SCREEN.needsCapture(textures)) return SCREEN;
+        return null;
     }
 
-    private static void captureScene(RenderTarget target) {
-        RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
-                target.getColorTexture(), scene.getColorTexture(), 0, 0, 0, 0, 0, target.width, target.height);
+    public static void close() {
+        HUD.close();
+        SCREEN.close();
     }
 
-    public static TextureSetup sceneTexture() {
-        return TextureSetup.singleTexture(scene.getColorTextureView(),
-                RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
-    }
+    public static final class Layer {
+        private final String name;
+        private TextureTarget scene;
+        private TextureTarget blurX;
+        private TextureTarget blurred;
+        private boolean requested;
+        private boolean captured;
 
-    public static TextureSetup logoTextures(GpuTextureView mark) {
-        var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        return TextureSetup.doubleTexture(mark, sampler, scene.getColorTextureView(), sampler);
+        private Layer(String name) { this.name = name; }
+
+        private void beginFrame(RenderTarget target) {
+            captured = false;
+            if (!requested) { if (scene != null) close(); return; }
+            requested = false;
+            if (scene != null && scene.width == target.width && scene.height == target.height
+                    && scene.getColorTexture().getFormat() == target.getColorTexture().getFormat()) return;
+            close();
+            scene = new TextureTarget("Glass " + name + " scene", target.width, target.height, false,
+                    target.getColorTexture().getFormat());
+            int width = Math.max(1, target.width / 2);
+            int height = Math.max(1, target.height / 2);
+            blurX = new TextureTarget("Glass " + name + " blur horizontal", width, height, false,
+                    target.getColorTexture().getFormat());
+            blurred = new TextureTarget("Glass " + name + " blur vertical", width, height, false,
+                    target.getColorTexture().getFormat());
+        }
+
+        private boolean needsCapture(TextureSetup textures) {
+            if (captured || scene == null) return false;
+            var view = scene.getColorTextureView();
+            return textures.texure0() == view || textures.texure1() == view;
+        }
+
+        /** Called after this layer's background pass and before its first glass draw. */
+        public void capture(RenderTarget target) {
+            RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(
+                    target.getColorTexture(), scene.getColorTexture(), 0, 0, 0, 0, 0, target.width, target.height);
+            if (GlassEffectSettings.blurStep() != 0) {
+                blur(scene.getColorTextureView(), blurX, GlassPipelines.blurHorizontal());
+                blur(blurX.getColorTextureView(), blurred, GlassPipelines.blurVertical());
+            }
+            captured = true;
+        }
+
+        public TextureSetup sceneTexture() {
+            return TextureSetup.singleTexture(scene.getColorTextureView(),
+                    RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+        }
+
+        public TextureSetup logoTextures(GpuTextureView mark) {
+            var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+            return TextureSetup.doubleTexture(mark, sampler, scene.getColorTextureView(), sampler);
+        }
+
+        public TextureSetup textures() {
+            var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
+            return TextureSetup.doubleTexture(scene.getColorTextureView(), sampler,
+                    GlassEffectSettings.blurStep() == 0 ? scene.getColorTextureView() : blurred.getColorTextureView(), sampler);
+        }
+
+        private void close() {
+            if (scene != null) scene.destroyBuffers();
+            if (blurX != null) blurX.destroyBuffers();
+            if (blurred != null) blurred.destroyBuffers();
+            scene = blurX = blurred = null;
+            captured = false;
+        }
     }
 
     private static void blur(GpuTextureView source, TextureTarget destination, RenderPipeline pipeline) {
@@ -70,19 +124,6 @@ public final class GlassBackdrop {
             pass.bindTexture("Sampler0", source, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
             pass.draw(3, 1, 0, 0);
         }
-    }
-
-    public static TextureSetup textures() {
-        var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        return TextureSetup.doubleTexture(scene.getColorTextureView(), sampler, GlassEffectSettings.blurStep() == 0 ? scene.getColorTextureView() : blurred.getColorTextureView(), sampler);
-    }
-
-    public static void close() {
-        if (scene != null) scene.destroyBuffers();
-        if (blurX != null) blurX.destroyBuffers();
-        if (blurred != null) blurred.destroyBuffers();
-        scene = blurX = blurred = null;
-        captured = false;
     }
 
     private GlassBackdrop() {}

@@ -1,5 +1,7 @@
 package pingplus.voicechat.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
@@ -9,13 +11,20 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import pingplus.voicechat.client.gui.glass.MenuBackground;
+import pingplus.voicechat.client.gui.glass.GlassBackdrop;
 
 @Mixin(Screen.class)
 public abstract class GlassMenuBackgroundMixin {
     // This final entry point runs before backgrounds, even when a screen overrides rendering.
-    @Inject(method = "extractRenderStateWithTooltipAndSubtitles", at = @At("HEAD"))
-    private void updateParallax(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+    @WrapMethod(method = "extractRenderStateWithTooltipAndSubtitles")
+    private void extractScreen(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta, Operation<Void> original) {
         MenuBackground.update(mouseX, mouseY, g.guiWidth(), g.guiHeight());
+        var previous = GlassBackdrop.beginScreen();
+        try {
+            original.call(g, mouseX, mouseY, delta);
+        } finally {
+            GlassBackdrop.endScreen(previous);
+        }
     }
 
     @Inject(method = "extractPanorama", at = @At("HEAD"), cancellable = true)

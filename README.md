@@ -2,6 +2,14 @@
 
 A Minecraft client with voice chat, Spotify, and a customizable liquid glass interface. This client also features Automation Mods for Hypixel-Skyblock, like Auto Bazaar Flipper or Auction House flipper!
 
+## How to use
+
+Build it yourself with **Java 25** using `./gradlew build` (`gradlew.bat build` on Windows), or [download the beta here](https://github.com/PingPongPlus/Air-Client/releases/tag/v1.0.0-Beta).
+
+1. Install **Fabric Loader 0.19.5+** for **Minecraft 26.2** with **Java 25+**.
+2. Put the client JAR and **Fabric API** in your Minecraft instance's `mods` folder. For local builds, use `build/libs/untitled-1.0.1.jar`.
+3. Launch the Fabric profile. Press **Right Shift** for client settings, **G** to edit the HUD, or **V** for voice chat settings.
+
 ![Menu screen](docs/readme/menu.png)
 ![Settings screen](docs/readme/settings.png)
 ![Landing screen](docs/readme/landing.png)

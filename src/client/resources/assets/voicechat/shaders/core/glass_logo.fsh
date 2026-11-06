@@ -1,6 +1,6 @@
 #version 330
 uniform sampler2D Sampler0; // Original mark: silhouette and sculpted relief.
-uniform sampler2D Sampler1; // Captured menu scene, including rain.
+uniform sampler2D Sampler1; // Captured menu scene.
 in vec2 localUV;
 in vec4 glassData;
 out vec4 fragColor;

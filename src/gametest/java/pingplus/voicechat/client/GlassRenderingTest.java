@@ -17,12 +17,20 @@ import pingplus.voicechat.client.hud.ScoreboardHud;
 public final class GlassRenderingTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (Boolean.getBoolean("voicechat.glassBackdropTest")) {
+            GlassBackdropGameTest.run(context);
+            return;
+        }
         if (Boolean.getBoolean("voicechat.mobEspTest")) {
             MobEspGameTest.run(context);
             return;
         }
         if (Boolean.getBoolean("voicechat.menuThemeTest")) {
             MenuThemeGameTest.run(context);
+            return;
+        }
+        if (Boolean.getBoolean("voicechat.profileTest")) {
+            ProfileGameTest.run(context);
             return;
         }
         if (Boolean.getBoolean("voicechat.forceSneakTest")) {

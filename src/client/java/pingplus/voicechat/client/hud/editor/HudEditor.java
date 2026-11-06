@@ -33,6 +33,12 @@ public final class HudEditor {
     private static int screenWidth, screenHeight;
     private HudEditor() {}
     public static void register(Entry entry) { ENTRIES.put(entry.id(), entry); }
+    public static Map<String, HudLayout.Position> layoutSnapshot() { return LAYOUT.snapshot(); }
+    public static void applyLayout(Map<String, HudLayout.Position> positions) {
+        finish();
+        LAYOUT.replace(positions);
+        save();
+    }
     public static void unregister(String id) {
         Entry e = ENTRIES.remove(id);
         if (e != null) e.controls().get().forEach(PROXIES::remove);

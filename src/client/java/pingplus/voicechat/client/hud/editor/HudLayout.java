@@ -62,6 +62,11 @@ public final class HudLayout {
     }
     public void reset(String id) { positions.remove(id); }
     public Position position(String id) { return positions.get(id); }
+    public Map<String, Position> snapshot() { return Map.copyOf(positions); }
+    public void replace(Map<String, Position> next) {
+        positions.clear();
+        positions.putAll(next);
+    }
     public void save() throws IOException {
         Properties p = new Properties();
         positions.forEach((id, value) -> {

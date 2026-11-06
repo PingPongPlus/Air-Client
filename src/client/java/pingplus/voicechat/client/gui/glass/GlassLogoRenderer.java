@@ -24,19 +24,19 @@ public final class GlassLogoRenderer {
                     1707, 924, 1707, 924, ARGB.white(alpha));
             return;
         }
-        GlassBackdrop.request();
+        var backdrop = GlassBackdrop.request();
         graphics.nextStratum();
         var pose = new Matrix3x2f(graphics.pose());
-        graphics.guiRenderState.addGuiElement(new LogoState(pose, x, y, width, height, ARGB.white(alpha),
+        graphics.guiRenderState.addGuiElement(new LogoState(backdrop, pose, x, y, width, height, ARGB.white(alpha),
                 new ScreenRectangle(x, y, width, height).transformMaxBounds(pose)));
         graphics.nextStratum();
     }
 
-    private record LogoState(Matrix3x2f pose, int x, int y, int width, int height, int color,
+    private record LogoState(GlassBackdrop.Layer backdrop, Matrix3x2f pose, int x, int y, int width, int height, int color,
                              ScreenRectangle bounds) implements GuiElementRenderState {
         @Override public RenderPipeline pipeline() { return GlassPipelines.LOGO; }
         @Override public TextureSetup textureSetup() {
-            return GlassBackdrop.logoTextures(Minecraft.getInstance().getTextureManager().getTexture(MARK).getTextureView());
+            return backdrop.logoTextures(Minecraft.getInstance().getTextureManager().getTexture(MARK).getTextureView());
         }
         @Override public ScreenRectangle scissorArea() { return null; }
         @Override public void buildVertices(VertexConsumer vertices) {

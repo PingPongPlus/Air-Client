@@ -44,9 +44,10 @@ against actual entity render states and menu input in a local world.
 - `ClickGuiScreen`: category layout, dragging, custom controls, input and animations.
 - `GlassStyle`: palette, UI font, and resource-independent rounded geometry.
 - `GlassButtonRenderer`: extracts antialiased GPU geometry for glass and tinted controls.
-- `GlassBackdrop` / `GlassGuiRendererMixin`: capture the background for glass panels.
-  One shared half-resolution separable blur is reused
-  across controls. Targets resize with the framebuffer and are released outside menus.
+- `GlassBackdrop` / `GlassGuiRendererMixin`: capture independent HUD and screen backgrounds.
+  Each layer shares one half-resolution separable blur across its controls. Screen glass
+  captures after the screen background, even when HUD glass renders earlier in the same
+  draw range. Targets resize with the framebuffer and are released when a layer is unused.
 - `glass_button.fsh`: rounded glass, screen-space refraction, frosted sampling, rim lighting.
 - `glass_control.fsh`: antialiased switches, slider tracks/thumbs, and input surfaces.
 - `GlassLoadingOverlayMixin`: changes startup/reload visuals while leaving vanilla
@@ -63,6 +64,9 @@ rendering is unchanged; default text in menus, HUD, chat, tooltips and input fie
 ## Verification
 
 `./gradlew build --offline` compiles/packages the mod and runs the voice smoke tests.
+`./gradlew -I tools/glass-backdrop-test.gradle runClientGameTest --offline` checks screen
+glass pixels with other glass HUDs active and Ping glass on/off, glass and vanilla blur
+on/off, GUI scales 2/3, closing/reopening the screen, framebuffer resize, and resource reload.
 `./gradlew runClientGameTest --offline` launches an isolated client, exercises glass
 controls, checks settings windows, numeric validation, slider input, panel dragging, keyboard
 focus, resizing and GUI scales, and performs a resource reload in a temporary world.

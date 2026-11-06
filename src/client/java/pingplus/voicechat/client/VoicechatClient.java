@@ -43,6 +43,8 @@ public class VoicechatClient implements ClientModInitializer {
     private static KeyMapping zoomKey;
     private static KeyMapping shoulderCamKey;
     private static KeyMapping killauraKey;
+    private static pingplus.voicechat.client.profile.ClientProfiles profiles;
+    public static pingplus.voicechat.client.profile.ClientProfiles profiles() { return profiles; }
     private static final KeyMapping.Category CLIENT_CATEGORY = KeyMapping.Category.register(
             Identifier.fromNamespaceAndPath("voicechat", "client")
     );
@@ -97,6 +99,7 @@ public class VoicechatClient implements ClientModInitializer {
         pingplus.voicechat.client.etherwarp.EtherwarpHook.register();
         initializeClientFeatures();
         initializeVoiceChat();
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> profiles.restoreActive());
     }
 
     public static void syncSlayerCfg() {
@@ -119,6 +122,9 @@ public class VoicechatClient implements ClientModInitializer {
         HandSwapFeature handSwap = new HandSwapFeature();
 
         ArraylistHud arraylistHud = new ArraylistHud(fpsHud, coordinatesHud);
+        profiles = new pingplus.voicechat.client.profile.ClientProfiles(
+                net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("voicechat-profiles.properties"),
+                fpsHud, coordinatesHud, arraylistHud);
 
         HudEditor.register(new HudEditor.Entry("fps", "FPS", fpsHud::width, fpsHud::height, (w,h) -> 18, (w,h) -> 13,
                 fpsHud::isEnabled, (g,mx,my,dt,editing) -> fpsHud.render(g), java.util.List::of));
@@ -177,8 +183,12 @@ public class VoicechatClient implements ClientModInitializer {
             pingplus.voicechat.client.spotify.MusicGlass.tick(client.player != null);
             if (!active) pingplus.voicechat.client.hud.SpotifyWidget.INSTANCE.clear();
         });
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> HudMetrics.reset());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            handSwap.finish(client);
+            HudMetrics.reset();
+        });
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            handSwap.finish(client);
             PlayerSettings.save();
             HudEditor.finish();
             pingplus.voicechat.client.spotify.SpotifyClient.INSTANCE.close();
