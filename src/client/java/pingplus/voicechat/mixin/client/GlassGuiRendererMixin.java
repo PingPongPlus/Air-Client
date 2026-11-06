@@ -13,7 +13,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import pingplus.voicechat.client.gui.glass.GlassBackdrop;
-import pingplus.voicechat.client.gui.glass.GlassPipelines;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -31,20 +30,18 @@ public abstract class GlassGuiRendererMixin {
     private void voicechat$captureBeforeGlass(Supplier<String> label, RenderTarget target,
                                              GpuBufferSlice transforms, int start, int end,
                                              Operation<Void> original) {
-        if (GlassBackdrop.needsCapture()) {
-            for (int i = start; i < end; i++) {
-                var pipeline = ((GlassGuiDrawAccessor) draws.get(i)).voicechat$getPipeline();
-                if (GlassPipelines.isButton(pipeline) || pipeline == GlassPipelines.CONTROL || pipeline == GlassPipelines.LOGO
-                        || pipeline == GlassPipelines.BAR || pipeline == GlassPipelines.BOSS_BAR || pipeline == GlassPipelines.WEATHER) {
-                    // Close the background pass before copying: never read from an active color attachment.
-                    if (i > start) original.call(label, target, transforms, start, i);
-                    GlassBackdrop.capture(target);
-                    original.call(label, target, transforms, i, end);
-                    return;
-                }
-            }
+        int pendingStart = start;
+        for (int i = start; i < end; i++) {
+            var textures = ((GlassGuiDrawAccessor) draws.get(i)).voicechat$getTextureSetup();
+            var layer = GlassBackdrop.pendingCapture(textures);
+            if (layer == null) continue;
+            // Finish preceding HUD/background draws before capturing each layer independently.
+            // HUD and screen glass can occur in the same range when a screen skips vanilla blur.
+            if (i > pendingStart) original.call(label, target, transforms, pendingStart, i);
+            layer.capture(target);
+            pendingStart = i;
         }
-        original.call(label, target, transforms, start, end);
+        if (pendingStart < end) original.call(label, target, transforms, pendingStart, end);
     }
 
     @Inject(method = "close", at = @At("HEAD"))
