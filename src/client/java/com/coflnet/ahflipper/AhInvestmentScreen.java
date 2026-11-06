@@ -134,14 +134,19 @@ public final class AhInvestmentScreen extends Screen {
                                 + " \u00a77\u2192 \u00a7f" + fmt(candidate.sellTarget)
                                 + " \u00a78(" + pct(candidate.marginPercent) + ")",
                         panelX + 32, y + 16, 0xFFDDDDDD);
-                RenderUtils.drawString(context,
-                        "\u00a77B \u00a7f"
+                String windowText = candidate.patternValidated
+                        ? "\u00a77B \u00a7f"
                                 + hourWindow(candidate.buyHourStart, candidate.buyHourEnd)
-                                + ": \u00a7f" + fmt(candidate.buyHourMedian)
                                 + " \u00a77\u00b7 S \u00a7f"
                                 + hourWindow(candidate.sellHourStart, candidate.sellHourEnd)
-                                + ": \u00a7f" + fmt(candidate.sellHourMedian)
-                                + " \u00a77\u00b7 " + trendShort(candidate),
+                                + " \u00a78(" + candidate.patternHits + "/"
+                                + candidate.patternDays + "d)"
+                        : "\u00a77Clearing \u00a7f" + fmt(candidate.clearingPrice)
+                                + (candidate.nextBinPrice > 0
+                                ? " \u00a77\u00b7 next BIN \u00a7f" + fmt(candidate.nextBinPrice)
+                                : "");
+                RenderUtils.drawString(context,
+                        windowText + " \u00a77\u00b7 " + trendShort(candidate),
                         panelX + 32, y + 27, 0xFFBBBBBB);
 
                 RenderUtils.drawString(context,
@@ -253,22 +258,23 @@ public final class AhInvestmentScreen extends Screen {
         return String.format(Locale.US, "%02d\u2013%02d", start, end);
     }
 
+    /** 48h vs. rest of the week. */
     private static String trendShort(AhInvestmentTracker.InvestmentCandidate candidate) {
-        double trend = candidate.trendPercentPerHour;
-        if (trend > 0.05) {
-            return "\u00a7a\u2191+" + String.format(Locale.US, "%.1f%%", trend);
+        double trend = candidate.momentumPercent;
+        if (trend > 2.0) {
+            return "\u00a7a\u2191+" + String.format(Locale.US, "%.0f%%", trend);
         }
-        if (trend < -0.05) {
-            return "\u00a7c\u2193" + String.format(Locale.US, "%.1f%%", trend);
+        if (trend < -2.0) {
+            return "\u00a7c\u2193" + String.format(Locale.US, "%.0f%%", trend);
         }
         return "\u00a77\u2192";
     }
 
     private static int trendColor(AhInvestmentTracker.InvestmentCandidate candidate) {
-        if (candidate.trendPercentPerHour > 0.05) {
+        if (candidate.momentumPercent > 2.0) {
             return 0xFF55DD55;
         }
-        if (candidate.trendPercentPerHour < -0.05) {
+        if (candidate.momentumPercent < -2.0) {
             return 0xFFDD5555;
         }
         return 0xFF8888AA;

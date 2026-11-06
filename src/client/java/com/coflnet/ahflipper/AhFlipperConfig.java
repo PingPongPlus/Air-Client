@@ -33,7 +33,6 @@ public class AhFlipperConfig {
     public double comparableOutlierPercent = 30.0;
     public double comparableAddonSharePercent = 10.0;
     public double addonLossPercent = 4.0;
-    public double comparableLossPercent = 6.0;
     public double minAddonValueMillions = 3.0;
     public long addonMinValueCoins = 3_000_000L;
     public double addonMinBazaarVolume = 5.0;
@@ -43,8 +42,6 @@ public class AhFlipperConfig {
     public int minTotalSales = 120;
     public int minCleanSales = 60;
     public long cleanSalesAddonValueCoins = 15_000_000L;
-    public int petLevel1MinSales = 120;
-    public int petLevelMinSales = 30;
     public int analysisCacheMinutes = 2;
     public int coflLbinMinCount = 2;
     public double coflLbinMatchPercent = 1.0;
@@ -118,10 +115,20 @@ public class AhFlipperConfig {
     public int fireSaleMaxTags = 120;
     public int fireSaleTagDelayMs = 250;
     public int fireSaleRefreshMinutes = 30;
-    public int fireSaleMinSales = 1;
+    /** Minimum sales in the last 30 days. */
+    public int fireSaleMinSales = 5;
     public double fireSaleMinRoiPercent = 15.0;
+    /** @deprecated momentum turned out to be a negative signal; no longer used as filter. */
+    @Deprecated
     public double fireSaleMinTrendPercent = 0.0;
-    public double fireSaleMinConfidence = 0.20;
+    public double fireSaleMinConfidence = 0.45;
+    /**
+     * Minimum days since the first AH sale of a skin. Fresh Fire Sale skins
+     * keep falling for months (-35..-55% within 90 days in the data).
+     */
+    public int fireSaleMinAgeDays = 120;
+    /** Planned holding period for the target price. */
+    public int fireSaleHoldDays = 45;
     public double fireSaleSlippagePercent = 5.0;
     public int fireSaleMaxQty = 3;
     public int fireSaleTopCount = 5;
@@ -157,7 +164,7 @@ public class AhFlipperConfig {
     public Map<String, String> blacklistTags = new ConcurrentHashMap<>();
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CURRENT_CONFIG_VERSION = 2;
+    private static final int CURRENT_CONFIG_VERSION = 3;
     private static final long TEMP_BLOCK_MS = 5 * 60_000L;
     private static final Map<String, Long> TEMP_BLOCKED = new ConcurrentHashMap<>();
 
@@ -309,21 +316,31 @@ public class AhFlipperConfig {
                     return new AhFlipperConfig();
                 }
                 if (loaded != null) {
-                    if (loaded.configVersion < CURRENT_CONFIG_VERSION) {
+                    if (loaded.configVersion < 2) {
                         loaded.investmentGui = true;
                         loaded.investmentPanelEnabled = true;
                         loaded.ahPanelEnabled = true;
+                    }
+                    if (loaded.configVersion < 3) {
+                        // New Fire Sale model: the old defaults (1 sale, 20%
+                        // confidence) let through skins without a real market.
+                        loaded.fireSaleMinSales = Math.max(5, loaded.fireSaleMinSales);
+                        loaded.fireSaleMinConfidence = Math.max(0.45,
+                                loaded.fireSaleMinConfidence);
+                    }
+                    if (loaded.fireSaleMinAgeDays < 30) {
+                        loaded.fireSaleMinAgeDays = 120;
+                    }
+                    if (loaded.fireSaleMinAgeDays > 730) {
+                        loaded.fireSaleMinAgeDays = 730;
+                    }
+                    if (loaded.fireSaleHoldDays < 7 || loaded.fireSaleHoldDays > 180) {
+                        loaded.fireSaleHoldDays = 45;
                     }
                     loaded.addonMinSalesPerWeek = Math.min(4,
                             Math.max(1, loaded.addonMinSalesPerWeek));
                     if (loaded.maxAuctions > 14) {
                         loaded.maxAuctions = 14;
-                    }
-                    if (loaded.petLevel1MinSales <= 0) {
-                        loaded.petLevel1MinSales = 120;
-                    }
-                    if (loaded.petLevelMinSales <= 0) {
-                        loaded.petLevelMinSales = 30;
                     }
                     if (loaded.cvOutlierPercent <= 0) {
                         loaded.cvOutlierPercent = 50.0;
@@ -371,9 +388,6 @@ public class AhFlipperConfig {
                     }
                     if (loaded.addonLossPercent < 0) {
                         loaded.addonLossPercent = 4.0;
-                    }
-                    if (loaded.comparableLossPercent < 0) {
-                        loaded.comparableLossPercent = 6.0;
                     }
                     if (loaded.minItemCoins <= 0) {
                         loaded.minItemCoins = 2_000_000L;

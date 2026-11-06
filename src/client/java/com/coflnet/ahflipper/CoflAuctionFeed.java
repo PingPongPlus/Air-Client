@@ -152,6 +152,8 @@ public final class CoflAuctionFeed {
         private volatile long nextPollAt;
         private volatile int rateLimitHits;
         private volatile long lastRateLimitLogAt;
+        /** Last rate-limit error or last backoff step-down. */
+        private volatile long lastRateLimitAt;
 
         private Listener(CountDownLatch closed) {
             this.closed = closed;
@@ -248,7 +250,15 @@ public final class CoflAuctionFeed {
                     lastPollCount = count;
                     totalSeen += fresh;
                     lastPollAt = System.currentTimeMillis();
-                    rateLimitHits = 0;
+                    // Step the backoff down slowly (one level per minute without a
+                    // rate-limit error). Resetting it to 0 on the first success
+                    // made the poller jump back to full speed and hit the limit
+                    // again right away.
+                    long okAt = System.currentTimeMillis();
+                    if (rateLimitHits > 0 && okAt - lastRateLimitAt > 60_000L) {
+                        rateLimitHits--;
+                        lastRateLimitAt = okAt;
+                    }
                 }
             } catch (Exception e) {
                 System.out.println("[AH-Flipper] Feed-Nachricht nicht lesbar: " + e);
@@ -297,6 +307,7 @@ public final class CoflAuctionFeed {
 
         private void slowDown() {
             rateLimitHits = Math.min(4, rateLimitHits + 1);
+            lastRateLimitAt = System.currentTimeMillis();
             long pause = Math.min(30_000L, 2000L * rateLimitHits);
             nextPollAt = System.currentTimeMillis() + pause;
             long now = System.currentTimeMillis();

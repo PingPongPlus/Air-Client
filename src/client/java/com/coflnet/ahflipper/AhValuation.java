@@ -309,8 +309,8 @@ public class AhValuation {
                 estimated = comparableAverage;
                 est.source = "comparable";
             }
-            estimated = Math.round(estimated
-                    * (1.0 - AhFlipperMod.CONFIG.comparableLossPercent / 100.0));
+            // No extra safety deduction here: the tooltip shows the market value,
+            // the flipper/lowballer apply their own margins on top of it.
         } else {
             estimated = reference;
             if (!pet && (addonsWorthwhile || aspectOfTheVoid)) {

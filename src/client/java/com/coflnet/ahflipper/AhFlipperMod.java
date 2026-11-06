@@ -73,6 +73,8 @@ public class AhFlipperMod {
     private static volatile long activePurchaseValue;
     private static volatile long activePurchasePrice;
     private static volatile long activePurchaseAt;
+    private static volatile int activePurchaseBaseline = -1;
+    private static volatile int lastBoughtBaseline = -1;
     private static final java.util.concurrent.atomic.AtomicBoolean SOLD_CLAIM_PENDING =
             new java.util.concurrent.atomic.AtomicBoolean();
     private static final java.util.concurrent.atomic.AtomicBoolean CHAT_HANDLING =
@@ -94,8 +96,41 @@ public class AhFlipperMod {
     }
 
     private record ListingTask(String tag, String name, long value, long boughtPrice,
-                               String excludeUuid, long fixedPrice, long at) {
+                               String excludeUuid, long fixedPrice, long at,
+                               int attempts, long notBefore) {
+        ListingTask retryLater(long delayMs) {
+            return new ListingTask(tag, name, value, boughtPrice, excludeUuid, fixedPrice,
+                    at, attempts + 1, System.currentTimeMillis() + delayMs);
+        }
+
+        ListingTask now() {
+            return new ListingTask(tag, name, value, boughtPrice, excludeUuid, fixedPrice,
+                    at, attempts, 0L);
+        }
     }
+
+    /** Outcome of a listing attempt, so the worker knows whether a retry makes sense. */
+    private enum ListResult { LISTED, NO_ITEM, NO_PRICE, FAILED }
+
+    /** Retries for a purchase whose item has not arrived in the inventory yet. */
+    private static final int MAX_LISTING_RETRIES = 4;
+    /**
+     * Purchases whose item could not be claimed/listed. Hypixel sometimes does not
+     * auto-claim a BIN purchase ("Visit the Auction House to collect your item!");
+     * when the item is claimed later by any flow (or by hand), the "You claimed X
+     * from Y's auction!" chat line re-queues the listing from here.
+     */
+    private static final java.util.Map<String, ListingTask> UNCLAIMED_PURCHASES =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    /** Normalized item name -> time Hypixel said the item must be collected in the AH. */
+    private static final java.util.Map<String, Long> COLLECT_HINTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile String lastPurchasedChatName = "";
+    private static volatile long lastPurchasedChatAt;
+    private static final java.util.regex.Pattern PURCHASED_CHAT = java.util.regex.Pattern.compile(
+            "^You purchased (.+?) for [\\d,.]+ coins!?$");
+    private static final java.util.regex.Pattern CLAIMED_CHAT = java.util.regex.Pattern.compile(
+            "^You claimed (.+?) from (?:\\[[^\\]]+\\] )?[A-Za-z0-9_]+'s auction!?$");
 
     public static void init() {
         System.out.println("[AH-Flipper] BUILD CLEAN-2026-11-05 geladen (investmentGui="
@@ -533,7 +568,7 @@ public class AhFlipperMod {
 
     private static int startCommand(CommandContext<FabricClientCommandSource> context) {
         if (running) {
-            message("Ãƒâ€šÃ‚Â§cAH-Flipper lÃƒÆ’Ã‚Â¤uft bereits.");
+            message("§cAH-Flipper läuft bereits.");
             return 1;
         }
         start();
@@ -542,7 +577,7 @@ public class AhFlipperMod {
 
     private static int stopCommand(CommandContext<FabricClientCommandSource> context) {
         if (!running && !recon) {
-            message("Ãƒâ€šÃ‚Â§cAH-Flipper lÃƒÆ’Ã‚Â¤uft nicht.");
+            message("§cAH-Flipper läuft nicht.");
             return 1;
         }
         stop();
@@ -551,27 +586,27 @@ public class AhFlipperMod {
 
     private static int reconCommand(CommandContext<FabricClientCommandSource> context) {
         recon = !recon;
-        message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Recon-Logging " + (recon ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus"));
+        message("§6[AH-Flipper] §7Recon-Logging " + (recon ? "§aan" : "§caus"));
         return 1;
     }
 
     private static int activeAuctionsCommand(CommandContext<FabricClientCommandSource> context) {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) {
-            message("Ãƒâ€šÃ‚Â§cSpieler nicht verfÃƒÆ’Ã‚Â¼gbar.");
+            message("§cSpieler nicht verfügbar.");
             return 0;
         }
         String uuid = client.player.getUUID().toString().replace("-", "");
-        message("Ãƒâ€šÃ‚Â§7Lade aktive Auktionen ...");
+        message("§7Lade aktive Auktionen ...");
         Thread thread = new Thread(() -> {
             int count = AhMarketData.activePlayerAuctionCount(uuid);
             if (count >= 0) {
                 activeAuctionCount = count;
-                message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Aktive Auktionen: Ãƒâ€šÃ‚Â§f" + count
-                        + "Ãƒâ€šÃ‚Â§7/Ãƒâ€šÃ‚Â§f" + AH_MAX_ACTIVE);
+                message("§6[AH-Flipper] §7Aktive Auktionen: §f" + count
+                        + "§7/§f" + AH_MAX_ACTIVE);
                 ensureListingWorker();
             } else {
-                message("Ãƒâ€šÃ‚Â§cAktive Auktionen konnten nicht geladen werden.");
+                message("§cAktive Auktionen konnten nicht geladen werden.");
             }
         }, "skycofl-ah-active-auctions");
         thread.setDaemon(true);
@@ -580,44 +615,43 @@ public class AhFlipperMod {
     }
 
     private static int statusCommand(CommandContext<FabricClientCommandSource> context) {
-        message("Ãƒâ€šÃ‚Â§6[Flipper] Ãƒâ€šÃ‚Â§7AH-Status: " + (running ? "Ãƒâ€šÃ‚Â§aAKTIV" : "Ãƒâ€šÃ‚Â§cGESTOPPT")
-                + (recon ? " Ãƒâ€šÃ‚Â§7(Recon an)" : ""));
-        message("Ãƒâ€šÃ‚Â§7Exit: Ãƒâ€šÃ‚Â§fmin(Craft-Cost, Cofl-LBIN) Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Fee: Ãƒâ€šÃ‚Â§f"
+        message("§6[Flipper] §7AH-Status: " + (running ? "§aAKTIV" : "§cGESTOPPT")
+                + (recon ? " §7(Recon an)" : ""));
+        message("§7Exit: §fmin(Craft-Cost, Cofl-LBIN) §7· Fee: §f"
                 + String.format(java.util.Locale.US, "%.1f%%", CONFIG.ahFeePercent)
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Min. Profit: Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent)
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Min. Item: Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(CONFIG.minItemCoins));
-        message("Ãƒâ€šÃ‚Â§7Regeln: Total-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.minTotalSales
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Clean ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + CONFIG.minCleanSales + " Ãƒâ€šÃ‚Â§7nur bei Addon ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¤ Ãƒâ€šÃ‚Â§f"
+                + " §7· Min. Profit: §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent)
+                + " §7· Min. Item: §f" + ScreenUtil.formatCoins(CONFIG.minItemCoins));
+        message("§7Regeln: Total-Sales > §f" + CONFIG.minTotalSales
+                + " §7· Clean ≥ §f" + CONFIG.minCleanSales + " §7nur bei Addon ≤ §f"
                 + String.format(java.util.Locale.US, "%.0fM", CONFIG.cleanSalesAddonValueCoins / 1_000_000.0)
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· CV ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¤ Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.maxDeviationPercent));
-        message("Ãƒâ€šÃ‚Â§7Addon: ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + CONFIG.addonMinSalesPerWeek + "x/Woche"
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Addonwert ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f" + String.format(java.util.Locale.US, "%.0fM", CONFIG.minAddonValueMillions));
-        message("Ãƒâ€šÃ‚Â§7Pets: Level-1-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.petLevel1MinSales
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Level-Sales > Ãƒâ€šÃ‚Â§f" + CONFIG.petLevelMinSales + " Ãƒâ€šÃ‚Â§7(nicht clean)");
-        message("Ãƒâ€šÃ‚Â§7Kaufreihenfolge: Ãƒâ€šÃ‚Â§fFIFO Ãƒâ€šÃ‚Â§7(erster passender Treffer, kein Score-Vergleich)");
-        message("Ãƒâ€šÃ‚Â§7Max. Auktionen: Ãƒâ€šÃ‚Â§f" + CONFIG.maxAuctions
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Reserve: Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(CONFIG.reserveCoins));
-        message("Ãƒâ€šÃ‚Â§7Auto-Buy: " + (autoBuy ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Kauf lÃƒÆ’Ã‚Â¤uft: " + (isBusy() ? "Ãƒâ€šÃ‚Â§eja" : "Ãƒâ€šÃ‚Â§7nein")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Top-5-Analyse: " + (debugAnalyze ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus"));
+                + " §7· CV ≤ §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.maxDeviationPercent));
+        message("§7Addon: ≥ §f" + CONFIG.addonMinSalesPerWeek + "x/Woche"
+                + " §7· Addonwert ≥ §f" + String.format(java.util.Locale.US, "%.0fM", CONFIG.minAddonValueMillions));
+        message("§7Pets: §firgendwelche Verkäufe §7(kein Level-Minimum)");
+        message("§7Kaufreihenfolge: §fFIFO §7(erster passender Treffer, kein Score-Vergleich)");
+        message("§7Max. Auktionen: §f" + CONFIG.maxAuctions
+                + " §7· Reserve: §f" + ScreenUtil.formatCoins(CONFIG.reserveCoins));
+        message("§7Auto-Buy: " + (autoBuy ? "§aan" : "§caus")
+                + " §7· Kauf läuft: " + (isBusy() ? "§eja" : "§7nein")
+                + " §7· Top-5-Analyse: " + (debugAnalyze ? "§aan" : "§caus"));
         int queued;
         synchronized (AUTO_QUEUE) {
             queued = AUTO_QUEUE.size();
         }
         long age = lastFlipAt > 0 ? (System.currentTimeMillis() - lastFlipAt) / 1000 : -1;
-        message("Ãƒâ€šÃ‚Â§7Letzter Flip: Ãƒâ€šÃ‚Â§f" + (lastFlipId == null ? "-" : lastFlipId)
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Profit Ãƒâ€šÃ‚Â§f" + (lastFlipWorth > 0 ? ScreenUtil.formatCoins(lastFlipWorth) : "-")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Alter Ãƒâ€šÃ‚Â§f" + (age >= 0 ? age + "s" : "-")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Queue Ãƒâ€šÃ‚Â§f" + queued);
+        message("§7Letzter Flip: §f" + (lastFlipId == null ? "-" : lastFlipId)
+                + " §7· Profit §f" + (lastFlipWorth > 0 ? ScreenUtil.formatCoins(lastFlipWorth) : "-")
+                + " §7· Alter §f" + (age >= 0 ? age + "s" : "-")
+                + " §7· Queue §f" + queued);
         String conn = CoflCore.CoflCore.Wrapper != null
                 ? CoflCore.CoflCore.Wrapper.GetStatus() : "null";
-        message("Ãƒâ€šÃ‚Â§7Cofl: Ãƒâ€šÃ‚Â§f" + conn);
-        message("Ãƒâ€šÃ‚Â§7Live: " + AhLiveScanner.status());
-        message("Ãƒâ€šÃ‚Â§7Scanner: " + AhScanner.status());
-        message("Ãƒâ€šÃ‚Â§7Investment: " + (CONFIG.investmentGui ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§fF10 Ãƒâ€šÃ‚Â§7oder Ãƒâ€šÃ‚Â§f/ahflip invest");
-        message("Ãƒâ€šÃ‚Â§7Fire-Sale-Skins: " + (CONFIG.fireSaleSkins ? "Ãƒâ€šÃ‚Â§aan" : "Ãƒâ€šÃ‚Â§caus")
-                + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§fF8 Ãƒâ€šÃ‚Â§7oder Ãƒâ€šÃ‚Â§f/ahflip skins");
+        message("§7Cofl: §f" + conn);
+        message("§7Live: " + AhLiveScanner.status());
+        message("§7Scanner: " + AhScanner.status());
+        message("§7Investment: " + (CONFIG.investmentGui ? "§aan" : "§caus")
+                + " §7· §fF10 §7oder §f/ahflip invest");
+        message("§7Fire-Sale-Skins: " + (CONFIG.fireSaleSkins ? "§aan" : "§caus")
+                + " §7· §fF8 §7oder §f/ahflip skins");
         return 1;
     }
 
@@ -625,21 +659,21 @@ public class AhFlipperMod {
         long price = AhScreenUtil.currentPriceAt(31);
         AhItem item = AhItem.fromStack(AhScreenUtil.currentItem(13));
         if (item.tag.isBlank()) {
-            message("Ãƒâ€šÃ‚Â§cKein Item erkannt ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ ÃƒÆ’Ã‚Â¶ffne eine BIN-Auktion.");
+            message("§cKein Item erkannt – öffne eine BIN-Auktion.");
             return 0;
         }
-        message("Ãƒâ€šÃ‚Â§7Analysiere Ãƒâ€šÃ‚Â§f" + item.tag + "Ãƒâ€šÃ‚Â§7 (Preis: Ãƒâ€šÃ‚Â§f"
-                + (price > 0 ? ScreenUtil.formatCoins(price) : "?") + "Ãƒâ€šÃ‚Â§7) ...");
+        message("§7Analysiere §f" + item.tag + "§7 (Preis: §f"
+                + (price > 0 ? ScreenUtil.formatCoins(price) : "?") + "§7) ...");
         Thread thread = new Thread(() -> {
             try {
                 AhAnalyzer.Result result = AhAnalyzer.analyze(item, Math.max(price, 0), -1);
                 logAnalysis(result);
-                message((result.buyable ? "Ãƒâ€šÃ‚Â§a" : "Ãƒâ€šÃ‚Â§c") + result.shortSummary());
+                message((result.buyable ? "§a" : "§c") + result.shortSummary());
                 for (String reason : result.reasons) {
-                    message("Ãƒâ€šÃ‚Â§c- " + reason);
+                    message("§c- " + reason);
                 }
             } catch (Exception e) {
-                message("Ãƒâ€šÃ‚Â§cAnalyse fehlgeschlagen: " + e.getMessage());
+                message("§cAnalyse fehlgeschlagen: " + e.getMessage());
             }
         }, "skycofl-ah-analyze");
         thread.setDaemon(true);
@@ -656,9 +690,9 @@ public class AhFlipperMod {
                 + " artOfWar=" + item.artOfWar + " petItem=" + item.petItem
                 + " enchants=" + item.enchants + " scrolls=" + item.abilityScrolls);
         System.out.println("[AH-Flipper] Item-NBT: " + AhItem.rawCustomData(stack));
-        message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§f" + item.tag + " Ãƒâ€šÃ‚Â§7Reforge: Ãƒâ€šÃ‚Â§f" + (item.reforge.isBlank() ? "-" : item.reforge)
-                + " Ãƒâ€šÃ‚Â§7Stars: Ãƒâ€šÃ‚Â§f" + item.stars + " Ãƒâ€šÃ‚Â§7HPB: Ãƒâ€šÃ‚Â§f" + item.hpb
-                + " Ãƒâ€šÃ‚Â§7Recomb: Ãƒâ€šÃ‚Â§f" + item.recomb + " Ãƒâ€šÃ‚Â§7Enchants: Ãƒâ€šÃ‚Â§f" + item.enchants.size()
+        message("§6[AH-Flipper] §f" + item.tag + " §7Reforge: §f" + (item.reforge.isBlank() ? "-" : item.reforge)
+                + " §7Stars: §f" + item.stars + " §7HPB: §f" + item.hpb
+                + " §7Recomb: §f" + item.recomb + " §7Enchants: §f" + item.enchants.size()
                 + (item.enchants.isEmpty() ? "" : " " + item.enchants));
     }
 
@@ -677,7 +711,7 @@ public class AhFlipperMod {
                 + " score=" + String.format(java.util.Locale.US, "%.0f", result.score));
         for (AhAnalyzer.AddonCheck check : result.addons) {
             System.out.println("[AH-Flipper]   Addon " + check.label + ": " + check.sales
-                    + (check.supported ? "" : " (nicht prÃƒÆ’Ã‚Â¼fbar)"));
+                    + (check.supported ? "" : " (nicht prüfbar)"));
         }
         for (String reason : result.reasons) {
             System.out.println("[AH-Flipper]   Reject: " + reason);
@@ -691,13 +725,13 @@ public class AhFlipperMod {
 
     private static void claim() {
         if (!ScreenUtil.onSkyBlock()) {
-            message("Ãƒâ€šÃ‚Â§cClaim geht nur auf Hypixel SkyBlock.");
+            message("§cClaim geht nur auf Hypixel SkyBlock.");
             return;
         }
         Thread thread = new Thread(() -> {
             AutomationGate.Lease lease = AutomationGate.tryAcquire("claim", false);
             if (lease == null) {
-                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                message("§cEs läuft bereits eine AH-Aktion.");
                 return;
             }
             ensureAhPriority();
@@ -718,12 +752,122 @@ public class AhFlipperMod {
                 return;
             }
             try {
+                onClaimRelevantChat(message);
                 onSoldAuctionChat(message);
                 onPurchaseErrorChat(message);
             } catch (Exception e) {
                 System.out.println("[AH-Flipper] Chat handler failed: " + e);
             }
         });
+    }
+
+    /** Lowercase, letters/digits only, single spaces: robust against symbols and colours. */
+    static String normalizeItemName(String name) {
+        if (name == null) {
+            return "";
+        }
+        return ScreenUtil.cleanName(name).toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ").trim();
+    }
+
+    /**
+     * Tracks the purchase/claim chat lines that matter for listing:
+     * "You purchased X for N coins!" followed by "Visit the Auction House to collect
+     * your item!" means the item is NOT in the inventory and has to be claimed.
+     * "You claimed X from Y's auction!" re-queues a listing that failed earlier
+     * because the item was missing.
+     */
+    private static void onClaimRelevantChat(Component message) {
+        if (message == null) {
+            return;
+        }
+        String plain = ScreenUtil.cleanName(message.getString()).trim();
+        if (plain.isEmpty() || plain.length() > 200) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        java.util.regex.Matcher purchased = PURCHASED_CHAT.matcher(plain);
+        if (purchased.matches()) {
+            lastPurchasedChatName = normalizeItemName(purchased.group(1));
+            lastPurchasedChatAt = now;
+            return;
+        }
+        if (plain.toLowerCase(java.util.Locale.ROOT)
+                .startsWith("visit the auction house to collect your item")) {
+            if (!lastPurchasedChatName.isEmpty() && now - lastPurchasedChatAt < 5000L) {
+                COLLECT_HINTS.put(lastPurchasedChatName, now);
+                System.out.println("[AH-Flipper] Kauf nicht auto-geclaimt (Hypixel: "
+                        + "'Visit the Auction House') - Claim noetig: " + lastPurchasedChatName);
+            }
+            COLLECT_HINTS.entrySet().removeIf(entry -> now - entry.getValue() > 10 * 60_000L);
+            return;
+        }
+        java.util.regex.Matcher claimed = CLAIMED_CHAT.matcher(plain);
+        if (claimed.matches()) {
+            onAuctionItemClaimed(normalizeItemName(claimed.group(1)));
+        }
+    }
+
+    private static boolean hasCollectHint(String name) {
+        String key = normalizeItemName(name);
+        Long at = key.isEmpty() ? null : COLLECT_HINTS.get(key);
+        return at != null && System.currentTimeMillis() - at < 10 * 60_000L;
+    }
+
+    private static void onAuctionItemClaimed(String normalizedName) {
+        if (normalizedName.isEmpty()) {
+            return;
+        }
+        COLLECT_HINTS.remove(normalizedName);
+        boolean requeued = false;
+        synchronized (LISTING_QUEUE) {
+            java.util.List<ListingTask> tasks = new java.util.ArrayList<>(LISTING_QUEUE);
+            LISTING_QUEUE.clear();
+            for (ListingTask task : tasks) {
+                if (task.notBefore() > 0 && normalizeItemName(task.name()).equals(normalizedName)) {
+                    LISTING_QUEUE.add(task.now());
+                    requeued = true;
+                } else {
+                    LISTING_QUEUE.add(task);
+                }
+            }
+        }
+        for (java.util.Iterator<java.util.Map.Entry<String, ListingTask>> it =
+                     UNCLAIMED_PURCHASES.entrySet().iterator(); it.hasNext(); ) {
+            java.util.Map.Entry<String, ListingTask> entry = it.next();
+            ListingTask task = entry.getValue();
+            if (!normalizeItemName(task.name()).equals(normalizedName)) {
+                continue;
+            }
+            it.remove();
+            if (System.currentTimeMillis() - task.at() > 7L * 24 * 3_600_000L
+                    || ACTIVE_LISTINGS.contains(entry.getKey())) {
+                continue;
+            }
+            synchronized (LISTING_QUEUE) {
+                boolean queued = false;
+                for (ListingTask other : LISTING_QUEUE) {
+                    if (listingKey(other.tag(), other.name(), other.excludeUuid())
+                            .equals(entry.getKey())) {
+                        queued = true;
+                        break;
+                    }
+                }
+                if (!queued) {
+                    LISTING_QUEUE.add(new ListingTask(task.tag(), task.name(), task.value(),
+                            task.boughtPrice(), task.excludeUuid(), task.fixedPrice(),
+                            task.at(), 0, 0L));
+                }
+            }
+            requeued = true;
+            break;
+        }
+        if (requeued) {
+            System.out.println("[AH-Flipper] Geclaimtes Item erkannt, Listing neu eingeplant: "
+                    + normalizedName);
+            message("§aClaimed item detected - listing queued: §f" + normalizedName);
+            ensureListingWorker();
+        }
     }
 
     private static void onPurchaseErrorChat(Component message) {
@@ -765,10 +909,11 @@ public class AhFlipperMod {
                     && !activePurchaseTag.isBlank();
             if (recentPurchase) {
                 scheduleBuyRecovery(activePurchaseTag, activePurchaseName,
-                        activePurchaseValue, activePurchasePrice, activePurchaseId);
+                        activePurchaseValue, activePurchasePrice, activePurchaseId,
+                        activePurchaseBaseline);
             } else {
                 scheduleBuyRecovery(lastBoughtTag, lastBoughtName, lastBoughtValue,
-                        lastBoughtPrice, lastBoughtId);
+                        lastBoughtPrice, lastBoughtId, lastBoughtBaseline);
             }
         } finally {
             CHAT_HANDLING.set(false);
@@ -1006,14 +1151,26 @@ public class AhFlipperMod {
     }
 
     static boolean claimWonAuction(String tag, String name) {
-        if (AhScreenUtil.findInventorySlot(tag, name) >= 0) {
+        return claimWonAuction(tag, name, -1);
+    }
+
+    /**
+     * @param baseline how many matching items were in the inventory before the
+     *                 bid/purchase, or -1 if unknown. With a baseline, only an
+     *                 additional copy counts as "already in the inventory".
+     */
+    static boolean claimWonAuction(String tag, String name, int baseline) {
+        // Inventory first: a won/bought item often lands there directly, so
+        // only open the AH claim menus when it really is not in the inventory.
+        if (waitForNewInventoryItem(tag, name, baseline, INVENTORY_CHECK_MS)) {
+            System.out.println("[AH-Flipper] Claim: Item bereits im Inventar: " + name);
             return true;
         }
         for (int attempt = 1; attempt <= 2; attempt++) {
             if (attempt > 1) {
                 ScreenUtil.sleep(3000);
             }
-            if (claimWonAuctionOnce(tag, name)) {
+            if (claimWonAuctionOnce(tag, name, baseline)) {
                 return true;
             }
             if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
@@ -1023,7 +1180,7 @@ public class AhFlipperMod {
         return false;
     }
 
-    private static boolean claimWonAuctionOnce(String tag, String name) {
+    private static boolean claimWonAuctionOnce(String tag, String name, int baseline) {
         try {
             if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
                 ScreenUtil.closeAndWait(250);
@@ -1040,7 +1197,7 @@ public class AhFlipperMod {
                     entry = waitForClaimEntryButton(1500);
                 }
                 if (entry < 0) {
-                    return waitForInventoryItem(tag, name, 500);
+                    return waitForNewInventoryItem(tag, name, baseline, 500);
                 }
                 ScreenUtil.clickSlot(entry, 0);
                 if (!waitForClaimScreen(3500)) {
@@ -1056,7 +1213,7 @@ public class AhFlipperMod {
                 slot = waitForSlotByName(name, 1500);
             }
             if (slot < 0) {
-                return waitForInventoryItem(tag, name, 1000);
+                return waitForNewInventoryItem(tag, name, baseline, 1000);
             }
             ScreenUtil.clickSlot(slot, 0);
             ScreenUtil.sleep(800);
@@ -1070,7 +1227,7 @@ public class AhFlipperMod {
                     ScreenUtil.sleep(700);
                 }
             }
-            return waitForInventoryItem(tag, name, 2500);
+            return waitForNewInventoryItem(tag, name, baseline, 2500);
         } catch (Exception e) {
             System.out.println("[AH-Flipper] Claim(2x) Fehler: " + e.getMessage());
             return false;
@@ -1086,10 +1243,14 @@ public class AhFlipperMod {
     }
 
     static boolean claimBlocking(String wantedTag, String wantedName) {
+        return claimBlocking(wantedTag, wantedName, -1);
+    }
+
+    static boolean claimBlocking(String wantedTag, String wantedName, int baseline) {
         claimActionPerformed = false;
         if ((wantedTag != null && !wantedTag.isBlank())
                 || (wantedName != null && !wantedName.isBlank())) {
-            if (AhScreenUtil.findInventorySlot(wantedTag, wantedName) >= 0) {
+            if (waitForNewInventoryItem(wantedTag, wantedName, baseline, INVENTORY_CHECK_MS)) {
                 System.out.println("[AH-Flipper] Claim: Item bereits im Inventar: " + wantedName);
                 return true;
             }
@@ -1171,7 +1332,7 @@ public class AhFlipperMod {
                     message("\u00a7eClaim clicked - item not found after 2s.");
                     return false;
                 } else {
-                    System.out.println("[AH-Flipper] Claim: kein Slot fÃƒÆ’Ã‚Â¼r " + wantedName);
+                    System.out.println("[AH-Flipper] Claim: kein Slot für " + wantedName);
                 }
             }
             int claimed = clickClaimableItems();
@@ -1249,6 +1410,33 @@ public class AhFlipperMod {
             ScreenUtil.sleep(700);
         }
         return clicked;
+    }
+
+    /** How long to look in the inventory before falling back to an AH claim. */
+    private static final long INVENTORY_CHECK_MS = 1500L;
+
+    /**
+     * Like waitForInventoryItem, but with a baseline (>= 0) it only succeeds
+     * once there are more matching items than before the purchase.
+     */
+    private static boolean waitForNewInventoryItem(String tag, String name, int baseline,
+                                                   long timeoutMs) {
+        if (baseline < 0) {
+            return waitForInventoryItem(tag, name, timeoutMs);
+        }
+        if ((tag == null || tag.isBlank()) && (name == null || name.isBlank())) {
+            return false;
+        }
+        long end = System.currentTimeMillis() + timeoutMs;
+        while (true) {
+            if (AhScreenUtil.countInventoryMatches(tag, name) > baseline) {
+                return true;
+            }
+            if (System.currentTimeMillis() >= end) {
+                return false;
+            }
+            ScreenUtil.sleep(100);
+        }
     }
 
     private static boolean waitForInventoryItem(String tag, String name, long timeoutMs) {
@@ -1575,9 +1763,9 @@ public class AhFlipperMod {
                     return;
                 }
             }
-            LISTING_QUEUE.add(new ListingTask(tag, name, value, boughtPrice,
+            LISTING_QUEUE.add(new ListingTask(tag, name == null ? "" : name, value, boughtPrice,
                     excludeUuid == null ? "" : excludeUuid, fixedPrice,
-                    System.currentTimeMillis()));
+                    System.currentTimeMillis(), 0, 0L));
             if (LISTING_QUEUE.size() > 50) {
                 LISTING_QUEUE.removeFirst();
             }
@@ -1585,6 +1773,33 @@ public class AhFlipperMod {
         if (activeAuctionCount >= AH_MAX_ACTIVE) {
             message("\u00a7eAH full (" + activeAuctionCount + "/" + AH_MAX_ACTIVE + ") - item queued: \u00a7f" + (name.isBlank() ? tag : name));
         }
+        ensureListingWorker();
+    }
+
+    /**
+     * Hands a purchase whose direct listing failed (e.g. a won bid) to the listing
+     * worker, which retries with a delay and keeps it registered until the item
+     * is claimed and listed.
+     */
+    static void enqueueListingRetry(String tag, String name, long value, long boughtPrice,
+                                    String excludeUuid) {
+        String key = listingKey(tag, name, excludeUuid);
+        if (recentlyListed(key) || ACTIVE_LISTINGS.contains(key)) {
+            return;
+        }
+        synchronized (LISTING_QUEUE) {
+            for (ListingTask queued : LISTING_QUEUE) {
+                if (listingKey(queued.tag(), queued.name(), queued.excludeUuid()).equals(key)) {
+                    return;
+                }
+            }
+            LISTING_QUEUE.add(new ListingTask(tag, name == null ? "" : name, value, boughtPrice,
+                    excludeUuid == null ? "" : excludeUuid, 0L, System.currentTimeMillis(),
+                    1, System.currentTimeMillis() + 20_000L));
+        }
+        UNCLAIMED_PURCHASES.put(key, new ListingTask(tag, name == null ? "" : name, value,
+                boughtPrice, excludeUuid == null ? "" : excludeUuid, 0L,
+                System.currentTimeMillis(), 0, 0L));
         ensureListingWorker();
     }
 
@@ -1648,9 +1863,18 @@ public class AhFlipperMod {
         thread.start();
     }
 
+    /** Next task that is due; tasks waiting for a retry stay in the queue. */
     private static ListingTask takeListing() {
+        long now = System.currentTimeMillis();
         synchronized (LISTING_QUEUE) {
-            return LISTING_QUEUE.poll();
+            for (java.util.Iterator<ListingTask> it = LISTING_QUEUE.iterator(); it.hasNext(); ) {
+                ListingTask task = it.next();
+                if (task.notBefore() <= now) {
+                    it.remove();
+                    return task;
+                }
+            }
+            return null;
         }
     }
 
@@ -1742,6 +1966,19 @@ public class AhFlipperMod {
 
     static boolean isBusy() {
         return AutomationGate.isBusy();
+    }
+
+    /**
+     * True while an AH task (buy, claim, listing, bid ...) holds the GUI/automation
+     * lock and its owner does not start with {@code ignoreOwnerPrefix}.
+     */
+    public static boolean automationBusyExcept(String ignoreOwnerPrefix) {
+        if (!AutomationGate.isBusy()) {
+            return false;
+        }
+        String owner = AutomationGate.owner();
+        return ignoreOwnerPrefix == null || ignoreOwnerPrefix.isBlank()
+                || owner == null || !owner.startsWith(ignoreOwnerPrefix);
     }
 
     static boolean hasPendingAutoBuy() {
@@ -1898,20 +2135,20 @@ public class AhFlipperMod {
             }
             sendCommandSilent("/viewauction " + candidate.id);
             if (!waitForTitle(4000, "bin auction view")) {
-                System.out.println("[AH-Flipper] Top-" + rank + ": Auktion nicht geÃƒÆ’Ã‚Â¶ffnet");
+                System.out.println("[AH-Flipper] Top-" + rank + ": Auktion nicht geöffnet");
                 message("\u00a7c#" + rank + " auction did not open: " + candidate.id);
                 return;
             }
             if (AhScreenUtil.currentAuctionUnavailable()) {
                 System.out.println("[AH-Flipper] Top-" + rank
-                        + ": Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar (Collect/Someone else) - schlieÃƒÆ’Ã…Â¸e sofort");
+                        + ": Auktion nicht mehr verfügbar (Collect/Someone else) - schließe sofort");
                 ScreenUtil.closeCurrentScreen();
                 return;
             }
             long price = waitForBuyPrice(4000);
             if (price <= 0 && AhScreenUtil.currentAuctionUnavailable()) {
                 System.out.println("[AH-Flipper] Top-" + rank
-                        + ": Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar - schlieÃƒÆ’Ã…Â¸e sofort");
+                        + ": Auktion nicht mehr verfügbar - schließe sofort");
                 ScreenUtil.closeCurrentScreen();
                 return;
             }
@@ -2004,19 +2241,65 @@ public class AhFlipperMod {
         ensureAhPriority();
         String key = listingKey(task.tag, task.name, task.excludeUuid);
         ACTIVE_LISTINGS.add(key);
-        boolean listed = false;
+        ListResult result = ListResult.FAILED;
         try {
-            listed = listPurchased(task.tag, task.name, task.value,
-                    task.boughtPrice, task.excludeUuid, task.fixedPrice);
+            result = listPurchasedResult(task.tag, task.name, task.value,
+                    task.boughtPrice, task.excludeUuid, task.fixedPrice, task.fixedPrice <= 0);
+        } catch (Exception e) {
+            System.out.println("[AH-Flipper] Listing-Fehler fuer " + task.tag + ": " + e);
         } finally {
             ACTIVE_LISTINGS.remove(key);
-            if (listed) {
+            if (result == ListResult.LISTED) {
                 markListed(key);
+                UNCLAIMED_PURCHASES.remove(key);
             }
             AutomationGate.release(lease);
             releaseAhPriorityIfIdle();
         }
+        if (result == ListResult.NO_ITEM || result == ListResult.FAILED) {
+            scheduleListingRetry(key, task, result);
+        }
         return true;
+    }
+
+    /**
+     * A purchase is never dropped silently: missing items (not claimed yet) and
+     * failed GUI flows are retried with a growing delay. After the last retry the
+     * purchase stays in {@link #UNCLAIMED_PURCHASES} so a later claim still lists it.
+     */
+    private static void scheduleListingRetry(String key, ListingTask task, ListResult result) {
+        if (task.fixedPrice() > 0) {
+            return;
+        }
+        if (task.attempts() + 1 >= MAX_LISTING_RETRIES) {
+            if (result == ListResult.NO_ITEM) {
+                UNCLAIMED_PURCHASES.put(key, task);
+                System.out.println("[AH-Flipper] Listing aufgegeben (Item nicht im Inventar/AH): "
+                        + task.tag + " - wird gelistet, sobald es geclaimt wird.");
+                message("§cItem not received: §f" + displayOrTag(task)
+                        + " §7- will be listed as soon as it is claimed.");
+            } else {
+                System.out.println("[AH-Flipper] Listing nach " + (task.attempts() + 1)
+                        + " Durchlaeufen aufgegeben: " + task.tag);
+                message("§cListing gave up: §f" + displayOrTag(task));
+            }
+            return;
+        }
+        long delay = 20_000L * (task.attempts() + 1);
+        ListingTask retry = task.retryLater(delay);
+        synchronized (LISTING_QUEUE) {
+            LISTING_QUEUE.add(retry);
+        }
+        if (result == ListResult.NO_ITEM) {
+            UNCLAIMED_PURCHASES.put(key, task);
+        }
+        System.out.println("[AH-Flipper] Listing-Retry " + (retry.attempts()) + "/"
+                + (MAX_LISTING_RETRIES - 1) + " in " + (delay / 1000) + "s fuer " + task.tag
+                + " (" + result + ")");
+    }
+
+    private static String displayOrTag(ListingTask task) {
+        return task.name() == null || task.name().isBlank() ? task.tag() : task.name();
     }
 
     static void listPurchased(String tag, String name, long value, long boughtPrice) {
@@ -2050,28 +2333,77 @@ public class AhFlipperMod {
 
     private static boolean listPurchased(String tag, String name, long value, long boughtPrice,
                                          String excludeUuid, long fixedPrice) {
-        boolean inventoryFound = AhScreenUtil.findInventorySlot(tag, name) >= 0
-                || waitForInventoryItem(tag, name, 10_000);
-        if (!inventoryFound) {
-            ;
+        return listPurchasedResult(tag, name, value, boughtPrice, excludeUuid, fixedPrice,
+                fixedPrice <= 0) == ListResult.LISTED;
+    }
+
+    /**
+     * Makes sure the bought item is in the inventory. A BIN purchase or a won bid
+     * is not always claimed automatically by Hypixel ("Visit the Auction House to
+     * collect your item!"); in that case the item is claimed via Manage Bids
+     * instead of silently giving up after a short wait.
+     */
+    private static boolean ensureItemInInventory(String tag, String name, boolean mayClaim) {
+        if (AhScreenUtil.findInventorySlot(tag, name) >= 0) {
+            return true;
+        }
+        boolean collectHint = hasCollectHint(name);
+        if (!collectHint && waitForInventoryItem(tag, name, 4_000)) {
+            return true;
+        }
+        if (!mayClaim) {
+            System.out.println("[AH-Flipper] Listing: " + tag + " nicht im Inventar"
+                    + " (kein Claim erlaubt).");
             return false;
+        }
+        System.out.println("[AH-Flipper] Listing: " + tag + " (" + name + ") nicht im Inventar"
+                + (collectHint ? " - Hypixel hat nicht auto-geclaimt" : "")
+                + " - claime ueber Manage Bids.");
+        message("\u00a7eItem not in inventory - claiming from AH: \u00a7f"
+                + (name == null || name.isBlank() ? tag : name));
+        boolean claimed = claimWonAuction(tag, name, -1);
+        if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.NONE) {
+            ScreenUtil.closeAndWait(250);
+        }
+        if (claimed || AhScreenUtil.findInventorySlot(tag, name) >= 0
+                || waitForInventoryItem(tag, name, 1_500)) {
+            COLLECT_HINTS.remove(normalizeItemName(name));
+            System.out.println("[AH-Flipper] Listing: Item geclaimt: " + tag);
+            return true;
+        }
+        System.out.println("[AH-Flipper] Listing: Claim fuer " + tag + " fehlgeschlagen.");
+        return false;
+    }
+
+    private static ListResult listPurchasedResult(String tag, String name, long value,
+                                                  long boughtPrice, String excludeUuid,
+                                                  long fixedPrice, boolean mayClaim) {
+        if (!ensureItemInInventory(tag, name, mayClaim)) {
+            return ListResult.NO_ITEM;
         }
         long price = fixedPrice > 0
                 ? fixedPrice
                 : listingPrice(tag, name, value, boughtPrice, excludeUuid);
         if (price <= 0) {
             message("\u00a7cNo safe listing price - not listing: " + tag);
-            return false;
+            return ListResult.NO_PRICE;
         }
         boolean listed = false;
         for (int attempt = 1; attempt <= 2; attempt++) {
             boolean secondAttempt = attempt == 2;
+            // Only skip placing the item when it really left the inventory (it then
+            // sits in the create slot from attempt 1). If attempt 1 failed before
+            // the item was placed, attempt 2 must place it, otherwise it can never
+            // succeed.
+            boolean skipItemClick = secondAttempt
+                    && AhScreenUtil.findInventorySlot(tag, name) < 0;
             if (secondAttempt) {
                 message("Listing failed - retry 2/2...");
                 System.out.println("[AH-Flipper] Listing-Versuch 2 fuer " + tag
-                        + " (identisch zu Versuch 1, Item wird nicht angefasst)");
+                        + (skipItemClick ? " (Item liegt bereits im Create-Slot)"
+                        : " (Item noch im Inventar, wird neu eingelegt)"));
             }
-            if (listFlow(tag, name, price, secondAttempt, 0L)) {
+            if (listFlow(tag, name, price, skipItemClick, 0L)) {
                 listed = true;
                 break;
             }
@@ -2088,10 +2420,10 @@ public class AhFlipperMod {
         if (!listed) {
             message("\u00a7cListing failed after 2 attempts: " + tag);
             closeOpenScreens();
-        } else {
-            markListed(listingKey(tag, name, excludeUuid));
+            return ListResult.FAILED;
         }
-        return listed;
+        markListed(listingKey(tag, name, excludeUuid));
+        return ListResult.LISTED;
     }
 
     private static long listingPrice(String tag, String name, long value, long boughtPrice,
@@ -2108,21 +2440,24 @@ public class AhFlipperMod {
         long fresh = estimate.estimated;
         long expected;
         if (value > 0) {
-            expected = fresh > 0 ? Math.min(fresh, value) : value;
-            if (minNetPrice > 0 && expected < minNetPrice) {
-                System.out.println("[AH-Flipper] Listing verworfen: " + tag + " Wert="
-                        + expected + " < Kaufpreis-Netto=" + minNetPrice
-                        + " (Kauf " + boughtPrice + ")");
-                return 0;
-            }
+            expected = fresh > 1 ? Math.min(fresh, value) : value;
         } else {
             expected = fresh;
-            if (minNetPrice > 0 && expected < minNetPrice) {
-                System.out.println("[AH-Flipper] Listing verworfen: " + tag + " Referenz="
-                        + expected + " < Kaufpreis-Netto=" + minNetPrice
-                        + " (Kauf " + boughtPrice + ")");
-                return 0;
-            }
+        }
+        if (minNetPrice > 0 && expected < minNetPrice) {
+            // Used to return 0 here ("Listing verworfen: Wert < Kaufpreis-Netto"),
+            // which left bought/claimed items in the inventory forever. A fresh
+            // estimate below cost is mostly market noise right after the buy, so
+            // list at break-even (purchase price + AH fee) instead: no loss, and
+            // the item is on the AH instead of rotting in the inventory.
+            System.out.println("[AH-Flipper] Listenpreis " + tag + ": Schaetzung=" + expected
+                    + " < Kaufpreis-Netto=" + minNetPrice + " (Kauf " + boughtPrice
+                    + ", Frisch=" + fresh + ", Kaufwert=" + value
+                    + ") -> liste zum Break-even statt gar nicht");
+            message("§eValue below cost - listing at break-even: §f"
+                    + (name == null || name.isBlank() ? tag : name) + " §7@ §f"
+                    + ScreenUtil.formatCoins(minNetPrice));
+            expected = minNetPrice;
         }
         System.out.println("[AH-Flipper] Listenpreis " + tag + ": " + estimate.source
                 + " Ref=" + estimate.reference + " Addons=" + estimate.addonValue
@@ -2148,14 +2483,14 @@ public class AhFlipperMod {
 
     private static synchronized void startBuy(String id, long expectedProfit, boolean auto) {
         if (id == null || id.isEmpty()) {
-            message("Ãƒâ€šÃ‚Â§cKeine Auktions-ID.");
+            message("§cKeine Auktions-ID.");
             return;
         }
         Thread thread = new Thread(() -> {
             AutomationGate.Lease lease = AutomationGate.tryAcquire("buy", false);
             if (lease == null) {
                 if (!auto) {
-                    message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
+                    message("§cEs läuft bereits ein Kauf.");
                 }
                 return;
             }
@@ -2223,7 +2558,7 @@ public class AhFlipperMod {
                 return;
             }
             if (AhScreenUtil.currentAuctionUnavailable()) {
-                System.out.println("[AH-Flipper] Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar (Collect/Someone else) - schlieÃƒÆ’Ã…Â¸e sofort: "
+                System.out.println("[AH-Flipper] Auktion nicht mehr verfügbar (Collect/Someone else) - schließe sofort: "
                         + id);
                 ScreenUtil.closeCurrentScreen();
                 return;
@@ -2234,7 +2569,7 @@ public class AhFlipperMod {
             }
             if (price <= 0) {
                 if (AhScreenUtil.currentAuctionUnavailable()) {
-                    System.out.println("[AH-Flipper] Auktion nicht mehr verfÃƒÆ’Ã‚Â¼gbar - schlieÃƒÆ’Ã…Â¸e sofort: " + id);
+                    System.out.println("[AH-Flipper] Auktion nicht mehr verfügbar - schließe sofort: " + id);
                     ScreenUtil.closeCurrentScreen();
                     return;
                 }
@@ -2282,7 +2617,7 @@ public class AhFlipperMod {
             long resale = tooltip.estimated;
             if (resale <= 1) {
                 message("\u00a7cTooltip returned no value - hover the item.");
-                System.out.println("[AH-Flipper] Tooltip-Wert fehlt fÃƒÆ’Ã‚Â¼r "
+                System.out.println("[AH-Flipper] Tooltip-Wert fehlt für "
                         + item.tag + ": " + tooltip.source);
                 ScreenUtil.closeCurrentScreen();
                 return;
@@ -2316,6 +2651,8 @@ public class AhFlipperMod {
             activePurchasePrice = price;
             activePurchaseId = id;
             activePurchaseAt = System.currentTimeMillis();
+            activePurchaseBaseline = AhScreenUtil.countInventoryMatches(item.tag,
+                    item.displayName);
             purchaseAttempted = true;
             if (!spamBuyButton()) {
                 System.out.println("[AH-Flipper] Kaufbutton nicht aktiv");
@@ -2346,7 +2683,7 @@ public class AhFlipperMod {
                 activePurchasePrice = price;
             }
             if (!spamConfirmButton()) {
-                System.out.println("[AH-Flipper] Confirm Purchase nicht bestÃƒÆ’Ã‚Â¤tigt");
+                System.out.println("[AH-Flipper] Confirm Purchase nicht bestätigt");
                 message("\u00a7cConfirmation did not go through.");
                 AhScreenUtil.dumpScreen();
                 return;
@@ -2358,10 +2695,11 @@ public class AhFlipperMod {
             lastBoughtValue = resale;
             lastBoughtPrice = price;
             lastBoughtId = id;
+            lastBoughtBaseline = activePurchaseBaseline;
             AhFlipperConfig.blockTemporarily(item.tag, item.displayName);
             ScreenUtil.sleep(prevalidated || auto ? 50 : 100);
             long purseAfter = ScreenUtil.readPurse();
-            System.out.println("[AH-Flipper] Kauf ausgelÃƒÆ’Ã‚Â¶st: Purse " + purseBefore + " -> " + purseAfter);
+            System.out.println("[AH-Flipper] Kauf ausgelöst: Purse " + purseBefore + " -> " + purseAfter);
             if (purseBefore > 0 && purseAfter > 0 && purseAfter < purseBefore) {
                 long purseDiff = purseBefore - purseAfter;
                 boolean plausible = price <= 0
@@ -2384,7 +2722,7 @@ public class AhFlipperMod {
         } finally {
             if (purchaseAttempted && !purchaseSucceeded) {
                 scheduleBuyRecovery(recoveryTag, recoveryName, recoveryValue,
-                        recoveryPrice, id);
+                        recoveryPrice, id, activePurchaseBaseline);
             }
             purchaseInProgress = false;
             releaseAhPriorityIfIdle();
@@ -2392,7 +2730,7 @@ public class AhFlipperMod {
     }
 
     private static void scheduleBuyRecovery(String tag, String name, long value,
-                                            long price, String excludeUuid) {
+                                            long price, String excludeUuid, int baseline) {
         String recoveryKey = listingKey(tag, name, excludeUuid);
         if (recentlyListed(recoveryKey) || ACTIVE_LISTINGS.contains(recoveryKey)) {
             return;
@@ -2412,10 +2750,20 @@ public class AhFlipperMod {
                 }
                 ensureAhPriority();
                 ScreenUtil.closeAndWait(250);
-                claimBlocking(name);
-                if (tag != null && !tag.isBlank() && name != null && !name.isBlank()
-                        && AhScreenUtil.findInventorySlot(tag, name) >= 0) {
-                    enqueueListing(tag, name, value, price, excludeUuid);
+                // claimBlocking checks the inventory before touching the AH. The
+                // baseline makes sure an already owned copy of the same item
+                // does not count as the bought one (which skipped the claim).
+                claimBlocking(tag, name, baseline);
+                if (tag != null && !tag.isBlank() && name != null && !name.isBlank()) {
+                    if (waitForNewInventoryItem(tag, name, baseline, 500)) {
+                        enqueueListing(tag, name, value, price, excludeUuid);
+                    } else if (value > 0) {
+                        // Unknown whether the purchase went through: remember it, a
+                        // later "You claimed <item>" chat line then lists it.
+                        UNCLAIMED_PURCHASES.put(recoveryKey, new ListingTask(tag, name,
+                                value, price, excludeUuid == null ? "" : excludeUuid, 0L,
+                                System.currentTimeMillis(), 0, 0L));
+                    }
                 }
                 ensureListingWorker();
             } catch (Exception e) {
@@ -2447,15 +2795,15 @@ public class AhFlipperMod {
             }
         }
         if (tag == null || tag.isBlank()) {
-            message("Ãƒâ€šÃ‚Â§cKein Item bekannt ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ erst kaufen oder BIN-View ÃƒÆ’Ã‚Â¶ffnen.");
+            message("§cKein Item bekannt – erst kaufen oder BIN-View öffnen.");
             return 0;
         }
         if (price <= 0) {
-            message("Ãƒâ€šÃ‚Â§cKein Preis ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ nutze /ahflip sell <preis>.");
+            message("§cKein Preis – nutze /ahflip sell <preis>.");
             return 0;
         }
         if (isBusy()) {
-            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf/Listing.");
+            message("§cEs läuft bereits ein Kauf/Listing.");
             return 0;
         }
         String finalTag = tag;
@@ -2464,7 +2812,7 @@ public class AhFlipperMod {
         Thread thread = new Thread(() -> {
             AutomationGate.Lease lease = AutomationGate.tryAcquire("sell", false);
             if (lease == null) {
-                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                message("§cEs läuft bereits eine AH-Aktion.");
                 return;
             }
             ensureAhPriority();
@@ -2862,10 +3210,10 @@ public class AhFlipperMod {
             if (running) {
                 AhLiveScanner.start();
             }
-            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Live-Feed Ãƒâ€šÃ‚Â§aan");
+            message("§6[AH-Flipper] §7Live-Feed §aan");
         } else {
             AhLiveScanner.stop();
-            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Live-Feed Ãƒâ€šÃ‚Â§caus");
+            message("§6[AH-Flipper] §7Live-Feed §caus");
         }
         return 1;
     }
@@ -2879,13 +3227,13 @@ public class AhFlipperMod {
     private static int scanCommand(CommandContext<FabricClientCommandSource> context) {
         if (AhScanner.isRunning()) {
             AhScanner.stop();
-            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Scanner " + (running ? "Ãƒâ€šÃ‚Â§caus Ãƒâ€šÃ‚Â§7(nur Auto-Scan)" : "Ãƒâ€šÃ‚Â§caus"));
+            message("§6[AH-Flipper] §7Scanner " + (running ? "§caus §7(nur Auto-Scan)" : "§caus"));
         } else {
             AhScanner.start();
-            message("Ãƒâ€šÃ‚Â§6[AH-Flipper] Ãƒâ€šÃ‚Â§7Scanner Ãƒâ€šÃ‚Â§aan Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Ãƒâ€šÃ‚Â§f" + CONFIG.scanMaxTags
-                    + " Ãƒâ€šÃ‚Â§7Tags/Zyklus Ãƒâ€šÃ‚Â· Volumen ÃƒÂ¢Ã¢â‚¬Â°Ã‚Â¥ Ãƒâ€šÃ‚Â§f"
+            message("§6[AH-Flipper] §7Scanner §aan §7· §f" + CONFIG.scanMaxTags
+                    + " §7Tags/Zyklus · Volumen ≥ §f"
                     + String.format(java.util.Locale.US, "%.0f", CONFIG.scanMinVolume)
-                    + " Ãƒâ€šÃ‚Â§7Ãƒâ€šÃ‚Â· Delay Ãƒâ€šÃ‚Â§f" + CONFIG.scanRequestDelayMs + "ms");
+                    + " §7· Delay §f" + CONFIG.scanRequestDelayMs + "ms");
         }
         return 1;
     }
@@ -2913,22 +3261,22 @@ public class AhFlipperMod {
 
     private static int buyCurrentCommand(CommandContext<FabricClientCommandSource> context) {
         if (AhScreenUtil.currentScreen() != AhScreenUtil.AhScreen.BIN_VIEW) {
-            message("Ãƒâ€šÃ‚Â§cÃƒÆ’Ã¢â‚¬â€œffne zuerst eine BIN-Auktion.");
+            message("§cÖffne zuerst eine BIN-Auktion.");
             return 0;
         }
         long price = AhScreenUtil.currentPriceAt(31);
         if (price <= 0) {
-            message("Ãƒâ€šÃ‚Â§cKein Preis erkannt.");
+            message("§cKein Preis erkannt.");
             return 0;
         }
         if (isBusy()) {
-            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
+            message("§cEs läuft bereits ein Kauf.");
             return 0;
         }
         Thread thread = new Thread(() -> {
             AutomationGate.Lease lease = AutomationGate.tryAcquire("buy-current", false);
             if (lease == null) {
-                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                message("§cEs läuft bereits eine AH-Aktion.");
                 return;
             }
             ensureAhPriority();
@@ -2941,24 +3289,24 @@ public class AhFlipperMod {
         }, "skycofl-ah-buy");
         thread.setDaemon(true);
         thread.start();
-        message("Ãƒâ€šÃ‚Â§7Kaufe aktuelle Auktion fÃƒÆ’Ã‚Â¼r Ãƒâ€šÃ‚Â§f" + ScreenUtil.formatCoins(price) + "Ãƒâ€šÃ‚Â§7 ...");
+        message("§7Kaufe aktuelle Auktion für §f" + ScreenUtil.formatCoins(price) + "§7 ...");
         return 1;
     }
 
     private static int buyPlayerAuctionCommand(CommandContext<FabricClientCommandSource> context) {
         String player = com.mojang.brigadier.arguments.StringArgumentType.getString(context, "spieler").trim();
         if (player.isBlank()) {
-            message("Ãƒâ€šÃ‚Â§cSpielername fehlt.");
+            message("§cSpielername fehlt.");
             return 0;
         }
         if (isBusy()) {
-            message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits ein Kauf.");
+            message("§cEs läuft bereits ein Kauf.");
             return 0;
         }
         Thread thread = new Thread(() -> {
             AutomationGate.Lease lease = AutomationGate.tryAcquire("buy-player", false);
             if (lease == null) {
-                message("Ãƒâ€šÃ‚Â§cEs lÃƒÆ’Ã‚Â¤uft bereits eine AH-Aktion.");
+                message("§cEs läuft bereits eine AH-Aktion.");
                 return;
             }
             ensureAhPriority();
@@ -2971,7 +3319,7 @@ public class AhFlipperMod {
         }, "skycofl-ah-buyauktion");
         thread.setDaemon(true);
         thread.start();
-        message("Ãƒâ€šÃ‚Â§7ÃƒÆ’Ã¢â‚¬â€œffne Auktionen von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§7 ...");
+        message("§7Öffne Auktionen von §f" + player + "§7 ...");
         return 1;
     }
 
@@ -2992,7 +3340,7 @@ public class AhFlipperMod {
             int slot = waitForPlayerAuctionSlot(player, 2000);
             if (slot < 0) {
                 System.out.println("[AH-Flipper] buyauktion: keine Auktion gefunden");
-                message("Ãƒâ€šÃ‚Â§cKeine Auktion von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§c gefunden.");
+                message("§cKeine Auktion von §f" + player + "§c gefunden.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
@@ -3000,14 +3348,14 @@ public class AhFlipperMod {
             ScreenUtil.clickSlot(slot, 0);
             if (!waitForTitle(1500, "bin auction view")) {
                 System.out.println("[AH-Flipper] buyauktion: keine BIN-Ansicht");
-                message("Ãƒâ€šÃ‚Â§cAuktion von Ãƒâ€šÃ‚Â§f" + player + "Ãƒâ€šÃ‚Â§c ist keine BIN-Auktion oder wurde nicht geÃƒÆ’Ã‚Â¶ffnet.");
+                message("§cAuktion von §f" + player + "§c ist keine BIN-Auktion oder wurde nicht geöffnet.");
                 AhScreenUtil.dumpScreen();
                 return;
             }
             buyFlow("player:" + player, -1, false, true, true, 0);
         } catch (Exception e) {
             System.out.println("[AH-Flipper] buyauktion Fehler: " + e);
-            message("Ãƒâ€šÃ‚Â§cBuyauktion fehlgeschlagen: " + e.getMessage());
+            message("§cBuyauktion fehlgeschlagen: " + e.getMessage());
         }
     }
 
@@ -3039,12 +3387,12 @@ public class AhFlipperMod {
                 worth = lastFlipWorth;
                 ageSeconds = (System.currentTimeMillis() - lastFlipAt) / 1000;
             } else {
-                message("Ãƒâ€šÃ‚Â§cKein letzter Flip vorhanden ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ erst Ãƒâ€šÃ‚Â§f/ahflip start Ãƒâ€šÃ‚Â§cund auf einen Flip warten.");
+                message("§cKein letzter Flip vorhanden – erst §f/ahflip start §cund auf einen Flip warten.");
                 return 0;
             }
             System.out.println("[AH-Flipper] buy last: id=" + flipId + " worth=" + worth
                     + " alter=" + ageSeconds + "s");
-            message("Ãƒâ€šÃ‚Â§7Kaufe letzten Flip: Ãƒâ€šÃ‚Â§f" + flipId + (ageSeconds >= 0 ? " Ãƒâ€šÃ‚Â§7(" + ageSeconds + "s alt)" : ""));
+            message("§7Kaufe letzten Flip: §f" + flipId + (ageSeconds >= 0 ? " §7(" + ageSeconds + "s alt)" : ""));
             startBuy(flipId, worth, false);
         } else {
             startBuy(id, -1, false);
@@ -3066,14 +3414,14 @@ public class AhFlipperMod {
 
     private static void sendCommand(String command) {
         if (sendCommandSilent(command)) {
-            message("Ãƒâ€šÃ‚Â§7Sende: Ãƒâ€šÃ‚Â§f" + command);
+            message("§7Sende: §f" + command);
         }
     }
 
     static boolean sendCommandSilent(String command) {
         Minecraft client = Minecraft.getInstance();
         if (client.getConnection() == null) {
-            message("Ãƒâ€šÃ‚Â§cNicht verbunden.");
+            message("§cNicht verbunden.");
             return false;
         }
         client.getConnection().sendChat(command);

@@ -21,12 +21,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Long-term investment scanner for Hypixel Fire Sale cosmetics/skins.
- * Uses the public Cofl price history (month/week), market volume and the
- * current BIN book. No model training: every score is deterministic.
+ * Uses the full public Cofl daily price history (since the first sale, so the
+ * age of a skin is known), market volume and the current BIN book. The
+ * valuation itself lives in {@link AhFireSaleModel}.
  */
 public final class AhFireSaleSkinTracker {
     private static final long DAY_MS = 24L * 60L * 60_000L;
-    private static final long HISTORY_TTL_MS = 30L * 60_000L;
+    /** The full history is daily data; refreshing it every few hours is plenty. */
+    private static final long HISTORY_TTL_MS = 6L * 60L * 60_000L;
     private static final long SKIN_LIST_TTL_MS = 24L * 60L * 60_000L;
     private static final String RESOURCE_URL =
             "https://api.hypixel.net/v2/resources/skyblock/items";
@@ -51,6 +53,11 @@ public final class AhFireSaleSkinTracker {
         public int activeListings;
         public int historyDays;
         public int holdingDays;
+        /** Days since the first AH sale of the skin. */
+        public int ageDays;
+        /** How far the buy price is below the fair value (%). */
+        public double discountPercent;
+        public long fairValue;
         public long[] graphPrices = new long[0];
         public String note = "";
     }
@@ -71,7 +78,12 @@ public final class AhFireSaleSkinTracker {
     record HistoryPoint(long time, long min, long max, long avg, int volume) {
     }
 
-    record HistoryData(List<HistoryPoint> month, List<HistoryPoint> week) {
+    /**
+     * {@code full} is the complete daily history since the first sale;
+     * {@code month}/{@code week} are the last 30/7 days of it.
+     */
+    record HistoryData(List<HistoryPoint> full, List<HistoryPoint> month,
+                       List<HistoryPoint> week) {
     }
 
     record SkinMeta(String name, String tier, String type, long releaseGuessAt) {
@@ -288,6 +300,8 @@ public final class AhFireSaleSkinTracker {
                     + " [" + candidate.tag + "] buy=" + candidate.buyPrice
                     + " target=" + candidate.target + " qty=" + candidate.qty
                     + " hold=" + candidate.holdingDays + "d"
+                    + " age=" + candidate.ageDays + "d fair=" + candidate.fairValue
+                    + String.format(Locale.US, " disc=%.1f%%", candidate.discountPercent)
                     + String.format(Locale.US, " roi=%.1f%%", candidate.roiPercent)
                     + String.format(Locale.US, " trend=%.2f%%/d", candidate.trendPerDayPercent)
                     + String.format(Locale.US, " conf=%.0f%%", candidate.confidence * 100));
@@ -313,6 +327,7 @@ public final class AhFireSaleSkinTracker {
         book.sort(null);
 
         HistoryData history = historyData(tag);
+        List<HistoryPoint> full = history.full();
         List<HistoryPoint> month = history.month();
         List<HistoryPoint> week = history.week();
         int monthlySales = totalVolume(month);
@@ -322,6 +337,7 @@ public final class AhFireSaleSkinTracker {
         double marketVolume = marketEntry == null ? 0 : marketEntry.volume;
         long snapshotPrice = book.isEmpty() ? Math.max(marketNow, marketMonthly)
                 : book.get(0);
+        long firstSaleAt = full.isEmpty() ? 0 : full.get(0).time();
         if (snapshotPrice > 0) {
             AhFireSaleHistoryStore.Snapshot snapshot = new AhFireSaleHistoryStore.Snapshot();
             snapshot.at = System.currentTimeMillis();
@@ -332,82 +348,41 @@ public final class AhFireSaleSkinTracker {
             snapshot.listings = book.size();
             snapshot.monthSales = monthlySales;
             snapshot.weekSales = weeklySales;
+            // The first AH sale is a much better release date than the texture
+            // timestamp (that is when the texture was made, often months earlier).
+            long release = firstSaleAt > 0 ? firstSaleAt
+                    : meta == null ? 0 : meta.releaseGuessAt();
             AhFireSaleHistoryStore.record(tag,
                     meta == null ? tag : meta.name(),
                     meta == null ? "" : meta.tier(),
                     meta == null ? "" : meta.type(),
-                    meta == null ? 0 : meta.releaseGuessAt(),
+                    release,
                     snapshot);
         }
 
-        if (book.isEmpty()) {
+        if (book.isEmpty() || full.isEmpty()) {
             return null;
         }
-        long buyPrice = book.get(0);
-        if (buyPrice < config.fireSaleMinPrice
-                || (config.fireSaleMaxPrice > 0 && buyPrice > config.fireSaleMaxPrice)) {
+        long cheapest = book.get(0);
+        if (cheapest < config.fireSaleMinPrice
+                || (config.fireSaleMaxPrice > 0 && cheapest > config.fireSaleMaxPrice)) {
             return null;
         }
-        if (month.isEmpty() && week.isEmpty()) {
+        long now = System.currentTimeMillis();
+        int ageDays = (int) Math.max(0, (now - firstSaleAt) / DAY_MS);
+        int minAge = Math.max(30, config.fireSaleMinAgeDays);
+        if (ageDays < minAge) {
+            // Fresh Fire Sale skins keep falling for months; see AhFireSaleModel.
             return null;
         }
         int minimumSales = Math.max(1, config.fireSaleMinSales);
-        if (monthlySales < minimumSales && weeklySales < minimumSales) {
-            return null;
-        }
-        long historicalAverage = weightedAverage(month, week);
-        if (historicalAverage <= 0) {
-            return null;
-        }
-        long historicalMin = Long.MAX_VALUE;
-        long historicalMax = 0;
-        for (HistoryPoint point : month) {
-            historicalMin = Math.min(historicalMin, point.min());
-            historicalMax = Math.max(historicalMax, point.max());
-        }
-        for (HistoryPoint point : week) {
-            historicalMin = Math.min(historicalMin, point.min());
-            historicalMax = Math.max(historicalMax, point.max());
-        }
-        if (historicalMin == Long.MAX_VALUE) {
-            historicalMin = historicalAverage;
-        }
-        if (historicalMax <= 0) {
-            historicalMax = historicalAverage;
-        }
-
-        double trendPerDay = slopePerDay(month, week);
-        double weeklyTrend = slopePerDay(week, List.of());
-        double trendPercent = historicalAverage > 0
-                ? trendPerDay * 100.0 / historicalAverage : 0;
-        double weeklyTrendPercent = historicalAverage > 0
-                ? weeklyTrend * 100.0 / historicalAverage : 0;
-        if (trendPercent < config.fireSaleMinTrendPercent) {
+        if (monthlySales < minimumSales) {
             return null;
         }
 
-        long projected = buyPrice + Math.max(0, Math.round(trendPerDay * 30));
-        long target = Math.max(historicalAverage * 11 / 10, projected);
-        target = Math.max(target, Math.round(buyPrice * 1.10));
-        target = Math.min(target, Math.round(historicalMax * 1.20));
-        if (target <= buyPrice) {
-            return null;
-        }
-        int holdingDays;
-        if (trendPerDay > 0) {
-            holdingDays = (int) Math.round((target - buyPrice) / trendPerDay);
-        } else {
-            holdingDays = 30;
-        }
-        holdingDays = Math.max(7, Math.min(180, holdingDays));
-
-        double fee = Math.max(0, Math.min(100, config.ahFeePercent)) / 100.0;
-        double roi = (target * (1.0 - fee) - buyPrice) * 100.0 / buyPrice;
-        if (roi < config.fireSaleMinRoiPercent) {
-            return null;
-        }
+        // Quantity first, so the ROI is computed on the real average entry price.
         double slippage = Math.max(0, config.fireSaleSlippagePercent) / 100.0;
-        long slipCap = Math.round(buyPrice * (1.0 + slippage));
+        long slipCap = Math.round(cheapest * (1.0 + slippage));
         int available = 0;
         for (Long price : book) {
             if (price > slipCap) {
@@ -420,22 +395,46 @@ public final class AhFireSaleSkinTracker {
         }
         long maxByBankroll = bankroll > 0
                 ? Math.max(1, bankroll / Math.max(1, slipCap)) : Long.MAX_VALUE;
+        // Selling much more than ~1/6 of the monthly volume within the holding
+        // period would push the price down by itself.
+        long maxByVolume = Math.max(1, monthlySales / 6);
         long qty = Math.min(Math.min(available, maxByBankroll),
-                Math.max(1, config.fireSaleMaxQty));
+                Math.min(maxByVolume, Math.max(1, config.fireSaleMaxQty)));
         qty = Math.max(1, qty);
-        long totalProfit = Math.round((target * (1.0 - fee) - buyPrice) * qty);
-        long profitPerDay = Math.max(1, Math.round(totalProfit / (double) holdingDays));
+        long sum = 0;
+        for (int i = 0; i < qty; i++) {
+            sum += book.get(i);
+        }
+        long buyPrice = Math.max(1, Math.round(sum / (double) qty));
 
-        double cv = coefficientVariation(month, historicalAverage);
-        double volumeScore = clamp(Math.log10(monthlySales + 1.0) / Math.log10(20.0), 0, 1);
-        double historyScore = clamp(historyDays(month, week) / 90.0, 0, 1);
-        double stability = 1.0 - clamp(cv, 0, 1);
-        double supplyScore = 1.0 - clamp(book.size() / 20.0, 0, 1);
-        double confidence = 0.35 * volumeScore + 0.25 * historyScore
-                + 0.20 * stability + 0.20 * supplyScore;
-        confidence = clamp(confidence, 0, 1);
+        int holdDays = Math.max(7, Math.min(180, config.fireSaleHoldDays));
+        double fee = Math.max(0, Math.min(100, config.ahFeePercent)) / 100.0;
+        AhFireSaleModel.Projection projection =
+                AhFireSaleModel.project(full, now, buyPrice, holdDays, fee);
+        if (!projection.dataProblem.isEmpty()) {
+            return null;
+        }
+        if (projection.roiPercent < config.fireSaleMinRoiPercent) {
+            return null;
+        }
+        // Oversupply: many more listings than monthly sales => slow exit.
+        double supply = 1.0 - clamp(book.size() / (double) Math.max(1, monthlySales * 2),
+                0, 0.5);
+        double confidence = clamp(projection.confidence * supply, 0, 1);
         if (confidence < config.fireSaleMinConfidence) {
             return null;
+        }
+
+        long totalProfit = Math.round((projection.target * (1.0 - fee) - buyPrice) * qty);
+        long profitPerDay = Math.max(1, Math.round(totalProfit / (double) holdDays));
+        long historicalMin = Long.MAX_VALUE;
+        long historicalMax = 0;
+        for (HistoryPoint point : AhFireSaleModel.window(full, now, 90)) {
+            historicalMin = Math.min(historicalMin, point.min());
+            historicalMax = Math.max(historicalMax, point.max());
+        }
+        if (historicalMin == Long.MAX_VALUE) {
+            historicalMin = projection.median90;
         }
 
         SkinCandidate candidate = new SkinCandidate();
@@ -443,33 +442,40 @@ public final class AhFireSaleSkinTracker {
         candidate.name = meta == null || meta.name() == null || meta.name().isBlank()
                 ? prettyTag(tag) : meta.name();
         candidate.buyPrice = buyPrice;
-        candidate.historicalAverage = historicalAverage;
+        candidate.historicalAverage = projection.median90;
         candidate.historicalMin = historicalMin;
-        candidate.historicalMax = historicalMax;
-        candidate.target = target;
+        candidate.historicalMax = Math.max(historicalMax, projection.median90);
+        candidate.fairValue = projection.fair;
+        candidate.target = projection.target;
         candidate.qty = qty;
         candidate.totalProfit = totalProfit;
         candidate.profitPerDay = profitPerDay;
-        candidate.roiPercent = roi;
-        candidate.trendPerDayPercent = trendPercent;
-        candidate.weeklyTrendPerDayPercent = weeklyTrendPercent;
+        candidate.roiPercent = projection.roiPercent;
+        candidate.discountPercent = projection.discountPercent;
+        candidate.trendPerDayPercent = projection.trend30PercentPerDay;
+        candidate.weeklyTrendPerDayPercent = AhFireSaleModel.logSlopePerDay(week) * 100.0;
         candidate.confidence = confidence;
         candidate.monthlySales = monthlySales;
         candidate.weeklySales = weeklySales;
         candidate.activeListings = book.size();
-        candidate.historyDays = historyDays(month, week);
-        candidate.holdingDays = holdingDays;
-        candidate.graphPrices = graphPrices(month, week);
-        candidate.note = "Monat " + monthlySales + " Sales \u00b7 Woche "
-                + weeklySales + " \u00b7 " + book.size() + " Listings";
+        candidate.ageDays = ageDays;
+        candidate.historyDays = ageDays;
+        candidate.holdingDays = holdDays;
+        candidate.graphPrices = graphPrices(full, now);
+        candidate.note = String.format(Locale.US,
+                "%dd alt · %.0f%% unter Fair %s · %d Sales/30d · %d Listings",
+                ageDays, projection.discountPercent, ScreenUtil.formatCoins(projection.fair),
+                monthlySales, book.size());
         return candidate;
     }
 
+    /**
+     * Ranking: expected ROI weighted by confidence and liquidity. Momentum is
+     * deliberately not rewarded (it was a negative signal in the data).
+     */
     private static double score(SkinCandidate candidate) {
-        double trendBonus = 1.0 + clamp(candidate.trendPerDayPercent / 3.0, -0.30, 0.30);
-        double supplyBonus = 1.0 - clamp(candidate.activeListings / 40.0, 0, 0.30);
-        return candidate.roiPercent * (0.5 + 0.5 * candidate.confidence)
-                * trendBonus * supplyBonus;
+        double liquidity = clamp(candidate.monthlySales / 15.0, 0.3, 1.0);
+        return candidate.roiPercent * candidate.confidence * liquidity;
     }
 
     static Map<String, SkinMeta> fireSaleSkins() {
@@ -553,9 +559,18 @@ public final class AhFireSaleSkinTracker {
         if (cached != null && now - cached.at() < HISTORY_TTL_MS) {
             return cached.data();
         }
-        List<HistoryPoint> month = fetchHistory(tag, "month");
-        List<HistoryPoint> week = fetchHistory(tag, "week");
-        HistoryData data = new HistoryData(month, week);
+        List<HistoryPoint> full = fetchHistory(tag, "full");
+        if (full.isEmpty()) {
+            // Fallback for tags the full endpoint does not know (yet).
+            full = fetchHistory(tag, "month");
+        }
+        if (full.isEmpty() && cached != null) {
+            // Keep the last good data on a temporary API error.
+            return cached.data();
+        }
+        HistoryData data = new HistoryData(full,
+                AhFireSaleModel.window(full, now, 30),
+                AhFireSaleModel.window(full, now, 7));
         HISTORY_CACHE.put(tag, new CachedHistory(data, now));
         if (HISTORY_CACHE.size() > 500) {
             HISTORY_CACHE.entrySet().removeIf(
@@ -596,64 +611,15 @@ public final class AhFireSaleSkinTracker {
         }
     }
 
-    private static long weightedAverage(List<HistoryPoint> month, List<HistoryPoint> week) {
-        double sum = 0;
-        double weight = 0;
-        for (HistoryPoint point : month) {
-            double w = Math.max(1, point.volume());
-            sum += point.avg() * w;
-            weight += w;
-        }
-        if (weight <= 0) {
-            for (HistoryPoint point : week) {
-                double w = Math.max(1, point.volume());
-                sum += point.avg() * w;
-                weight += w;
-            }
-        }
-        return weight > 0 ? Math.round(sum / weight) : 0;
-    }
-
-    private static double slopePerDay(List<HistoryPoint> primary, List<HistoryPoint> fallback) {
-        List<HistoryPoint> points = primary;
-        if (points.size() < 2) {
-            points = fallback;
-        }
-        if (points.size() < 2) {
-            return 0;
-        }
-        long first = points.get(0).time();
-        double sumWeight = 0;
-        double sumX = 0;
-        double sumY = 0;
-        double sumXY = 0;
-        double sumXX = 0;
-        for (HistoryPoint point : points) {
-            double weight = Math.max(1, Math.min(20, point.volume()));
-            double x = (point.time() - first) / (double) DAY_MS;
-            double y = point.avg();
-            sumWeight += weight;
-            sumX += weight * x;
-            sumY += weight * y;
-            sumXY += weight * x * y;
-            sumXX += weight * x * x;
-        }
-        double denominator = sumWeight * sumXX - sumX * sumX;
-        if (Math.abs(denominator) < 1e-9) {
-            return 0;
-        }
-        return (sumWeight * sumXY - sumX * sumY) / denominator;
-    }
-
-    private static long[] graphPrices(List<HistoryPoint> month, List<HistoryPoint> week) {
-        List<HistoryPoint> points = month.size() >= 2 ? month : week;
+    /** Last 90 days of daily averages for the sparkline. */
+    private static long[] graphPrices(List<HistoryPoint> full, long now) {
+        List<HistoryPoint> points = AhFireSaleModel.window(full, now, 90);
         if (points.isEmpty()) {
             return new long[0];
         }
-        int start = Math.max(0, points.size() - 30);
-        long[] values = new long[points.size() - start];
-        for (int i = start; i < points.size(); i++) {
-            values[i - start] = points.get(i).avg();
+        long[] values = new long[points.size()];
+        for (int i = 0; i < points.size(); i++) {
+            values[i] = points.get(i).avg();
         }
         return values;
     }
@@ -664,35 +630,6 @@ public final class AhFireSaleSkinTracker {
             total += point.volume();
         }
         return total;
-    }
-
-    private static int historyDays(List<HistoryPoint> month, List<HistoryPoint> week) {
-        long first = Long.MAX_VALUE;
-        long last = 0;
-        for (HistoryPoint point : month) {
-            first = Math.min(first, point.time());
-            last = Math.max(last, point.time());
-        }
-        for (HistoryPoint point : week) {
-            first = Math.min(first, point.time());
-            last = Math.max(last, point.time());
-        }
-        if (first == Long.MAX_VALUE || last <= first) {
-            return 1;
-        }
-        return Math.max(1, (int) ((last - first) / DAY_MS) + 1);
-    }
-
-    private static double coefficientVariation(List<HistoryPoint> points, double average) {
-        if (points.isEmpty() || average <= 0) {
-            return 0;
-        }
-        double variance = 0;
-        for (HistoryPoint point : points) {
-            double difference = point.avg() - average;
-            variance += difference * difference;
-        }
-        return Math.sqrt(variance / points.size()) / average;
     }
 
     private static double marketVolume(Map<String, AhMarketData.MarketEntry> market, String tag) {

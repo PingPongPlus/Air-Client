@@ -671,6 +671,9 @@ public final class ScreenUtil {
     }
 
     public static void sleep(long ms) {
+        if (ms <= 0) {
+            return;
+        }
         try {
             Thread.sleep(ms);
         } catch (InterruptedException e) {
@@ -682,8 +685,10 @@ public final class ScreenUtil {
         return (long) (baseMs * (0.8 + ThreadLocalRandom.current().nextDouble() * 0.4));
     }
 
+    /** Never negative: a spread larger than the base used to crash Thread.sleep. */
     public static long jitterAround(long baseMs, long spreadMs) {
-        return baseMs + ThreadLocalRandom.current().nextLong(-spreadMs, spreadMs + 1);
+        long spread = Math.max(0, spreadMs);
+        return Math.max(0, baseMs + ThreadLocalRandom.current().nextLong(-spread, spread + 1));
     }
 
     public static void jitterSleep(long baseMs, long spreadMs) {

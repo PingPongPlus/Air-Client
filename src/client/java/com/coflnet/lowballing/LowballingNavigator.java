@@ -118,6 +118,8 @@ public final class LowballingNavigator {
     private static void configureBaritone() {
         baritone.api.Settings s = BaritoneAPI.getSettings();
         s.allowSprint.value = true;
+        com.coflnet.ahflipper.AhMobPathfinder.setJumpHeight(s,
+                com.coflnet.ahflipper.AhAutomationConfig.get().jumpHeight);
         s.allowBreak.value = false;
         s.allowPlace.value = false;
         s.allowInventory.value = false;

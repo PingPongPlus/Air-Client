@@ -18,6 +18,8 @@ public class AhAutomationConfig {
     public boolean allowSprint = true;
     public boolean oneHitMode;
     public double cameraTurnSpeed = 240.0;
+    /** How high the player can jump in blocks (SkyBlock jump boost: 6.5). */
+    public double jumpHeight = 6.5;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AhAutomationConfig instance = new AhAutomationConfig();
@@ -45,6 +47,7 @@ public class AhAutomationConfig {
         instance.attackCpsMax = clamp(instance.attackCpsMax, instance.attackCpsMin, 5.0);
         instance.reach = clamp(instance.reach, 2.5, 5.0);
         instance.cameraTurnSpeed = clamp(instance.cameraTurnSpeed, 60.0, 720.0);
+        instance.jumpHeight = clamp(instance.jumpHeight, 1.25, 12.0);
         if (instance.targetName == null) {
             instance.targetName = "";
         }

@@ -8,13 +8,17 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Backtests the Fire Sale skin rules on the available Cofl month/week history
- * and calibrates the filters. The persistent store will extend the history
- * over time for longer horizons.
+ * Walk-forward backtest of {@link AhFireSaleModel} on the full Cofl daily
+ * history: for every skin and every week of the last two years the model only
+ * sees data up to that day, the result is compared with the real price after
+ * the holding period. The grid search calibrates min ROI / min age / min sales
+ * / min confidence.
  */
 public final class AhFireSaleBacktest {
-    private static final long DAY_MS = 24L * 60L * 60_000L;
-    public static final int[] HORIZONS = {7, 14, 30, 90, 180};
+    private static final long DAY_MS = AhFireSaleModel.DAY_MS;
+    /** Only the current market regime is tested (the AH changed a lot over the years). */
+    private static final long LOOKBACK_MS = 730L * DAY_MS;
+    public static final int[] HORIZONS = {14, 30, 45, 60, 90};
 
     public static final class HorizonStats {
         public int days;
@@ -39,6 +43,9 @@ public final class AhFireSaleBacktest {
 
     public static final class Recommendation {
         public double minRoiPercent;
+        public int minAgeDays;
+        /** @deprecated kept for old screens; the model has no trend filter any more. */
+        @Deprecated
         public double minTrendPercent;
         public int minSales;
         public double minConfidence;
@@ -62,9 +69,9 @@ public final class AhFireSaleBacktest {
         public volatile Recommendation recommended;
     }
 
-    private record Signal(long at, double predictedRoi, double trendPercent,
-                          int monthlySales, double confidence, double actualRoi,
-                          boolean targetHit, int daysToTarget) {
+    private record Signal(long at, double predictedRoi, int ageDays, int monthlySales,
+                          double confidence, double actualRoi, boolean targetHit,
+                          int daysToTarget) {
     }
 
     private static final Snapshot SNAPSHOT = new Snapshot();
@@ -82,43 +89,43 @@ public final class AhFireSaleBacktest {
     }
 
     public static void run() {
-        if (running) {
-            return;
+        synchronized (AhFireSaleBacktest.class) {
+            if (running) {
+                return;
+            }
+            running = true;
         }
-        running = true;
         SNAPSHOT.running = true;
         SNAPSHOT.error = "";
         SNAPSHOT.updatedAt = System.currentTimeMillis();
         try {
+            AhFlipperConfig config = AhFlipperMod.CONFIG;
+            double fee = Math.max(0, Math.min(100, config.ahFeePercent)) / 100.0;
             Map<Integer, List<Signal>> signalsByHorizon = new HashMap<>();
             for (int horizon : HORIZONS) {
                 signalsByHorizon.put(horizon, new ArrayList<>());
             }
             int skins = 0;
-            Map<String, AhFireSaleSkinTracker.SkinMeta> skinList =
-                    AhFireSaleSkinTracker.fireSaleSkins();
-            for (String tag : skinList.keySet()) {
-                List<AhFireSaleSkinTracker.HistoryPoint> points = pointsForBacktest(tag);
-                if (points.size() < 2) {
+            for (String tag : AhFireSaleSkinTracker.fireSaleSkins().keySet()) {
+                AhFireSaleSkinTracker.HistoryData history =
+                        AhFireSaleSkinTracker.cachedHistory(tag);
+                if (history == null || history.full().size() < 30) {
                     continue;
                 }
                 skins++;
                 for (int horizon : HORIZONS) {
-                    List<Signal> signals = signalsByHorizon.get(horizon);
-                    collectSignals(points, horizon, signals);
+                    collectSignals(history.full(), horizon, fee,
+                            signalsByHorizon.get(horizon));
                 }
             }
             SNAPSHOT.skinCount = skins;
-            AhFlipperConfig config = AhFlipperMod.CONFIG;
-            int calibrationHorizon = 30;
+            int calibrationHorizon = Math.max(7, Math.min(180, config.fireSaleHoldDays));
+            if (!signalsByHorizon.containsKey(calibrationHorizon)) {
+                calibrationHorizon = 45;
+            }
             for (int horizon : HORIZONS) {
                 SNAPSHOT.horizons.put(horizon, stats(horizon,
                         signalsByHorizon.get(horizon), config));
-                int count = signalsByHorizon.get(horizon).size();
-                int best = signalsByHorizon.get(calibrationHorizon).size();
-                if (count > best) {
-                    calibrationHorizon = horizon;
-                }
             }
             List<Signal> calibration = signalsByHorizon.get(calibrationHorizon);
             Recommendation recommendation = calibrate(calibration, config);
@@ -128,10 +135,9 @@ public final class AhFireSaleBacktest {
             SNAPSHOT.recommended = recommendation;
             SNAPSHOT.signalCount = recommendation == null ? 0 : recommendation.signals;
             SNAPSHOT.outOfSample = outOfSample(calibration, recommendation);
-            SNAPSHOT.note = "Cofl Monats-/Wochenhistorie \u00b7 "
-                    + skins + " Skins \u00b7 Ziel-Fill "
-                    + Math.round(AhFlipperMod.CONFIG.fireSaleBacktestFillProbability * 100)
-                    + "% \u00b7 historische Listings nicht verf\u00fcgbar";
+            SNAPSHOT.note = "Walk-forward auf Cofl-Tageshistorie (2 Jahre) · "
+                    + skins + " Skins · 1 Signal/Woche/Skin · Ziel-Fill "
+                    + Math.round(config.fireSaleBacktestFillProbability * 100) + "%";
             SNAPSHOT.updatedAt = System.currentTimeMillis();
         } catch (Exception e) {
             SNAPSHOT.error = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -151,98 +157,61 @@ public final class AhFireSaleBacktest {
         thread.start();
     }
 
-    private static List<AhFireSaleSkinTracker.HistoryPoint> pointsForBacktest(String tag) {
-        java.util.TreeMap<Long, AhFireSaleSkinTracker.HistoryPoint> byDay =
-                new java.util.TreeMap<>();
-        AhFireSaleSkinTracker.HistoryData history =
-                AhFireSaleSkinTracker.cachedHistory(tag);
-        if (history != null) {
-            List<AhFireSaleSkinTracker.HistoryPoint> points =
-                    history.month().size() >= 2 ? history.month() : history.week();
-            for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-                byDay.put(point.time() / DAY_MS, point);
-            }
-        }
-        AhFireSaleHistoryStore.SkinRecord record = AhFireSaleHistoryStore.get(tag);
-        if (record != null && record.snapshots != null) {
-            for (AhFireSaleHistoryStore.Snapshot snapshot : record.snapshots) {
-                if (snapshot.at > 0 && snapshot.price > 0) {
-                    byDay.put(snapshot.at / DAY_MS,
-                            new AhFireSaleSkinTracker.HistoryPoint(snapshot.at,
-                                    snapshot.price, snapshot.price, snapshot.price, 1));
-                }
-            }
-        }
-        return new ArrayList<>(byDay.values());
-    }
-
     private static void collectSignals(List<AhFireSaleSkinTracker.HistoryPoint> points,
-                                       int horizon, List<Signal> out) {
-        long first = points.get(0).time();
-        long end = points.get(points.size() - 1).time();
+                                       int horizon, double fee, List<Signal> out) {
+        long last = points.get(points.size() - 1).time();
+        long from = System.currentTimeMillis() - LOOKBACK_MS;
+        long lastSignalAt = Long.MIN_VALUE;
         for (int index = 0; index < points.size(); index++) {
             AhFireSaleSkinTracker.HistoryPoint current = points.get(index);
-            long futureTime = current.time() + horizon * DAY_MS;
-            if (futureTime > end) {
+            long at = current.time();
+            if (at < from || at + horizon * DAY_MS > last) {
                 continue;
             }
-            int futureIndex = -1;
-            for (int next = index + 1; next < points.size(); next++) {
-                if (points.get(next).time() >= futureTime) {
-                    futureIndex = next;
-                    break;
-                }
-            }
-            if (futureIndex < 0) {
+            // One signal per skin and week, otherwise overlapping days of the
+            // same trade dominate the statistics.
+            if (at - lastSignalAt < 7 * DAY_MS) {
                 continue;
             }
-            List<AhFireSaleSkinTracker.HistoryPoint> past =
-                    points.subList(0, index + 1);
-            long historicalAverage = weightedAverage(past);
-            if (historicalAverage <= 0 || current.avg() <= 0) {
+            long buy = AhFireSaleModel.recentPrice(points, at);
+            if (buy <= 0) {
                 continue;
             }
-            double trend = slopePerDay(past);
-            long historicalMax = 0;
-            for (AhFireSaleSkinTracker.HistoryPoint point : past) {
-                historicalMax = Math.max(historicalMax, point.max());
+            AhFireSaleModel.Projection projection =
+                    AhFireSaleModel.project(points, at, buy, horizon, fee);
+            if (!projection.dataProblem.isEmpty()) {
+                continue;
             }
-            long target = Math.max(Math.round(historicalAverage * 1.10),
-                    current.avg() + Math.max(0, Math.round(trend * 30)));
-            target = Math.max(target, Math.round(current.avg() * 1.10));
-            target = Math.min(target, Math.round(historicalMax * 1.20));
-            double predictedRoi = (target * 0.95 - current.avg()) * 100.0 / current.avg();
-            double trendPercent = trend * 100.0 / historicalAverage;
-            int monthlySales = monthlySales(past, current.time());
-            int historyDays = Math.max(1, (int) ((current.time() - first) / DAY_MS) + 1);
-            double cv = coefficientVariation(past, historicalAverage);
-            double volumeScore = clamp(Math.log10(monthlySales + 1.0) / Math.log10(20.0), 0, 1);
-            double historyScore = clamp(historyDays / 90.0, 0, 1);
-            double stability = 1.0 - clamp(cv, 0, 1);
-            double confidence = 0.35 * volumeScore + 0.25 * historyScore
-                    + 0.20 * stability + 0.20 * 0.5;
-
-            AhFireSaleSkinTracker.HistoryPoint exit = points.get(futureIndex);
+            long exitAt = at + horizon * DAY_MS;
+            List<AhFireSaleSkinTracker.HistoryPoint> exitWindow = new ArrayList<>();
             boolean targetHit = false;
             int daysToTarget = 0;
-            for (int next = index + 1; next <= futureIndex; next++) {
+            for (int next = index + 1; next < points.size(); next++) {
                 AhFireSaleSkinTracker.HistoryPoint point = points.get(next);
-                if (point.avg() >= target) {
-                    targetHit = true;
-                    daysToTarget = Math.max(1,
-                            (int) ((point.time() - current.time()) / DAY_MS));
+                if (point.time() > exitAt + 3 * DAY_MS) {
                     break;
                 }
+                if (!targetHit && point.time() <= exitAt && point.avg() >= projection.target) {
+                    targetHit = true;
+                    daysToTarget = Math.max(1, (int) ((point.time() - at) / DAY_MS));
+                }
+                if (point.time() >= exitAt - 3 * DAY_MS) {
+                    exitWindow.add(point);
+                }
             }
-            double exitRoi = (exit.avg() * 0.95 - current.avg()) * 100.0 / current.avg();
-            double targetRoi = (target * 0.95 - current.avg()) * 100.0 / current.avg();
-            double fill = clamp(AhFlipperMod.CONFIG.fireSaleBacktestFillProbability,
-                    0.05, 1.0);
-            double actualRoi = targetHit
-                    ? fill * targetRoi + (1.0 - fill) * exitRoi
-                    : exitRoi;
-            out.add(new Signal(current.time(), predictedRoi, trendPercent,
-                    monthlySales, confidence, actualRoi, targetHit, daysToTarget));
+            if (exitWindow.isEmpty()) {
+                continue;
+            }
+            long exit = AhFireSaleModel.medianAvg(exitWindow);
+            double exitRoi = (exit * (1.0 - fee) - buy) * 100.0 / buy;
+            double targetRoi = (projection.target * (1.0 - fee) - buy) * 100.0 / buy;
+            double fill = AhFireSaleModel.clamp(
+                    AhFlipperMod.CONFIG.fireSaleBacktestFillProbability, 0.05, 1.0);
+            double actualRoi = targetHit ? fill * targetRoi + (1.0 - fill) * exitRoi : exitRoi;
+            lastSignalAt = at;
+            out.add(new Signal(at, projection.roiPercent, projection.ageDays,
+                    projection.monthlySales, projection.confidence, actualRoi,
+                    targetHit, daysToTarget));
         }
     }
 
@@ -255,7 +224,7 @@ public final class AhFireSaleBacktest {
         }
         stats.allSignals = signals.size();
         List<Signal> filtered = filter(signals, config.fireSaleMinRoiPercent,
-                config.fireSaleMinTrendPercent, config.fireSaleMinSales,
+                config.fireSaleMinAgeDays, config.fireSaleMinSales,
                 config.fireSaleMinConfidence);
         stats.signals = filtered.size();
         if (filtered.isEmpty()) {
@@ -298,24 +267,25 @@ public final class AhFireSaleBacktest {
         if (signals == null || signals.isEmpty()) {
             return null;
         }
-        double[] roiOptions = {5, 10, 15, 20, 30, 50};
-        double[] trendOptions = {0.0, 0.25, 0.5, 1.0};
-        int[] salesOptions = {1, 2, 3, 5};
-        double[] confidenceOptions = {0.15, 0.20, 0.25, 0.35, 0.50};
+        double[] roiOptions = {8, 12, 15, 20, 30};
+        int[] ageOptions = {60, 90, 120, 180, 365};
+        int[] salesOptions = {3, 5, 10, 20};
+        double[] confidenceOptions = {0.35, 0.45, 0.55, 0.65};
         Recommendation best = null;
         int minSignals = Math.max(3, config.fireSaleBacktestMinSignals);
         for (double roi : roiOptions) {
-            for (double trend : trendOptions) {
+            for (int age : ageOptions) {
                 for (int sales : salesOptions) {
                     for (double confidence : confidenceOptions) {
-                        List<Signal> filtered = filter(signals, roi, trend, sales, confidence);
+                        List<Signal> filtered = filter(signals, roi, age, sales, confidence);
                         if (filtered.size() < minSignals) {
                             continue;
                         }
-                        Recommendation candidate = recommendation(filtered, roi, trend,
+                        Recommendation candidate = recommendation(filtered, roi, age,
                                 sales, confidence);
-                        if (best == null || candidate.winRate * candidate.medianRoi
-                                > best.winRate * best.medianRoi) {
+                        // Median (not mean) and win rate: robust against a few
+                        // lucky outliers that would otherwise pick the filters.
+                        if (best == null || objective(candidate) > objective(best)) {
                             best = candidate;
                         }
                     }
@@ -328,27 +298,31 @@ public final class AhFireSaleBacktest {
         return best;
     }
 
+    private static double objective(Recommendation recommendation) {
+        double sizeFactor = Math.min(1.0, recommendation.signals / 30.0);
+        return recommendation.winRate * recommendation.medianRoi * (0.5 + 0.5 * sizeFactor);
+    }
+
     private static Recommendation defaultRecommendation(List<Signal> signals,
                                                         AhFlipperConfig config) {
         List<Signal> filtered = filter(signals, config.fireSaleMinRoiPercent,
-                config.fireSaleMinTrendPercent, config.fireSaleMinSales,
+                config.fireSaleMinAgeDays, config.fireSaleMinSales,
                 config.fireSaleMinConfidence);
         if (filtered.isEmpty()) {
             filtered = signals;
         }
         Recommendation recommendation = recommendation(filtered,
-                config.fireSaleMinRoiPercent, config.fireSaleMinTrendPercent,
+                config.fireSaleMinRoiPercent, config.fireSaleMinAgeDays,
                 config.fireSaleMinSales, config.fireSaleMinConfidence);
         recommendation.appliedDefaults = true;
         return recommendation;
     }
 
     private static Recommendation recommendation(List<Signal> filtered, double roi,
-                                                 double trend, int sales,
-                                                 double confidence) {
+                                                 int age, int sales, double confidence) {
         Recommendation result = new Recommendation();
         result.minRoiPercent = roi;
-        result.minTrendPercent = trend;
+        result.minAgeDays = age;
         result.minSales = sales;
         result.minConfidence = confidence;
         result.signals = filtered.size();
@@ -372,7 +346,7 @@ public final class AhFireSaleBacktest {
 
     private static String outOfSample(List<Signal> signals, Recommendation recommendation) {
         if (signals == null || signals.size() < 10 || recommendation == null) {
-            return "zu wenig Signale f\u00fcr Out-of-Sample";
+            return "zu wenig Signale für Out-of-Sample";
         }
         List<Signal> sorted = new ArrayList<>(signals);
         sorted.sort(Comparator.comparingLong(Signal::at));
@@ -380,10 +354,10 @@ public final class AhFireSaleBacktest {
         List<Signal> train = sorted.subList(0, split);
         List<Signal> test = sorted.subList(split, sorted.size());
         List<Signal> trainFiltered = filter(train, recommendation.minRoiPercent,
-                recommendation.minTrendPercent, recommendation.minSales,
+                recommendation.minAgeDays, recommendation.minSales,
                 recommendation.minConfidence);
         List<Signal> testFiltered = filter(test, recommendation.minRoiPercent,
-                recommendation.minTrendPercent, recommendation.minSales,
+                recommendation.minAgeDays, recommendation.minSales,
                 recommendation.minConfidence);
         if (testFiltered.size() < 3) {
             return "Testfenster: zu wenig Signale (" + testFiltered.size() + ")";
@@ -394,13 +368,12 @@ public final class AhFireSaleBacktest {
                 winRate(testFiltered) * 100, medianRoi(testFiltered));
     }
 
-    private static List<Signal> filter(List<Signal> signals, double minRoi,
-                                       double minTrend, int minSales,
-                                       double minConfidence) {
+    private static List<Signal> filter(List<Signal> signals, double minRoi, int minAge,
+                                       int minSales, double minConfidence) {
         List<Signal> result = new ArrayList<>();
         for (Signal signal : signals) {
             if (signal.predictedRoi() < minRoi
-                    || signal.trendPercent() < minTrend
+                    || signal.ageDays() < minAge
                     || signal.monthlySales() < minSales
                     || signal.confidence() < minConfidence) {
                 continue;
@@ -432,70 +405,6 @@ public final class AhFireSaleBacktest {
         return median(values);
     }
 
-    private static long weightedAverage(
-            List<AhFireSaleSkinTracker.HistoryPoint> points) {
-        double sum = 0;
-        double weight = 0;
-        for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-            double w = Math.max(1, point.volume());
-            sum += point.avg() * w;
-            weight += w;
-        }
-        return weight > 0 ? Math.round(sum / weight) : 0;
-    }
-
-    private static double slopePerDay(List<AhFireSaleSkinTracker.HistoryPoint> points) {
-        if (points.size() < 2) {
-            return 0;
-        }
-        long first = points.get(0).time();
-        double sumWeight = 0;
-        double sumX = 0;
-        double sumY = 0;
-        double sumXY = 0;
-        double sumXX = 0;
-        for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-            double weight = Math.max(1, Math.min(20, point.volume()));
-            double x = (point.time() - first) / (double) DAY_MS;
-            double y = point.avg();
-            sumWeight += weight;
-            sumX += weight * x;
-            sumY += weight * y;
-            sumXY += weight * x * y;
-            sumXX += weight * x * x;
-        }
-        double denominator = sumWeight * sumXX - sumX * sumX;
-        if (Math.abs(denominator) < 1e-9) {
-            return 0;
-        }
-        return (sumWeight * sumXY - sumX * sumY) / denominator;
-    }
-
-    private static int monthlySales(List<AhFireSaleSkinTracker.HistoryPoint> points,
-                                    long now) {
-        long cutoff = now - 30L * DAY_MS;
-        int sales = 0;
-        for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-            if (point.time() >= cutoff) {
-                sales += point.volume();
-            }
-        }
-        return sales;
-    }
-
-    private static double coefficientVariation(
-            List<AhFireSaleSkinTracker.HistoryPoint> points, double average) {
-        if (points.isEmpty() || average <= 0) {
-            return 0;
-        }
-        double variance = 0;
-        for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-            double difference = point.avg() - average;
-            variance += difference * difference;
-        }
-        return Math.sqrt(variance / points.size()) / average;
-    }
-
     private static double median(List<Double> sorted) {
         if (sorted.isEmpty()) {
             return 0;
@@ -505,9 +414,5 @@ public final class AhFireSaleBacktest {
             return sorted.get(middle);
         }
         return (sorted.get(middle - 1) + sorted.get(middle)) / 2.0;
-    }
-
-    private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
 }

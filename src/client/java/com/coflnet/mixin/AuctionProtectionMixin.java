@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.coflnet.protection.AuctionScreenMode;
 import com.coflnet.config.AngryCoopProtectionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -44,7 +45,7 @@ public abstract class AuctionProtectionMixin {
 
             AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
             String screenTitle = stripFormatting(screen.getTitle().getString());
-            ScreenMode mode = determineScreenMode(screenTitle);
+            AuctionScreenMode mode = determineScreenMode(screenTitle);
             if (mode == null) {
                 return;
             }
@@ -93,18 +94,18 @@ public abstract class AuctionProtectionMixin {
         return name.trim().equalsIgnoreCase("Claim All");
     }
 
-    private ScreenMode determineScreenMode(String title) {
+    private AuctionScreenMode determineScreenMode(String title) {
         String lower = title.toLowerCase(Locale.ROOT);
         if (lower.contains("manage auctions")) {
-            return ScreenMode.SELLER;
+            return AuctionScreenMode.SELLER;
         }
         if (lower.contains("your bids")) {
-            return ScreenMode.BIDDER;
+            return AuctionScreenMode.BIDDER;
         }
         return null;
     }
 
-    private Optional<String> getForeignActor(ItemStack stack, String playerNameLower, ScreenMode mode) {
+    private Optional<String> getForeignActor(ItemStack stack, String playerNameLower, AuctionScreenMode mode) {
         var loreComponent = stack.get(DataComponents.LORE);
         if (loreComponent == null) {
             return Optional.empty();
@@ -114,7 +115,7 @@ public abstract class AuctionProtectionMixin {
             String raw = stripFormatting(line.getString());
             String lower = raw.toLowerCase(Locale.ROOT);
 
-            if (mode == ScreenMode.SELLER) {
+            if (mode == AuctionScreenMode.SELLER) {
                 if (lower.contains("this is your own auction")) {
                     return Optional.empty();
                 }
@@ -149,7 +150,7 @@ public abstract class AuctionProtectionMixin {
         return Optional.empty();
     }
 
-    private boolean hasForeignEntry(AbstractContainerScreen<?> screen, String playerNameLower, Inventory playerInventory, ScreenMode mode) {
+    private boolean hasForeignEntry(AbstractContainerScreen<?> screen, String playerNameLower, Inventory playerInventory, AuctionScreenMode mode) {
         for (Slot slot : screen.getMenu().slots) {
             if (slot.container == playerInventory) {
                 continue;
@@ -166,15 +167,15 @@ public abstract class AuctionProtectionMixin {
         return false;
     }
 
-    private String getClaimAllMessage(ScreenMode mode) {
-        String reason = mode == ScreenMode.SELLER
+    private String getClaimAllMessage(AuctionScreenMode mode) {
+        String reason = mode == AuctionScreenMode.SELLER
                 ? "auctions listed by co-op members"
                 : "bids placed by co-op members";
         return "§c[SkyCofl Angry Coop] §fBlocked Claim All because " + reason + " were detected. Hold §bCtrl§f to override.";
     }
 
-    private String getBlockedClickMessage(ScreenMode mode, String foreignName) {
-        String action = mode == ScreenMode.SELLER ? "listed by" : "bid on by";
+    private String getBlockedClickMessage(AuctionScreenMode mode, String foreignName) {
+        String action = mode == AuctionScreenMode.SELLER ? "listed by" : "bid on by";
         return "§c[SkyCofl Angry Coop] §fBlocked claiming auction " + action + " §e" + foreignName + "§f. Hold §bCtrl§f to override.";
     }
 

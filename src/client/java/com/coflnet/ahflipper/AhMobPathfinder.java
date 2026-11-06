@@ -58,6 +58,13 @@ public final class AhMobPathfinder {
             hasDesiredAim = false;
             return;
         }
+        if (client.gui.screen() != null || AhFlipperMod.automationBusyExcept("")) {
+            // GUI open (AH, chat, menu ...) or an AH task running: stand still.
+            if (lastGoalPos != null || hasDesiredAim) {
+                cancelPathing();
+            }
+            return;
+        }
         IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
         if (baritone == null) {
             hasDesiredAim = false;
@@ -310,6 +317,7 @@ public final class AhMobPathfinder {
         settings.mineScanDroppedItems.value = false;
         settings.costHeuristic.value = 3.0;
         settings.jumpPenalty.value = 1.5;
+        setJumpHeight(settings, config.jumpHeight);
         settings.walkOnWaterOnePenalty.value = 3.0;
         settings.pathingMaxChunkBorderFetch.value = 64;
         settings.planningTickLookahead.value = 150;
@@ -322,6 +330,14 @@ public final class AhMobPathfinder {
         settings.blockReachDistance.value = 3.0f;
         settings.chunkCaching.value = true;
         settings.pruneRegionsFromRAM.value = true;
+    }
+
+    /**
+     * Passes the boosted jump height to Baritone. "jumpHeight" only exists in the
+     * patched Baritone build in libs/ (MovementHighAscend), not in stock Baritone.
+     */
+    public static void setJumpHeight(baritone.api.Settings settings, double height) {
+        settings.jumpHeight.value = height;
     }
 
     private static void cancelPathing() {

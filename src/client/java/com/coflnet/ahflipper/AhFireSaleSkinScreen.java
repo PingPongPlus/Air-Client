@@ -89,7 +89,7 @@ public final class AhFireSaleSkinScreen extends Screen {
         }
         AhFlipperConfig config = AhFlipperMod.CONFIG;
         config.fireSaleMinRoiPercent = recommendation.minRoiPercent;
-        config.fireSaleMinTrendPercent = recommendation.minTrendPercent;
+        config.fireSaleMinAgeDays = Math.max(30, recommendation.minAgeDays);
         config.fireSaleMinSales = Math.max(1, recommendation.minSales);
         config.fireSaleMinConfidence = Math.max(0.05,
                 Math.min(0.95, recommendation.minConfidence));
@@ -228,7 +228,8 @@ public final class AhFireSaleSkinScreen extends Screen {
                             + " \u00a77\u00b7 \u00d8 \u00a7f" + fmt(candidate.historicalAverage),
                     middleX, y + 28, 0xFFAAAAAA);
             RenderUtils.drawString(context,
-                    "\u00a77History \u00a7f" + candidate.historyDays + "d",
+                    "\u00a77Age \u00a7f" + candidate.ageDays + "d \u00a77\u00b7 \u00a7f"
+                            + pct(candidate.discountPercent) + " \u00a77below fair",
                     middleX, y + 39, 0xFF888888);
 
             if (graphWidth() > 0) {
@@ -289,8 +290,7 @@ public final class AhFireSaleSkinScreen extends Screen {
             y += line;
             RenderUtils.drawString(context,
                     "\u00a77Min ROI \u00a7f" + pct(recommendation.minRoiPercent)
-                            + " \u00a77\u00b7 Min Trend \u00a7f"
-                            + String.format(Locale.US, "%.2f%%/d", recommendation.minTrendPercent)
+                            + " \u00a77\u00b7 Min Age \u00a7f" + recommendation.minAgeDays + "d"
                             + " \u00a77\u00b7 Min Sales \u00a7f" + recommendation.minSales
                             + " \u00a77\u00b7 Min Conf \u00a7f"
                             + pct(recommendation.minConfidence * 100),
@@ -351,7 +351,7 @@ public final class AhFireSaleSkinScreen extends Screen {
                     panelWidth - 12, ROW_HEIGHT - 2,
                     index % 2 == 0 ? 0x8014141B : 0x80101016);
             RenderUtils.drawRect(context, panelX + 6, rowY,
-                    2, ROW_HEIGHT - 2, 0xFF55AACC);
+                    2, ROW_HEIGHT - 2, row.waitRecommended ? 0xFFDD5555 : 0xFF55DD55);
             RenderUtils.drawItemStack(context, Items.PLAYER_HEAD.getDefaultInstance(),
                     panelX + 12, rowY + 8, 1.0f);
             RenderUtils.drawStringWithShadow(context, "\u00a7f" + trim(row.name, 26),
@@ -368,7 +368,8 @@ public final class AhFireSaleSkinScreen extends Screen {
                             + " \u00a77\u00b7 Listings \u00a7f" + row.listings,
                     panelX + 32, rowY + 28, 0xFFBBBBBB);
             RenderUtils.drawString(context,
-                    "\u00a77Median \u00a7f" + pct(row.compMedianRoi)
+                    (row.waitRecommended ? "\u00a7cWait \u00a77\u00b7 " : "\u00a7aBuy \u00a77\u00b7 ")
+                            + "\u00a77Median \u00a7f" + pct(row.compMedianRoi)
                             + " \u00a77\u00b7 P25\u2013P75 \u00a7f"
                             + pct(row.compP25Roi) + "\u2013" + pct(row.compP75Roi),
                     middleX, rowY + 6, 0xFFFFFFFF);
@@ -383,13 +384,14 @@ public final class AhFireSaleSkinScreen extends Screen {
     private void drawFooter(GuiGraphicsExtractor context) {
         int footerY = panelY + panelHeight - 76;
         String footer = switch (mode) {
-            case BACKTEST -> "\u00a78Backtest uses Cofl month/week \u00b7 Fee "
+            case BACKTEST -> "\u00a78Walk-forward on Cofl daily history \u00b7 Fee "
                     + String.format(Locale.US, "%.1f%%", AhFlipperMod.CONFIG.ahFeePercent)
                     + " \u00b7 Apply copies the recommendation into the filters";
-            case COMPS -> "\u00a78Comps = relative valuation across older skins "
+            case COMPS -> "\u00a78Comps = same-age returns of recent skins "
                     + "\u00b7 Fee " + String.format(Locale.US, "%.1f%%",
                     AhFlipperMod.CONFIG.ahFeePercent);
-            default -> "\u00a78Cofl monthly/weekly history \u00b7 Fee "
+            default -> "\u00a78Min age " + AhFlipperMod.CONFIG.fireSaleMinAgeDays
+                    + "d \u00b7 Fee "
                     + String.format(Locale.US, "%.1f%%", AhFlipperMod.CONFIG.ahFeePercent)
                     + " \u00b7 Slippage " + String.format(Locale.US, "%.0f%%",
                     AhFlipperMod.CONFIG.fireSaleSlippagePercent)

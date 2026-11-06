@@ -80,8 +80,14 @@ public class BazaarChatListener {
 
     public static boolean waitForChat(String contains, long timeoutMs,
                                       java.util.function.BooleanSupplier cancel) {
-        long start = System.currentTimeMillis();
-        long deadline = start + timeoutMs;
+        return waitForChatSince(contains, System.currentTimeMillis(), timeoutMs, cancel);
+    }
+
+    /** Like {@link #waitForChat} but also accepts lines received after {@code since}. */
+    public static boolean waitForChatSince(String contains, long since, long timeoutMs,
+                                           java.util.function.BooleanSupplier cancel) {
+        long start = since;
+        long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             if (cancel != null && cancel.getAsBoolean()) {
                 return false;
