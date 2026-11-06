@@ -31,6 +31,12 @@ public class FlipperConfig {
     public double minUnitCoins = 600_000.0;
     public double minOrderCoins = 10_000_000.0;
     public double maxBankFractionPerItem = 0.5;
+    /**
+     * Hard cap of coins put into ONE item (buy order value = qty x price).
+     * 0 = no limit (only maxBankFractionPerItem applies). Items whose single
+     * unit is more expensive than this are skipped.
+     */
+    public double maxCoinsPerItem = 0.0;
     public double minUnitPrice = 10.0;
     public double beta = 1.0;
     public double undercutCheckMinutes = 10.0;
@@ -158,6 +164,9 @@ public class FlipperConfig {
                     }
                     if (loaded.maxBankFractionPerItem <= 0 || loaded.maxBankFractionPerItem > 1) {
                         loaded.maxBankFractionPerItem = 0.5;
+                    }
+                    if (loaded.maxCoinsPerItem < 0) {
+                        loaded.maxCoinsPerItem = 0.0;
                     }
                     if (loaded.beta <= 0) {
                         loaded.beta = 1.0;

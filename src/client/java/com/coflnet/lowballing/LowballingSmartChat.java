@@ -19,7 +19,14 @@ public final class LowballingSmartChat {
 
     private static final Set<String> AGREE = Set.of(
             "ok", "okay", "okey", "k", "kk", "sure", "deal", "fine", "yes", "yeah", "ye", "yep",
-            "yup", "alr", "alright", "bet", "send", "done", "accept", "accepted", "go", "ight");
+            "yup", "alr", "alright", "bet", "send", "done", "accept", "accepted", "ight");
+    /**
+     * Words that turn an "ok"/"send" into a question or a no ("can you go
+     * higher", "dont send"). Tokens are split on non-letters, so "don't" is "don".
+     */
+    private static final Set<String> NEGATION = Set.of(
+            "not", "dont", "don", "cant", "wont", "won", "didnt", "didn", "isnt", "isn",
+            "higher", "more", "raise", "but", "if", "what", "how", "why", "wait");
     private static final Set<String> REFUSE = Set.of(
             "no", "nah", "nope", "never", "pass", "naw", "nty", "noo", "nooo");
     private static final List<String> COMPLAINT_WORDS = List.of(
@@ -127,9 +134,12 @@ public final class LowballingSmartChat {
     }
 
     public static boolean isAgreement(String text) {
-        // "190k" must not count as "k" (= ok)
-        return text != null && !text.matches(".*\\d.*")
-                && hasWord(text, AGREE) && !hasWord(text, REFUSE);
+        // "190k" must not count as "k" (= ok). "go" is no longer an agreement word
+        // ("can you go higher" started a trade request right away); questions,
+        // negations and complaints are never an agreement.
+        return text != null && !text.matches(".*\\d.*") && !text.contains("?")
+                && hasWord(text, AGREE) && !hasWord(text, REFUSE)
+                && !hasWord(text, NEGATION) && !isComplaint(text);
     }
 
     public static boolean isRefusal(String text) {

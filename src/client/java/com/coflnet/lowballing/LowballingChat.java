@@ -35,6 +35,8 @@ public final class LowballingChat {
     private static volatile long tradeRequestSentAt;
     /** Last chat line per player (lower-case name), for the island negotiation. */
     private static final Map<String, PlayerLine> PLAYER_LINES = new HashMap<>();
+    /** Last 10 chat lines per player (lower-case name), guarded by PLAYER_LINES. */
+    private static final Map<String, Deque<PlayerLine>> PLAYER_HISTORY = new HashMap<>();
     // "[289] [✌] [MVP+] qbreese: my best offer rn is 190" -> name + message
     private static final Pattern PLAYER_CHAT = Pattern.compile(
             "^(?:\\[[^\\]]*\\]\\s*)*([A-Za-z0-9_]{2,16})\\s*:\\s*(.+)$");
@@ -109,11 +111,24 @@ public final class LowballingChat {
             String name = chat.group(1);
             String own = ownName();
             if (own.isBlank() || !own.equalsIgnoreCase(name)) {
+                PlayerLine line = new PlayerLine(name, chat.group(2).trim(), now);
                 synchronized (PLAYER_LINES) {
-                    PLAYER_LINES.put(name.toLowerCase(Locale.ROOT),
-                            new PlayerLine(name, chat.group(2).trim(), now));
+                    String key = name.toLowerCase(Locale.ROOT);
+                    PLAYER_LINES.put(key, line);
+                    Deque<PlayerLine> history = PLAYER_HISTORY.computeIfAbsent(key,
+                            ignored -> new ArrayDeque<>());
+                    history.addLast(line);
+                    while (history.size() > 10) {
+                        history.removeFirst();
+                    }
+                    if (PLAYER_HISTORY.size() > 200) {
+                        PLAYER_HISTORY.clear();
+                    }
                 }
             }
+            // What a player writes is never a system event: "trade me when done"
+            // used to count as a successful trade.
+            return;
         }
 
         if (lower.contains("trade")
@@ -127,8 +142,53 @@ public final class LowballingChat {
         if (matcher.find()) {
             String name = matcher.group(1);
             visitor = new Visitor(name, now);
+            synchronized (RECENT_VISITORS) {
+                RECENT_VISITORS.put(name.toLowerCase(Locale.ROOT), now);
+                RECENT_VISITORS.values().removeIf(at -> now - at > 10 * 60_000L);
+            }
             trackVisit(name, now);
         }
+    }
+
+    /**
+     * Every "X is visiting your island" of the last minutes, independent of
+     * {@link #consumeVisitor}: a visitor that arrives while the bot trades with
+     * someone else (or just leaves for the hub) must not get lost.
+     */
+    private static final Map<String, Long> RECENT_VISITORS = new HashMap<>();
+
+    public static boolean visitedSince(String name, long since) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        synchronized (RECENT_VISITORS) {
+            Long at = RECENT_VISITORS.get(name.toLowerCase(Locale.ROOT));
+            return at != null && at >= since;
+        }
+    }
+
+    /** Time of the newest visitor message (0 = none). */
+    public static long lastVisitorAt() {
+        synchronized (RECENT_VISITORS) {
+            long newest = 0;
+            for (long at : RECENT_VISITORS.values()) {
+                newest = Math.max(newest, at);
+            }
+            return newest;
+        }
+    }
+
+    /** Names of visitors announced since {@code since}. */
+    public static java.util.List<String> visitorsSince(long since) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        synchronized (RECENT_VISITORS) {
+            for (Map.Entry<String, Long> entry : RECENT_VISITORS.entrySet()) {
+                if (entry.getValue() >= since) {
+                    names.add(entry.getKey());
+                }
+            }
+        }
+        return names;
     }
 
     private static void trackVisit(String name, long now) {
@@ -168,6 +228,30 @@ public final class LowballingChat {
     private static String ownName() {
         Minecraft client = Minecraft.getInstance();
         return client.player == null ? "" : client.player.getName().getString();
+    }
+
+    /**
+     * Everything {@code name} wrote after {@code sinceExclusive}, oldest first.
+     * Only the last line used to be kept, so "20m" followed by "for both" lost
+     * the price.
+     */
+    public static java.util.List<PlayerLine> linesFrom(String name, long sinceExclusive) {
+        if (name == null || name.isBlank()) {
+            return java.util.List.of();
+        }
+        synchronized (PLAYER_LINES) {
+            Deque<PlayerLine> history = PLAYER_HISTORY.get(name.toLowerCase(Locale.ROOT));
+            if (history == null) {
+                return java.util.List.of();
+            }
+            java.util.List<PlayerLine> result = new java.util.ArrayList<>();
+            for (PlayerLine line : history) {
+                if (line.at() > sinceExclusive) {
+                    result.add(line);
+                }
+            }
+            return result;
+        }
     }
 
     /** Last thing {@code name} wrote in chat since {@code since}, or null. */
@@ -247,9 +331,15 @@ public final class LowballingChat {
         kickAt = 0;
         tradeSuccessAt = 0;
         tradeRequestSentAt = 0;
-        visitor = null;
+        Visitor current = visitor;
+        if (current == null || System.currentTimeMillis() - current.at() > 30_000L) {
+            // A visitor of the last 30 s survives the reset (e.g. the one that
+            // arrived just as the bot sent /hub).
+            visitor = null;
+        }
         synchronized (PLAYER_LINES) {
             PLAYER_LINES.clear();
+            PLAYER_HISTORY.clear();
         }
     }
 

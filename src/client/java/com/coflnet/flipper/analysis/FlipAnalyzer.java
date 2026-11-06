@@ -62,6 +62,9 @@ public class FlipAnalyzer {
         double taxFactor = 1.0 - cfg.taxPercent / 100.0;
         double checkHours = Math.max(1.0, cfg.undercutCheckMinutes) / 60.0;
         double budgetPerItem = bankroll * cfg.maxBankFractionPerItem;
+        if (cfg.maxCoinsPerItem > 0) {
+            budgetPerItem = Math.min(budgetPerItem, cfg.maxCoinsPerItem);
+        }
         if (budgetPerItem < 1) {
             return plans;
         }
