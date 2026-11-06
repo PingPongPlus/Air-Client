@@ -16,8 +16,7 @@ public final class HandSwapFeature {
 
     public void tick(Minecraft client) {
         if (client.player == null) {
-            wasEnabled = false;
-            ticks = 0;
+            finish(client);
             return;
         }
 
@@ -34,15 +33,21 @@ public final class HandSwapFeature {
                 }
             }
         } else if (wasEnabled) {
-            applyMainArm(client, savedMainArm);
-            ticks = 0;
+            finish(client);
         }
         wasEnabled = PlayerSettings.handSwap;
     }
 
+    /** Restore the user's preference before forgetting the temporary hand swap. */
+    public void finish(Minecraft client) {
+        if (wasEnabled) applyMainArm(client, savedMainArm);
+        wasEnabled = false;
+        ticks = 0;
+    }
+
     private static void applyMainArm(Minecraft client, HumanoidArm arm) {
         client.options.mainHand().set(arm);
-        client.player.setMainArm(arm);
+        if (client.player != null) client.player.setMainArm(arm);
         client.options.broadcastOptions();
     }
 }
