@@ -79,7 +79,7 @@ public final class GlassButtonRenderer {
             int gray = (data >>> 16) & 0xFF;
             data = (data & 0xFF000000) | (gray << 16) | (GlassCornerSettings.controlQuant() << 8) | gray;
         }
-        GlassBackdrop.request();
+        var backdrop = GlassBackdrop.request();
         Matrix3x2f pose = new Matrix3x2f(graphics.pose());
         ScreenRectangle scissor = graphics.scissorStack.peek();
         int padding = pipeline == GlassPipelines.BOSS_BAR ? 8 : GlassPipelines.isButton(pipeline) ? Math.max(1, (int)Math.ceil(SHADOW_PADDING * GlassEffectSettings.shadowScale())) : SHADOW_PADDING;
@@ -87,7 +87,7 @@ public final class GlassButtonRenderer {
                 width + 2 * padding, height + 2 * padding).transformMaxBounds(pose);
         if (scissor != null) bounds = bounds.intersection(scissor);
         if (bounds == null) return;
-        graphics.guiRenderState.addGuiElement(new GlassState(pipeline, pose, x, y, width, height, data, padding, scissor, bounds));
+        graphics.guiRenderState.addGuiElement(new GlassState(pipeline, backdrop, pose, x, y, width, height, data, padding, scissor, bounds));
         drawTint(graphics,x,y,width,height,opacity,pipeline,square);
         WeatherGlass.draw(graphics, x, y, width, height, opacity, square,
                 GlassPipelines.isButton(pipeline) ? 0 : pipeline == GlassPipelines.CONTROL ? 1 : pipeline == GlassPipelines.BOSS_BAR ? 3 : 2);
@@ -123,10 +123,10 @@ public final class GlassButtonRenderer {
         }
     }
 
-    private record GlassState(RenderPipeline pipeline, Matrix3x2f pose, int x, int y, int width, int height, int data, int padding,
+    private record GlassState(RenderPipeline pipeline, GlassBackdrop.Layer backdrop, Matrix3x2f pose, int x, int y, int width, int height, int data, int padding,
                               ScreenRectangle scissorArea, ScreenRectangle bounds) implements GuiElementRenderState {
         // Resolved during render preparation, after beginFrame() allocates the targets.
-        @Override public TextureSetup textureSetup() { return GlassBackdrop.textures(); }
+        @Override public TextureSetup textureSetup() { return backdrop.textures(); }
         @Override public void buildVertices(VertexConsumer vertices) {
             float p = padding;
             vertex(vertices, x - p, y - p, -p / width, -p / height);

@@ -50,16 +50,16 @@ public final class WeatherGlass {
         ScreenRectangle bounds = new ScreenRectangle(x, y, width, height).transformMaxBounds(pose);
         if (scissor != null) bounds = bounds.intersection(scissor);
         if (bounds == null) return;
-        GlassBackdrop.request();
+        var backdrop = GlassBackdrop.request();
         g.nextStratum();
-        g.guiRenderState.addGuiElement(new Material(pose, x, y, width, height, packed, seconds, shape, scissor, bounds));
+        g.guiRenderState.addGuiElement(new Material(backdrop, pose, x, y, width, height, packed, seconds, shape, scissor, bounds));
         g.nextStratum();
     }
 
-    private record Material(Matrix3x2f pose, int x, int y, int width, int height, int color, float seconds,
+    private record Material(GlassBackdrop.Layer backdrop, Matrix3x2f pose, int x, int y, int width, int height, int color, float seconds,
                             int shape, ScreenRectangle scissorArea, ScreenRectangle bounds) implements GuiElementRenderState {
         public RenderPipeline pipeline() { return GlassPipelines.WEATHER; }
-        public TextureSetup textureSetup() { return GlassBackdrop.sceneTexture(); }
+        public TextureSetup textureSetup() { return backdrop.sceneTexture(); }
         public void buildVertices(VertexConsumer v) {
             vertex(v, x, y, 0, 0); vertex(v, x, y + height, 0, 1);
             vertex(v, x + width, y + height, 1, 1); vertex(v, x + width, y, 1, 0);
