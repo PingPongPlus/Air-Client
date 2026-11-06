@@ -2264,7 +2264,22 @@ public class AhMarketData {
         return json.get(key).getAsDouble();
     }
 
+    /**
+     * URLs that answered 400/404 (unknown tag, e.g. OLD_BABY_SKIN) are not
+     * requested again for a while; they used to be re-fetched hundreds of times
+     * per session, wasting the shared Cofl rate limit.
+     */
+    private static final Map<String, Long> BAD_URLS = new ConcurrentHashMap<>();
+    private static final long BAD_URL_TTL_MS = 6L * 60L * 60_000L;
+
     private static String get(String url) {
+        Long badAt = BAD_URLS.get(url);
+        if (badAt != null) {
+            if (System.currentTimeMillis() - badAt < BAD_URL_TTL_MS) {
+                return null;
+            }
+            BAD_URLS.remove(url);
+        }
         try {
             synchronized (HTTP_LOCK) {
                 long wait = 50 - (System.currentTimeMillis() - lastRequestAt);
@@ -2281,7 +2296,15 @@ public class AhMarketData {
                     .build();
             HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                System.out.println("[AH-Flipper] HTTP " + response.statusCode() + " für " + url);
+                if (response.statusCode() == 400 || response.statusCode() == 404) {
+                    if (BAD_URLS.size() > 2000) {
+                        BAD_URLS.clear();
+                    }
+                    BAD_URLS.put(url, System.currentTimeMillis());
+                }
+                System.out.println("[AH-Flipper] HTTP " + response.statusCode() + " für " + url
+                        + (response.statusCode() == 400 || response.statusCode() == 404
+                        ? " (6h gesperrt)" : ""));
                 return null;
             }
             return response.body();

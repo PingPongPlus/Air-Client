@@ -77,6 +77,17 @@ public final class AhAutomationGui {
                                         })
                                         .build())
                                 .option(Option.<Double>createBuilder()
+                                        .name(Component.literal("Sprunghoehe (Bloecke)"))
+                                        .description(OptionDescription.of(Component.literal(
+                                                "Wie hoch du springen kannst. Baritone plant damit Spruenge"
+                                                + " auf hoehere Kanten. Standard 6.5.")))
+                                        .controller(DoubleFieldControllerBuilder::create)
+                                        .binding(6.5, () -> config.jumpHeight, value -> {
+                                            config.jumpHeight = Math.max(1.25, Math.min(12.0, value));
+                                            config.save();
+                                        })
+                                        .build())
+                                .option(Option.<Double>createBuilder()
                                         .name(Component.literal("Kamera-Drehgeschwindigkeit"))
                                         .description(OptionDescription.of(Component.literal(
                                                 "Maximale Grad pro Sekunde fuer die weiche Kamera.")))

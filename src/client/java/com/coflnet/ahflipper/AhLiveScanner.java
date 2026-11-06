@@ -316,7 +316,7 @@ public final class AhLiveScanner {
             long liveMax = liveBank > 0
                     ? Math.round(liveBank * AhFlipperMod.CONFIG.liveMaxBankrollFraction) : -1;
             if (liveMax > 0 && candidate.price > liveMax) {
-                reject(candidate, "DETAILS", "ÃƒÂ¼ber Bankroll-Limit");
+                reject(candidate, "DETAILS", "über Bankroll-Limit");
                 return;
             }
             update(candidate, "CLEAN", "");
@@ -332,22 +332,13 @@ public final class AhLiveScanner {
                 candidate.petRarity = petItem.petRarity;
                 petFilter = petItem.petFilter();
                 if (petFilter.isBlank()) {
-                    reject(candidate, "CLEAN", "Pet-Level/RaritÃƒÂ¤t nicht erkannt");
+                    reject(candidate, "CLEAN", "Pet-Level/Rarität nicht erkannt");
                     return;
                 }
-                AhMarketData.Analysis level1 = AhMarketData.analysis(candidate.tag, "&PetLevel=1");
-                long level1Sales = level1 == null ? 0 : level1.totalSales;
-                if (level1 == null || level1.totalSales <= AhFlipperMod.CONFIG.petLevel1MinSales) {
-                    reject(candidate, "CLEAN", "Pet-Level-1-Sales " + level1Sales
-                            + " <= " + AhFlipperMod.CONFIG.petLevel1MinSales);
-                    return;
-                }
-                AhMarketData.Analysis level = AhMarketData.analysis(candidate.tag,
-                        "&PetLevel=" + candidate.petLevel);
-                long levelSales = level == null ? 0 : level.totalSales;
-                if (level == null || level.totalSales <= AhFlipperMod.CONFIG.petLevelMinSales) {
-                    reject(candidate, "CLEAN", "Pet-Level-" + candidate.petLevel + "-Sales "
-                            + levelSales + " <= " + AhFlipperMod.CONFIG.petLevelMinSales);
+                // Pets only need any sales at all (any level).
+                AhMarketData.Analysis petSales = AhMarketData.analysis(candidate.tag, "");
+                if (petSales == null || petSales.totalSales <= 0) {
+                    reject(candidate, "CLEAN", "Keine Pet-Verkäufe");
                     return;
                 }
             } else {
@@ -533,7 +524,7 @@ public final class AhLiveScanner {
             synchronized (STATS) {
                 STATS.errors++;
             }
-            System.out.println("[AH-Flipper] Live-Fehler fÃƒÂ¼r " + candidate.tag + ": " + e);
+            System.out.println("[AH-Flipper] Live-Fehler für " + candidate.tag + ": " + e);
             reject(candidate, "ERROR", e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }

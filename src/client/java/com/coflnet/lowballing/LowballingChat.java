@@ -32,6 +32,15 @@ public final class LowballingChat {
     private static volatile long kickAt;
     private static volatile long tradeSuccessAt;
     private static volatile Visitor visitor;
+    private static volatile long tradeRequestSentAt;
+    /** Last chat line per player (lower-case name), for the island negotiation. */
+    private static final Map<String, PlayerLine> PLAYER_LINES = new HashMap<>();
+    // "[289] [✌] [MVP+] qbreese: my best offer rn is 190" -> name + message
+    private static final Pattern PLAYER_CHAT = Pattern.compile(
+            "^(?:\\[[^\\]]*\\]\\s*)*([A-Za-z0-9_]{2,16})\\s*:\\s*(.+)$");
+
+    public record PlayerLine(String name, String text, long at) {
+    }
     private static boolean initialized;
 
     private record Entry(long at, String text) {
@@ -88,6 +97,25 @@ public final class LowballingChat {
             return;
         }
 
+        if (lower.contains("you have sent a trade request")
+                || lower.contains("already have an outgoing /trade request")) {
+            tradeRequestSentAt = now;
+        }
+        if (lower.contains("trade request") && lower.contains("expired")) {
+            tradeRequestSentAt = 0;
+        }
+        Matcher chat = PLAYER_CHAT.matcher(text);
+        if (chat.find()) {
+            String name = chat.group(1);
+            String own = ownName();
+            if (own.isBlank() || !own.equalsIgnoreCase(name)) {
+                synchronized (PLAYER_LINES) {
+                    PLAYER_LINES.put(name.toLowerCase(Locale.ROOT),
+                            new PlayerLine(name, chat.group(2).trim(), now));
+                }
+            }
+        }
+
         if (lower.contains("trade")
                 && (lower.contains("completed") || lower.contains("success")
                 || lower.contains("done")
@@ -135,6 +163,32 @@ public final class LowballingChat {
                 client.getConnection().sendChat("/block add " + name);
             }
         });
+    }
+
+    private static String ownName() {
+        Minecraft client = Minecraft.getInstance();
+        return client.player == null ? "" : client.player.getName().getString();
+    }
+
+    /** Last thing {@code name} wrote in chat since {@code since}, or null. */
+    public static PlayerLine lastLineFrom(String name, long since) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        synchronized (PLAYER_LINES) {
+            PlayerLine line = PLAYER_LINES.get(name.toLowerCase(Locale.ROOT));
+            return line != null && line.at() >= since ? line : null;
+        }
+    }
+
+    /** True while an own /trade request is still pending (they expire after ~10 s). */
+    public static boolean tradeRequestPending(long now) {
+        long at = tradeRequestSentAt;
+        return at > 0 && now - at < 10_500L;
+    }
+
+    public static void clearTradeRequest() {
+        tradeRequestSentAt = 0;
     }
 
     public static boolean consumeWarp(long since) {
@@ -192,7 +246,11 @@ public final class LowballingChat {
         alreadyHereAt = 0;
         kickAt = 0;
         tradeSuccessAt = 0;
+        tradeRequestSentAt = 0;
         visitor = null;
+        synchronized (PLAYER_LINES) {
+            PLAYER_LINES.clear();
+        }
     }
 
     public static String recentText() {

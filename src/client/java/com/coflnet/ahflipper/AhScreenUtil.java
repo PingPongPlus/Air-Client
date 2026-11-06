@@ -621,6 +621,37 @@ public class AhScreenUtil {
         return found;
     }
 
+    /**
+     * Number of items in the player inventory matching the tag (or the name
+     * when no tag is known). Used as a before/after baseline so an already owned
+     * copy of the same item is not mistaken for a freshly bought one.
+     */
+    public static int countInventoryMatches(String tag, String displayName) {
+        Integer found = ScreenUtil.sync(() -> {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player == null) {
+                return 0;
+            }
+            boolean byTag = tag != null && !tag.isBlank();
+            int count = 0;
+            var inventory = client.player.getInventory();
+            for (int i = 0; i < inventory.getContainerSize(); i++) {
+                ItemStack stack = inventory.getItem(i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                AhItem item = AhItem.fromStack(stack);
+                boolean match = byTag ? tag.equals(item.tag)
+                        : matchesInventoryName(displayName, item);
+                if (match) {
+                    count += stack.getCount();
+                }
+            }
+            return count;
+        });
+        return found == null ? 0 : found;
+    }
+
     private static boolean matchesInventoryName(String displayName, AhItem item) {
         return displayName != null && !displayName.isBlank()
                 && ScreenUtil.cleanName(displayName)

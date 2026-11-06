@@ -1,19 +1,25 @@
 package com.coflnet.ahflipper;
 
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Comparable-based analysis for newly released Fire Sale skins that do not
- * have enough own price history yet. Older skins with similar type/tier are
- * used as comps, like relative valuation in real investing.
+ * Age-matched comparison for Fire Sale skins that are too new for the main
+ * model. Question answered: "what did similar skins do when bought at the same
+ * age and held for the same time?"
+ *
+ * <p>The old version compared the first and last price of old skins (often
+ * +1000% over five years) and projected that onto brand-new skins, which made
+ * fresh releases look like great buys. In reality recent Fire Sale skins lost
+ * 35-55% in their first three months. This version measures the forward
+ * return from the same age on, using comps released in the last three years.
  */
 public final class AhFireSaleComps {
-    private static final long DAY_MS = 24L * 60L * 60_000L;
+    private static final long DAY_MS = AhFireSaleModel.DAY_MS;
+    /** Comps should come from the current market, not from 2020 skins. */
+    private static final long COMP_RELEASE_WINDOW_MS = 3L * 365L * DAY_MS;
 
     public static final class CompRow {
         public String tag = "";
@@ -27,9 +33,13 @@ public final class AhFireSaleComps {
         public double compMedianRoi;
         public double compP25Roi;
         public double compP75Roi;
+        public double compWinRate;
+        public int ageDays;
         public int holdingDays;
         public double confidence;
         public int listings;
+        /** True when the comps say buying now is not worth it yet. */
+        public boolean waitRecommended;
         public String note = "";
     }
 
@@ -43,7 +53,8 @@ public final class AhFireSaleComps {
         public volatile List<CompRow> rows = List.of();
     }
 
-    private record CompStat(double roi, double ageDays, String type, String tier) {
+    private record Comp(String type, String tier, long releasedAt,
+                        List<AhFireSaleSkinTracker.HistoryPoint> points) {
     }
 
     private static final Snapshot SNAPSHOT = new Snapshot();
@@ -70,64 +81,69 @@ public final class AhFireSaleComps {
     }
 
     public static void run() {
-        if (running) {
-            return;
+        synchronized (AhFireSaleComps.class) {
+            if (running) {
+                return;
+            }
+            running = true;
         }
-        running = true;
         SNAPSHOT.running = true;
         SNAPSHOT.error = "";
         SNAPSHOT.updatedAt = System.currentTimeMillis();
         try {
             AhFlipperConfig config = AhFlipperMod.CONFIG;
+            double fee = Math.max(0, Math.min(100, config.ahFeePercent)) / 100.0;
+            int hold = Math.max(7, Math.min(180, config.fireSaleHoldDays));
+            int minAge = Math.max(30, config.fireSaleMinAgeDays);
+            long now = System.currentTimeMillis();
             Map<String, AhFireSaleSkinTracker.SkinMeta> skinList =
                     AhFireSaleSkinTracker.fireSaleSkins();
             Map<String, AhMarketData.MarketEntry> market = AhMarketData.market();
-            List<CompStat> pool = new ArrayList<>();
-            Map<String, List<CompStat>> byTypeTier = new HashMap<>();
-            Map<String, List<CompStat>> byType = new HashMap<>();
-            for (Map.Entry<String, AhFireSaleSkinTracker.SkinMeta> entry : skinList.entrySet()) {
-                String tag = entry.getKey();
-                AhFireSaleSkinTracker.SkinMeta meta = entry.getValue();
-                List<AhFireSaleSkinTracker.HistoryPoint> points = pointsForComps(tag);
-                if (points.size() < 2) {
-                    continue;
-                }
-                double first = points.get(0).avg();
-                double last = points.get(points.size() - 1).avg();
-                if (first <= 0 || last <= 0) {
-                    continue;
-                }
-                double roi = (last - first) * 100.0 / first;
-                double age = Math.max(1,
-                        (points.get(points.size() - 1).time() - points.get(0).time())
-                                / (double) DAY_MS);
-                CompStat stat = new CompStat(roi, age, meta.type(), meta.tier());
-                pool.add(stat);
-                byTypeTier.computeIfAbsent(key(meta.type(), meta.tier()),
-                        ignored -> new ArrayList<>()).add(stat);
-                byType.computeIfAbsent(meta.type(), ignored -> new ArrayList<>()).add(stat);
-            }
-            SNAPSHOT.compPool = pool.size();
 
-            long now = System.currentTimeMillis();
+            List<Comp> pool = new ArrayList<>();
+            for (Map.Entry<String, AhFireSaleSkinTracker.SkinMeta> entry : skinList.entrySet()) {
+                AhFireSaleSkinTracker.HistoryData history =
+                        AhFireSaleSkinTracker.cachedHistory(entry.getKey());
+                if (history == null || history.full().size() < 30) {
+                    continue;
+                }
+                long released = history.full().get(0).time();
+                pool.add(new Comp(entry.getValue().type(), entry.getValue().tier(),
+                        released, history.full()));
+            }
+            List<Comp> recentPool = new ArrayList<>();
+            for (Comp comp : pool) {
+                if (now - comp.releasedAt() <= COMP_RELEASE_WINDOW_MS) {
+                    recentPool.add(comp);
+                }
+            }
+            List<Comp> basePool = recentPool.size() >= 5 ? recentPool : pool;
+            SNAPSHOT.compPool = basePool.size();
+
             List<CompRow> rows = new ArrayList<>();
             int newSkins = 0;
             for (Map.Entry<String, AhFireSaleSkinTracker.SkinMeta> entry : skinList.entrySet()) {
                 String tag = entry.getKey();
                 AhFireSaleSkinTracker.SkinMeta meta = entry.getValue();
-                int historyPoints = pointsForComps(tag).size();
-                boolean recentRelease = meta.releaseGuessAt() > 0
-                        && now - meta.releaseGuessAt() < config.fireSaleNewSkinDays * DAY_MS;
-                boolean newSkin = historyPoints < 2
-                        || (recentRelease && historyPoints < 3);
-                if (!newSkin) {
+                AhFireSaleSkinTracker.HistoryData history =
+                        AhFireSaleSkinTracker.cachedHistory(tag);
+                long released = history != null && !history.full().isEmpty()
+                        ? history.full().get(0).time() : 0;
+                AhFireSaleHistoryStore.SkinRecord record = AhFireSaleHistoryStore.get(tag);
+                if (released <= 0 && record != null) {
+                    released = record.releaseGuessAt > 0 ? record.releaseGuessAt
+                            : record.firstSeenAt;
+                }
+                if (released <= 0) {
+                    continue;
+                }
+                int age = (int) Math.max(0, (now - released) / DAY_MS);
+                if (age >= minAge) {
                     continue;
                 }
                 long buyPrice = 0;
                 int listings = 0;
-                AhFireSaleHistoryStore.SkinRecord record = AhFireSaleHistoryStore.get(tag);
-                if (record != null && record.snapshots != null
-                        && !record.snapshots.isEmpty()) {
+                if (record != null && record.snapshots != null && !record.snapshots.isEmpty()) {
                     AhFireSaleHistoryStore.Snapshot snapshot =
                             record.snapshots.get(record.snapshots.size() - 1);
                     buyPrice = snapshot.price;
@@ -141,48 +157,34 @@ public final class AhFireSaleComps {
                                 : marketEntry.monthly;
                     }
                 }
-                if (buyPrice < config.fireSaleMinPrice
-                        || (config.fireSaleMaxPrice > 0 && buyPrice > config.fireSaleMaxPrice)
-                        || listings <= 0) {
+                if (buyPrice <= 0 || buyPrice < config.fireSaleMinPrice
+                        || (config.fireSaleMaxPrice > 0 && buyPrice > config.fireSaleMaxPrice)) {
                     continue;
                 }
                 newSkins++;
-                List<CompStat> comps = compsFor(meta, byTypeTier, byType, pool);
-                if (comps.size() < 3) {
+                List<Double> rois = forwardReturns(basePool, meta, age, hold, fee);
+                if (rois.size() < 3) {
                     continue;
-                }
-                List<Double> rois = new ArrayList<>();
-                List<Double> ages = new ArrayList<>();
-                for (CompStat comp : comps) {
-                    rois.add(comp.roi());
-                    ages.add(comp.ageDays());
                 }
                 rois.sort(null);
-                ages.sort(null);
-                double medianRoi = median(rois);
+                double medianRoi = percentile(rois, 0.5);
                 double p25 = percentile(rois, 0.25);
                 double p75 = percentile(rois, 0.75);
-                if (medianRoi <= 0) {
-                    continue;
+                int wins = 0;
+                for (double roi : rois) {
+                    if (roi > 0) {
+                        wins++;
+                    }
                 }
-                long target = Math.round(buyPrice * (1.0 + medianRoi / 100.0));
-                target = Math.min(target, Math.round(buyPrice * (1.0 + p75 / 100.0)));
-                target = Math.max(target, Math.round(buyPrice * 1.05));
-                double netRoi = (target * 0.95 - buyPrice) * 100.0 / buyPrice;
-                if (netRoi < config.fireSaleCompsMinRoiPercent) {
-                    continue;
-                }
-                int holding = (int) Math.round(median(ages));
-                holding = Math.max(7, Math.min(180, holding));
+                double winRate = wins / (double) rois.size();
+                // Comp ROIs are already net of the fee.
+                long target = Math.round(buyPrice * (1.0 + medianRoi / 100.0) / (1.0 - fee));
                 double dispersion = Math.abs(p75 - p25);
-                double consistency = 1.0 - clamp(dispersion
+                double consistency = 1.0 - AhFireSaleModel.clamp(dispersion
                         / Math.max(20.0, Math.abs(medianRoi)), 0, 1);
-                double compScore = clamp(comps.size() / 10.0, 0, 1);
-                double supply = 1.0 - clamp(listings / 20.0, 0, 1);
-                double confidence = 0.5 * compScore + 0.3 * consistency + 0.2 * supply;
-                if (confidence < 0.20) {
-                    continue;
-                }
+                double compScore = AhFireSaleModel.clamp(rois.size() / 10.0, 0, 1);
+                double confidence = 0.5 * compScore + 0.5 * consistency;
+
                 CompRow row = new CompRow();
                 row.tag = tag;
                 row.name = meta.name();
@@ -190,29 +192,32 @@ public final class AhFireSaleComps {
                 row.type = meta.type();
                 row.buyPrice = buyPrice;
                 row.target = target;
-                row.expectedRoiPercent = netRoi;
-                row.compCount = comps.size();
+                row.expectedRoiPercent = medianRoi;
+                row.compCount = rois.size();
                 row.compMedianRoi = medianRoi;
                 row.compP25Roi = p25;
                 row.compP75Roi = p75;
-                row.holdingDays = holding;
+                row.compWinRate = winRate;
+                row.ageDays = age;
+                row.holdingDays = hold;
                 row.confidence = confidence;
                 row.listings = listings;
-                row.note = comps.size() + " Comps \u00b7 "
-                        + (historyPoints < 2 ? "neu" : "wenig Historie");
+                row.waitRecommended = medianRoi < config.fireSaleCompsMinRoiPercent
+                        || winRate < 0.6;
+                row.note = String.format(Locale.US, "%dd alt · Win %.0f%% · %s",
+                        age, winRate * 100, row.waitRecommended
+                                ? "ABWARTEN (bis ~" + minAge + "d)" : "Kaufsignal");
                 rows.add(row);
             }
             rows.sort((first, second) -> Double.compare(
-                    second.expectedRoiPercent * second.confidence,
-                    first.expectedRoiPercent * first.confidence));
+                    second.expectedRoiPercent, first.expectedRoiPercent));
             int limit = Math.max(1, Math.min(10, config.fireSaleCompsTopCount));
             if (rows.size() > limit) {
                 rows = new ArrayList<>(rows.subList(0, limit));
             }
             SNAPSHOT.newSkins = newSkins;
             SNAPSHOT.rows = List.copyOf(rows);
-            SNAPSHOT.note = "Relative Bewertung \u00fcber \u00e4ltere Skins "
-                    + "(verf\u00fcgbare Historie; persistente Historie verbessert die Comps)";
+            SNAPSHOT.note = "Gleiches Alter, " + hold + "d Haltedauer, Comps der letzten 3 Jahre";
             SNAPSHOT.updatedAt = System.currentTimeMillis();
         } catch (Exception e) {
             SNAPSHOT.error = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -223,70 +228,58 @@ public final class AhFireSaleComps {
         }
     }
 
-    private static List<AhFireSaleSkinTracker.HistoryPoint> pointsForComps(String tag) {
-        java.util.TreeMap<Long, AhFireSaleSkinTracker.HistoryPoint> byDay =
-                new java.util.TreeMap<>();
-        AhFireSaleSkinTracker.HistoryData history =
-                AhFireSaleSkinTracker.cachedHistory(tag);
-        if (history != null) {
-            List<AhFireSaleSkinTracker.HistoryPoint> points =
-                    history.month().size() >= 2 ? history.month() : history.week();
-            for (AhFireSaleSkinTracker.HistoryPoint point : points) {
-                byDay.put(point.time() / DAY_MS, point);
+    /**
+     * Net return of every comp bought at {@code age} days and sold {@code hold}
+     * days later. Same type (pet / item skin) is preferred.
+     */
+    private static List<Double> forwardReturns(List<Comp> pool,
+                                               AhFireSaleSkinTracker.SkinMeta meta,
+                                               int age, int hold, double fee) {
+        List<Double> sameType = new ArrayList<>();
+        List<Double> all = new ArrayList<>();
+        for (Comp comp : pool) {
+            if (comp.points().isEmpty()) {
+                continue;
+            }
+            Double roi = forwardReturn(comp, age, hold, fee);
+            if (roi == null) {
+                continue;
+            }
+            all.add(roi);
+            if (meta != null && meta.type() != null && meta.type().equals(comp.type())) {
+                sameType.add(roi);
             }
         }
-        AhFireSaleHistoryStore.SkinRecord record = AhFireSaleHistoryStore.get(tag);
-        if (record != null && record.snapshots != null) {
-            for (AhFireSaleHistoryStore.Snapshot snapshot : record.snapshots) {
-                if (snapshot.at > 0 && snapshot.price > 0) {
-                    byDay.put(snapshot.at / DAY_MS,
-                            new AhFireSaleSkinTracker.HistoryPoint(snapshot.at,
-                                    snapshot.price, snapshot.price, snapshot.price, 1));
-                }
+        return sameType.size() >= 5 ? sameType : all;
+    }
+
+    private static Double forwardReturn(Comp comp, int age, int hold, double fee) {
+        long start = comp.releasedAt() + age * DAY_MS;
+        long end = start + hold * DAY_MS;
+        long entry = priceAround(comp.points(), start);
+        long exit = priceAround(comp.points(), end);
+        if (entry <= 0 || exit <= 0) {
+            return null;
+        }
+        return (exit * (1.0 - fee) - entry) * 100.0 / entry;
+    }
+
+    private static long priceAround(List<AhFireSaleSkinTracker.HistoryPoint> points, long at) {
+        List<AhFireSaleSkinTracker.HistoryPoint> near = new ArrayList<>();
+        for (AhFireSaleSkinTracker.HistoryPoint point : points) {
+            if (Math.abs(point.time() - at) <= 3 * DAY_MS) {
+                near.add(point);
             }
         }
-        return new ArrayList<>(byDay.values());
-    }
-
-    private static List<CompStat> compsFor(AhFireSaleSkinTracker.SkinMeta meta,
-                                           Map<String, List<CompStat>> byTypeTier,
-                                           Map<String, List<CompStat>> byType,
-                                           List<CompStat> all) {
-        List<CompStat> comps = byTypeTier.get(key(meta.type(), meta.tier()));
-        if (comps != null && comps.size() >= 3) {
-            return comps;
-        }
-        comps = byType.get(meta.type());
-        if (comps != null && comps.size() >= 3) {
-            return comps;
-        }
-        return all;
-    }
-
-    private static String key(String type, String tier) {
-        return (type == null ? "" : type) + "|" + (tier == null ? "" : tier);
-    }
-
-    private static double median(List<Double> sorted) {
-        if (sorted.isEmpty()) {
-            return 0;
-        }
-        int middle = sorted.size() / 2;
-        if (sorted.size() % 2 == 1) {
-            return sorted.get(middle);
-        }
-        return (sorted.get(middle - 1) + sorted.get(middle)) / 2.0;
+        return near.size() < 2 ? 0 : AhFireSaleModel.medianAvg(near);
     }
 
     private static double percentile(List<Double> sorted, double fraction) {
         if (sorted.isEmpty()) {
             return 0;
         }
-        int index = (int) Math.round(clamp(fraction, 0, 1) * (sorted.size() - 1));
+        int index = (int) Math.round(AhFireSaleModel.clamp(fraction, 0, 1)
+                * (sorted.size() - 1));
         return sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
-    }
-
-    private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
 }

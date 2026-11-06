@@ -49,6 +49,10 @@ public final class LowballingRotation {
         if (!active || player == null) {
             return;
         }
+        if (net.minecraft.client.Minecraft.getInstance().gui.screen() != null) {
+            lastFrame = 0; // no catch-up jump after the GUI closes
+            return;
+        }
         Vec3 point = targetEntity != null
                 ? targetEntity.getBoundingBox().getCenter() : targetPoint;
         if (point == null) {

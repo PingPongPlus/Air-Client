@@ -35,6 +35,12 @@ public final class AhBidMacro {
     private static volatile boolean running;
     private static volatile Thread worker;
     private static volatile boolean rebidRequested;
+    /**
+     * Set by an outbid chat message. Stays set while the flipper is busy (e.g. a
+     * listing that is already running is allowed to finish), and forces a fresh
+     * check of every tracked auction as soon as it is free again.
+     */
+    private static volatile boolean outbidCheckPending;
     private static volatile long lastScanAt;
     private static volatile long lastOutbidAt;
     private static volatile long lastBidPlacedAt;
@@ -59,8 +65,11 @@ public final class AhBidMacro {
         volatile int listingTries;
         volatile boolean claimed;
         volatile boolean refunded;
+        /** Matching items in the inventory when the bid was placed. */
+        final int inventoryBaseline;
 
         private Tracked(String uuid, String tag, String name, long bid, long value, long end) {
+            this.inventoryBaseline = AhScreenUtil.countInventoryMatches(tag, name);
             this.uuid = uuid;
             this.tag = tag;
             this.name = name;
@@ -164,6 +173,7 @@ public final class AhBidMacro {
         running = false;
         generation++;
         rebidRequested = false;
+        outbidCheckPending = false;
         PENDING_BIDS.clear();
         pendingBidWork = false;
         REBID_COMMANDS.clear();
@@ -184,6 +194,12 @@ public final class AhBidMacro {
                     continue;
                 }
                 long now = System.currentTimeMillis();
+                if (outbidCheckPending || !REBID_COMMANDS.isEmpty()) {
+                    // Keep the bid priority alive while we wait: the running
+                    // task may finish, but no new listing/claim/buy may start
+                    // before the outbid is handled.
+                    AhFlipperMod.requestBidPriority(5_000L);
+                }
                 if (AhFlipperMod.isBusy()) {
                     if (now - lastBusyReportAt > 60_000L) {
                         lastBusyReportAt = now;
@@ -214,9 +230,17 @@ public final class AhBidMacro {
                     ScreenUtil.sleep(75);
                 }
                 long interval = Math.max(30, AhFlipperMod.CONFIG.bidMacroScanIntervalSeconds) * 1000L;
-                if (rebidRequested || now - lastScanAt >= interval) {
+                boolean outbidCheck = outbidCheckPending;
+                if (rebidRequested || outbidCheck || now - lastScanAt >= interval) {
                     rebidRequested = false;
+                    outbidCheckPending = false;
                     lastScanAt = now;
+                    if (outbidCheck) {
+                        // fresh data, not the 15 s cache from before the outbid
+                        invalidateTracked();
+                        System.out.println("[AH-Flipper] Outbid-Check: pruefe "
+                                + TRACKED.size() + " Gebote neu.");
+                    }
                     int rebids = processTracked(maxBids);
                     if (running) {
                         scanNew(Math.max(0, maxBids - rebids));
@@ -253,7 +277,9 @@ public final class AhBidMacro {
         long now = System.currentTimeMillis();
         lastOutbidAt = now;
         rebidRequested = true;
+        outbidCheckPending = true;
         rebidNotBefore = now;
+        AhFlipperMod.requestBidPriority(20_000L);
         String clickCommand = findRunCommand(message);
         String clickUuid = uuidFromCommand(clickCommand);
         if (!clickUuid.isBlank()) {
@@ -355,6 +381,12 @@ public final class AhBidMacro {
             }
         }
         return "";
+    }
+
+    private static void invalidateTracked() {
+        for (Tracked tracked : TRACKED.values()) {
+            AhMarketData.invalidateAuction(tracked.uuid);
+        }
     }
 
     private static boolean rebidWaiting() {
@@ -506,7 +538,8 @@ public final class AhBidMacro {
         }
         try {
             if (!tracked.claimed) {
-                if (!AhFlipperMod.claimWonAuction(tracked.tag, tracked.name)) {
+                if (!AhFlipperMod.claimWonAuction(tracked.tag, tracked.name,
+                        tracked.inventoryBaseline)) {
                     TRACKED.remove(tracked.uuid);
                     AhFlipperMod.message("\u00a7cClaim failed - purchase not received: \u00a7f"
                             + tracked.name);
@@ -526,15 +559,14 @@ public final class AhBidMacro {
                 TRACKED.remove(tracked.uuid);
                 return;
             }
-            tracked.listingTries++;
-            if (tracked.listingTries >= 5) {
-                TRACKED.remove(tracked.uuid);
-                AhFlipperMod.message("\u00a7cListing failed: \u00a7f"
-                        + tracked.name);
-            } else {
-                AhFlipperMod.message("\u00a7eRetrying listing: \u00a7f"
-                        + tracked.name);
-            }
+            // Do not keep a won item in the bid tracker (it used to be dropped
+            // after 5 tries and then never listed): the listing worker retries it
+            // and lists it as soon as it shows up in the inventory.
+            TRACKED.remove(tracked.uuid);
+            AhFlipperMod.enqueueListingRetry(tracked.tag, tracked.name,
+                    tracked.value, tracked.bid, tracked.uuid);
+            AhFlipperMod.message("\u00a7eListing queued for retry: \u00a7f"
+                    + tracked.name);
         } finally {
             AhFlipperMod.endBidAction();
         }
@@ -1091,20 +1123,32 @@ public final class AhBidMacro {
     }
 
     private static boolean profitable(AhAnalyzer.Result result, double target, String name) {
-        if (result == null || !result.buyable || result.expectedValue <= 0
-                || result.expectedValue < AhFlipperMod.CONFIG.bidMacroMinValueCoins
-                || result.cleanPrice <= 0 || result.profitPercent < target) {
-            System.out.println("[AH-Flipper] Bid-Macro: " + name
-                    + " nicht profitabel (Wert="
-                    + (result == null ? "?" : String.format(Locale.US, "%.2fM",
-                    result.expectedValue / 1_000_000.0))
-                    + ", "
-                    + String.format(Locale.US, "%.1f", result == null ? -1 : result.profitPercent)
-                    + "% < " + String.format(Locale.US, "%.1f", target) + "%) "
-                    + (result == null ? "" : result.reasons));
-            return false;
+        // Name the condition that actually failed; the old log always printed
+        // "x% < target%" even when the profit was fine and e.g. the minimum
+        // value or the clean price was the reason.
+        String why;
+        if (result == null) {
+            why = "keine Analyse";
+        } else if (!result.buyable) {
+            why = "Filter: " + result.reasons;
+        } else if (result.expectedValue <= 0) {
+            why = "kein Wert";
+        } else if (result.expectedValue < AhFlipperMod.CONFIG.bidMacroMinValueCoins) {
+            why = "Wert unter Minimum " + ScreenUtil.formatCoins(
+                    AhFlipperMod.CONFIG.bidMacroMinValueCoins);
+        } else if (result.cleanPrice <= 0) {
+            why = "kein Clean-Preis";
+        } else if (result.profitPercent < target) {
+            why = String.format(Locale.US, "Gewinn %.1f%% < %.1f%%",
+                    result.profitPercent, target);
+        } else {
+            return true;
         }
-        return true;
+        System.out.println("[AH-Flipper] Bid-Macro: " + name + " nicht profitabel (Wert="
+                + (result == null ? "?" : String.format(Locale.US, "%.2fM",
+                result.expectedValue / 1_000_000.0))
+                + "): " + why);
+        return false;
     }
 
     private static long maxBidForPurse() {

@@ -51,6 +51,16 @@ public final class AhInvestmentTracker {
         public long weeklyMedian;
         public int bookDepth;
         public long[] hourlyMedians = new long[24];
+        /** Median of the clean sales of the last 48h. */
+        public long clearingPrice;
+        /** Cheapest BIN left on the book after buying qty (0 = none). */
+        public long nextBinPrice;
+        /** Last 48h median vs. the rest of the week, in %. */
+        public double momentumPercent;
+        /** True when the buy/sell time window held on most single days. */
+        public boolean patternValidated;
+        public int patternDays;
+        public int patternHits;
         public String note = "";
     }
 
@@ -295,10 +305,25 @@ public final class AhInvestmentTracker {
         }
     }
 
+    /**
+     * Short-term flip model. The old version picked the cheapest and the most
+     * expensive of 24 hourly medians and treated the gap as profit; with a week
+     * of noisy data that gap is almost always positive, even without any real
+     * daily pattern, and it sold at a median while ignoring the listings one has
+     * to undercut. Now:
+     * <ul>
+     *   <li>exit = clearing price (median of the last 48h of clean sales),
+     *       capped just below the next BIN that stays on the book after our buys;</li>
+     *   <li>a buy/sell time window is only used when it held on most single days;</li>
+     *   <li>holding time comes from the sales rate (how long until qty items sell);</li>
+     *   <li>falling markets are rejected, rising ones are not extrapolated.</li>
+     * </ul>
+     */
     private static InvestmentCandidate analyzeTag(String tag, long bankroll) {
         AhFlipperConfig config = AhFlipperMod.CONFIG;
         long now = System.currentTimeMillis();
         long cutoff = now - WEEK_MS;
+        long recentCutoff = now - 48 * HOUR_MS;
         long maxAddon = Math.max(0, Math.min(100_000L, config.investmentMaxBuyPrice));
         long maxUnit = Math.max(1, config.investmentMaxBuyPrice);
 
@@ -307,11 +332,13 @@ public final class AhInvestmentTracker {
             return null;
         }
         Map<Integer, List<Long>> hourBuckets = new HashMap<>();
-        Map<Long, List<Long>> epochBuckets = new TreeMap<>();
+        Map<Long, List<long[]>> dayBuckets = new TreeMap<>();
         Map<String, Integer> nameCounts = new HashMap<>();
         List<Long> allPrices = new ArrayList<>();
+        List<Long> recentPrices = new ArrayList<>();
+        List<Long> olderPrices = new ArrayList<>();
         for (AhMarketData.Sold sale : sold) {
-            if (sale == null || sale.price <= 0 || sale.end <= cutoff) {
+            if (sale == null || sale.price <= 0 || sale.end <= cutoff || sale.end > now) {
                 continue;
             }
             if (!AhMarketData.isFastCleanForInvestment(tag, sale, maxAddon)) {
@@ -322,9 +349,17 @@ public final class AhInvestmentTracker {
                 continue;
             }
             LocalDateTime time = Instant.ofEpochMilli(sale.end).atZone(ZONE).toLocalDateTime();
-            hourBuckets.computeIfAbsent(time.getHour(), ignored -> new ArrayList<>()).add(unit);
-            epochBuckets.computeIfAbsent(sale.end / HOUR_MS, ignored -> new ArrayList<>()).add(unit);
+            int hour = time.getHour();
+            hourBuckets.computeIfAbsent(hour, ignored -> new ArrayList<>()).add(unit);
+            long day = time.toLocalDate().toEpochDay();
+            dayBuckets.computeIfAbsent(day, ignored -> new ArrayList<>())
+                    .add(new long[]{hour, unit});
             allPrices.add(unit);
+            if (sale.end >= recentCutoff) {
+                recentPrices.add(unit);
+            } else {
+                olderPrices.add(unit);
+            }
             String name = ScreenUtil.cleanName(sale.itemName);
             if (!name.isBlank()) {
                 nameCounts.merge(name, 1, Integer::sum);
@@ -336,6 +371,26 @@ public final class AhInvestmentTracker {
         if (cleanSales < minSales) {
             return null;
         }
+        allPrices.sort(null);
+        recentPrices.sort(null);
+        olderPrices.sort(null);
+        long weeklyMedian = median(allPrices);
+        long weeklyP25 = percentile(allPrices, 0.25);
+        long weeklyP75 = percentile(allPrices, 0.75);
+        if (weeklyMedian <= 0) {
+            return null;
+        }
+        // Clearing price: what the item sells for right now.
+        long clearing = recentPrices.size() >= 5 ? median(recentPrices) : weeklyMedian;
+        double momentum = 0;
+        if (recentPrices.size() >= 5 && olderPrices.size() >= 5) {
+            momentum = median(recentPrices) / (double) median(olderPrices) - 1.0;
+        }
+        if (momentum < -0.08) {
+            // Falling knife: the last 48h are clearly below the rest of the week.
+            return null;
+        }
+
         int minSamples = Math.max(1, config.investmentMinHourSamples);
         Map<Integer, HourStat> hourStats = new HashMap<>();
         for (Map.Entry<Integer, List<Long>> entry : hourBuckets.entrySet()) {
@@ -351,55 +406,72 @@ public final class AhInvestmentTracker {
             stat.p75 = percentile(prices, 0.75);
             hourStats.put(entry.getKey(), stat);
         }
-        if (hourStats.size() < 4) {
-            return null;
-        }
 
-        allPrices.sort(null);
-        long weeklyMedian = median(allPrices);
-        long weeklyP25 = percentile(allPrices, 0.25);
-        long weeklyP75 = percentile(allPrices, 0.75);
-        long weeklyP90 = percentile(allPrices, 0.90);
-        if (weeklyMedian <= 0) {
-            return null;
-        }
-
-        int bestBuyHour = -1;
-        int bestSellHour = -1;
-        HourStat bestBuy = null;
-        HourStat bestSell = null;
-        for (Map.Entry<Integer, HourStat> entry : hourStats.entrySet()) {
-            HourStat stat = entry.getValue();
-            if (bestBuy == null || stat.median < bestBuy.median) {
-                bestBuy = stat;
-                bestBuyHour = entry.getKey();
+        // Candidate daily pattern; only trusted when it held on most days.
+        int[] buyWindow = {-1, -1};
+        int[] sellWindow = {-1, -1};
+        long buyHourMedian = 0;
+        long sellHourMedian = 0;
+        int patternDays = 0;
+        int patternHits = 0;
+        double uplift = 1.0;
+        if (hourStats.size() >= 6) {
+            int bestBuyHour = -1;
+            int bestSellHour = -1;
+            HourStat bestBuy = null;
+            HourStat bestSell = null;
+            for (Map.Entry<Integer, HourStat> entry : hourStats.entrySet()) {
+                HourStat stat = entry.getValue();
+                if (bestBuy == null || stat.median < bestBuy.median) {
+                    bestBuy = stat;
+                    bestBuyHour = entry.getKey();
+                }
+                if (bestSell == null || stat.median > bestSell.median) {
+                    bestSell = stat;
+                    bestSellHour = entry.getKey();
+                }
             }
-            if (bestSell == null || stat.median > bestSell.median) {
-                bestSell = stat;
-                bestSellHour = entry.getKey();
+            if (bestBuy != null && bestSell != null && bestSell.median > bestBuy.median) {
+                int[] candidateBuy = window(hourStats, bestBuyHour, true, minSamples);
+                int[] candidateSell = window(hourStats, bestSellHour, false, minSamples);
+                List<Double> ratios = new ArrayList<>();
+                for (List<long[]> daySales : dayBuckets.values()) {
+                    List<Long> buys = new ArrayList<>();
+                    List<Long> sells = new ArrayList<>();
+                    for (long[] sale : daySales) {
+                        int hour = (int) sale[0];
+                        if (inWindow(hour, candidateBuy[0], candidateBuy[1])) {
+                            buys.add(sale[1]);
+                        } else if (inWindow(hour, candidateSell[0], candidateSell[1])) {
+                            sells.add(sale[1]);
+                        }
+                    }
+                    if (buys.isEmpty() || sells.isEmpty()) {
+                        continue;
+                    }
+                    buys.sort(null);
+                    sells.sort(null);
+                    ratios.add(median(sells) / (double) Math.max(1, median(buys)));
+                }
+                patternDays = ratios.size();
+                for (double ratio : ratios) {
+                    if (ratio > 1.0) {
+                        patternHits++;
+                    }
+                }
+                ratios.sort(null);
+                double medianRatio = ratios.isEmpty() ? 1.0 : ratios.get(ratios.size() / 2);
+                if (patternDays >= 4 && patternHits >= Math.ceil(patternDays * 0.75)
+                        && medianRatio >= 1.03) {
+                    buyWindow = candidateBuy;
+                    sellWindow = candidateSell;
+                    buyHourMedian = bestBuy.median;
+                    sellHourMedian = bestSell.median;
+                    uplift = Math.min(medianRatio, 1.20);
+                }
             }
         }
-        if (bestBuy == null || bestSell == null || bestSell.median <= bestBuy.median) {
-            return null;
-        }
-        int[] buyWindow = window(hourStats, bestBuyHour, true, minSamples);
-        int[] sellWindow = window(hourStats, bestSellHour, false, minSamples);
-        double trend = trendPerHour(epochBuckets);
-        double trendPercent = weeklyMedian > 0 ? trend * 100.0 / weeklyMedian : 0;
-        long lastPrice = lastPrice(epochBuckets, weeklyMedian);
-
-        int currentHour = LocalDateTime.now(ZONE).getHour();
-        int holding;
-        if (inWindow(currentHour, sellWindow[0], sellWindow[1])) {
-            holding = 1;
-        } else {
-            int sellMid = midHour(sellWindow[0], sellWindow[1]);
-            holding = sellMid - currentHour;
-            if (holding <= 0) {
-                holding += 24;
-            }
-            holding = Math.max(1, Math.min(24, holding));
-        }
+        boolean patternValidated = buyWindow[0] >= 0;
 
         List<AhMarketData.ActiveBin> bins = AhMarketData.activeBins(tag);
         if (bins == null || bins.isEmpty()) {
@@ -410,7 +482,7 @@ public final class AhInvestmentTracker {
         List<Long> book = new ArrayList<>();
         for (AhMarketData.ActiveBin bin : bins) {
             long price = bin == null ? 0 : bin.price();
-            if (price < bookFloor || price > bookCeiling || price > maxUnit) {
+            if (price < bookFloor || price > bookCeiling) {
                 continue;
             }
             book.add(price);
@@ -421,6 +493,11 @@ public final class AhInvestmentTracker {
         book.sort(null);
         long buyPrice = book.get(0);
         if (buyPrice > maxUnit) {
+            return null;
+        }
+        // Never pay more than the clearing price minus the required margin.
+        double premium = (buyPrice - clearing) * 100.0 / clearing;
+        if (premium > config.investmentMaxBuyPremiumPercent) {
             return null;
         }
         double slippage = Math.max(0, config.investmentSlippagePercent) / 100.0;
@@ -435,42 +512,33 @@ public final class AhInvestmentTracker {
         if (available <= 0) {
             return null;
         }
-        if (bestBuy.median > 0) {
-            double premium = (buyPrice - bestBuy.median) * 100.0 / bestBuy.median;
-            if (premium > config.investmentMaxBuyPremiumPercent) {
-                return null;
-            }
-        }
 
+        double salesPerHour = cleanSales / 168.0;
         long cleanSalesPerDay = Math.max(1, Math.round(cleanSales / 7.0));
         long maxByVolume = Math.max(1, Math.round(cleanSalesPerDay * 0.25));
         long maxByBankroll = bankroll > 0
                 ? Math.max(1, bankroll / Math.max(1, slipCap)) : Long.MAX_VALUE;
-        long maxByBook = available;
-        long qty = Math.min(Math.min(maxByBook, maxByVolume),
+        long qty = Math.min(Math.min(available, maxByVolume),
                 Math.min(maxByBankroll, Math.max(1, config.investmentMaxQty)));
         qty = Math.max(1, qty);
         long sum = 0;
-        int counted = 0;
-        for (Long price : book) {
-            if (counted >= qty || price > slipCap) {
-                break;
-            }
-            sum += price;
-            counted++;
+        for (int i = 0; i < qty; i++) {
+            sum += book.get(i);
         }
-        if (counted <= 0) {
-            return null;
-        }
-        qty = counted;
-        long effectiveBuy = Math.max(1, Math.round(sum / (double) counted));
+        long effectiveBuy = Math.max(1, Math.round(sum / (double) qty));
 
-        long trendProjected = Math.max(0, lastPrice + Math.round(trend * holding));
-        long sellTarget = Math.max(bestSell.median, trendProjected);
-        long ceiling = Math.round(weeklyP90 * 1.30);
-        sellTarget = Math.min(sellTarget, ceiling);
-        long fee = Math.round(sellTarget * config.ahFeePercent / 100.0);
-        long netPerItem = sellTarget - fee - effectiveBuy;
+        // Exit: clearing price (or the validated sell-window level), but our
+        // listing has to undercut whatever stays on the book after our buys.
+        long exit = patternValidated
+                ? Math.max(clearing, Math.min(sellHourMedian, Math.round(clearing * uplift)))
+                : clearing;
+        long nextBin = book.size() > qty ? book.get((int) qty) : 0;
+        if (nextBin > 0) {
+            exit = Math.min(exit, Math.round(nextBin * 0.995));
+        }
+        exit = Math.min(exit, percentile(allPrices, 0.90));
+        long fee = Math.round(exit * config.ahFeePercent / 100.0);
+        long netPerItem = exit - fee - effectiveBuy;
         if (netPerItem <= 0) {
             return null;
         }
@@ -478,17 +546,36 @@ public final class AhInvestmentTracker {
         if (margin < config.investmentMinMarginPercent) {
             return null;
         }
+
+        // Holding: time to sell qty items as the cheapest listing (we assume
+        // half of the sales flow) and, with a pattern, the wait for the window.
+        double sellHours = qty / Math.max(0.01, salesPerHour * 0.5);
+        int holding = (int) Math.ceil(Math.max(1.0, sellHours));
+        if (patternValidated) {
+            int currentHour = LocalDateTime.now(ZONE).getHour();
+            int untilWindow = 0;
+            if (!inWindow(currentHour, sellWindow[0], sellWindow[1])) {
+                untilWindow = sellWindow[0] - currentHour;
+                if (untilWindow <= 0) {
+                    untilWindow += 24;
+                }
+            }
+            holding = Math.max(holding, untilWindow + 1);
+        }
+        holding = Math.max(1, Math.min(72, holding));
         long totalProfit = netPerItem * qty;
-        long coinsPerHour = Math.max(1, Math.round(totalProfit / (double) Math.max(1, holding)));
+        long coinsPerHour = Math.max(1, Math.round(totalProfit / (double) holding));
         if (coinsPerHour < config.investmentMinCoinsPerHour) {
             return null;
         }
 
-        double cv = coefficientVariation(allPrices);
+        double iqr = (weeklyP75 - weeklyP25) / (double) weeklyMedian;
         double salesScore = clamp(Math.log10(cleanSales + 1.0) / Math.log10(100.0), 0, 1);
-        double coverage = hourStats.size() / 24.0;
-        double stability = 1.0 - clamp(cv, 0, 1);
-        double confidence = 0.45 * salesScore + 0.30 * coverage + 0.25 * stability;
+        double stability = 1.0 - clamp(iqr / 0.6, 0, 1);
+        double recency = clamp(recentPrices.size() / 10.0, 0, 1);
+        double depth = 1.0 - clamp(book.size() / (double) Math.max(1, cleanSales), 0, 1);
+        double confidence = 0.35 * salesScore + 0.25 * stability + 0.20 * recency
+                + 0.20 * depth;
         if (confidence < 0.25) {
             return null;
         }
@@ -501,20 +588,26 @@ public final class AhInvestmentTracker {
         }
         candidate.buyPrice = buyPrice;
         candidate.effectiveBuyPrice = effectiveBuy;
-        candidate.sellTarget = sellTarget;
+        candidate.sellTarget = exit;
+        candidate.clearingPrice = clearing;
+        candidate.nextBinPrice = nextBin;
         candidate.qty = qty;
         candidate.totalProfit = totalProfit;
         candidate.coinsPerHour = coinsPerHour;
         candidate.marginPercent = margin;
         candidate.confidence = confidence;
-        candidate.trendPerHour = trend;
-        candidate.trendPercentPerHour = trendPercent;
+        candidate.momentumPercent = momentum * 100.0;
+        candidate.trendPercentPerHour = momentum * 100.0 / 96.0;
+        candidate.trendPerHour = clearing * momentum / 96.0;
+        candidate.patternValidated = patternValidated;
+        candidate.patternDays = patternDays;
+        candidate.patternHits = patternHits;
         candidate.buyHourStart = buyWindow[0];
         candidate.buyHourEnd = buyWindow[1];
         candidate.sellHourStart = sellWindow[0];
         candidate.sellHourEnd = sellWindow[1];
-        candidate.buyHourMedian = bestBuy.median;
-        candidate.sellHourMedian = bestSell.median;
+        candidate.buyHourMedian = buyHourMedian;
+        candidate.sellHourMedian = sellHourMedian;
         candidate.holdingHours = holding;
         candidate.cleanSales = cleanSales;
         candidate.hoursWithData = hourStats.size();
@@ -526,14 +619,16 @@ public final class AhInvestmentTracker {
                 candidate.hourlyMedians[hour] = stat.median;
             }
         }
-        candidate.note = "Buch " + available + "/" + book.size()
-                + " Â· Ã˜-Buy " + ScreenUtil.formatCoins(effectiveBuy);
+        candidate.note = (patternValidated
+                ? "Tagesmuster " + patternHits + "/" + patternDays + " Tage"
+                : "kein Tagesmuster")
+                + " · Clearing " + ScreenUtil.formatCoins(clearing)
+                + (nextBin > 0 ? " · nächste BIN " + ScreenUtil.formatCoins(nextBin) : "");
         return candidate;
     }
 
     private static double score(InvestmentCandidate candidate) {
-        double trendBonus = 1.0 + clamp(candidate.trendPercentPerHour / 20.0, -0.15, 0.15);
-        return candidate.coinsPerHour * (0.55 + 0.45 * candidate.confidence) * trendBonus;
+        return candidate.coinsPerHour * (0.5 + 0.5 * candidate.confidence);
     }
 
     private static Set<String> bazaarProducts() {
@@ -586,63 +681,6 @@ public final class AhInvestmentTracker {
         }
     }
 
-    private static double trendPerHour(Map<Long, List<Long>> buckets) {
-        if (buckets.size() < 12) {
-            return 0;
-        }
-        Long first = null;
-        for (Long hour : buckets.keySet()) {
-            first = hour;
-            break;
-        }
-        if (first == null) {
-            return 0;
-        }
-        int used = 0;
-        double sumWeight = 0;
-        double sumX = 0;
-        double sumY = 0;
-        double sumXY = 0;
-        double sumXX = 0;
-        for (Map.Entry<Long, List<Long>> entry : buckets.entrySet()) {
-            List<Long> prices = entry.getValue();
-            if (prices.isEmpty()) {
-                continue;
-            }
-            prices.sort(null);
-            double weight = Math.min(50, prices.size());
-            double x = entry.getKey() - first;
-            double y = median(prices);
-            used++;
-            sumWeight += weight;
-            sumX += weight * x;
-            sumY += weight * y;
-            sumXY += weight * x * y;
-            sumXX += weight * x * x;
-        }
-        if (used < 12) {
-            return 0;
-        }
-        double denominator = sumWeight * sumXX - sumX * sumX;
-        if (Math.abs(denominator) < 1e-9) {
-            return 0;
-        }
-        return (sumWeight * sumXY - sumX * sumY) / denominator;
-    }
-
-    private static long lastPrice(Map<Long, List<Long>> buckets, long fallback) {
-        Map.Entry<Long, List<Long>> last = null;
-        for (Map.Entry<Long, List<Long>> entry : buckets.entrySet()) {
-            last = entry;
-        }
-        if (last == null || last.getValue().isEmpty()) {
-            return fallback;
-        }
-        List<Long> prices = last.getValue();
-        prices.sort(null);
-        return median(prices);
-    }
-
     private static int[] window(Map<Integer, HourStat> stats, int bestHour,
                                 boolean low, int minSamples) {
         HourStat best = stats.get(bestHour);
@@ -675,14 +713,6 @@ public final class AhInvestmentTracker {
             end = hour;
         }
         return new int[]{start, end};
-    }
-
-    private static int midHour(int start, int end) {
-        int length = end - start;
-        if (length < 0) {
-            length += 24;
-        }
-        return (start + length / 2) % 24;
     }
 
     private static long median(List<Long> sorted) {

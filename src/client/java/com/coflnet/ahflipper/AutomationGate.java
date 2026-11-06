@@ -22,6 +22,9 @@ final class AutomationGate {
     }
 
     static Lease tryAcquire(String owner, boolean bid) {
+        // Releases an orphaned lease first; otherwise a hung flow blocked all
+        // AH automation until someone happened to call isBusy().
+        currentLease();
         Lease lease = new Lease(owner, bid);
         if (!CURRENT.compareAndSet(null, lease)) {
             return null;

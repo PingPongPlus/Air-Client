@@ -48,15 +48,15 @@ public final class AhScanner {
 
     static String status() {
         if (!running && cycleFinishedAt == 0) {
-            return "Â§caus";
+            return "§caus";
         }
         long age = cycleFinishedAt > 0
                 ? (System.currentTimeMillis() - cycleFinishedAt) / 1000 : -1;
-        return (running ? "Â§aan" : "Â§caus")
-                + " Â§7Â· Zyklus Â§f" + cycleTags + " Â§7Tags / Â§f" + cycleChecked
-                + " Â§7geprÃ¼ft / Â§f" + cycleHits + " Â§7Treffer"
-                + " Â§7Â· gesamt Â§f" + totalHits
-                + (age >= 0 ? " Â§7Â· vor Â§f" + age + "s" : "");
+        return (running ? "§aan" : "§caus")
+                + " §7· Zyklus §f" + cycleTags + " §7Tags / §f" + cycleChecked
+                + " §7geprüft / §f" + cycleHits + " §7Treffer"
+                + " §7· gesamt §f" + totalHits
+                + (age >= 0 ? " §7· vor §f" + age + "s" : "");
     }
 
     private static void loop() {
@@ -86,7 +86,7 @@ public final class AhScanner {
     private static void runCycle() {
         Map<String, AhMarketData.MarketEntry> market = AhMarketData.market();
         if (market.isEmpty()) {
-            System.out.println("[AH-Flipper] Scan: keine Marktpreise verfÃ¼gbar");
+            System.out.println("[AH-Flipper] Scan: keine Marktpreise verfügbar");
             return;
         }
         List<AhMarketData.MarketEntry> tags = new ArrayList<>();

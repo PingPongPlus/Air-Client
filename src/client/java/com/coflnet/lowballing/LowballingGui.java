@@ -113,6 +113,19 @@ public final class LowballingGui {
         return findButtonSlot("trade");
     }
 
+    /** Hypixel trade window: title "You                  <name>". */
+    public static boolean isOpenTradeWith(String name) {
+        if (!isContainerOpen()) {
+            return false;
+        }
+        String title = currentTitle().toLowerCase(Locale.ROOT).trim();
+        if (!title.startsWith("you ")) {
+            return false;
+        }
+        return name == null || name.isBlank()
+                || title.contains(name.toLowerCase(Locale.ROOT));
+    }
+
     public static boolean isTradeWindow(String previousTitle) {
         String title = currentTitle();
         if (title.isBlank()) {

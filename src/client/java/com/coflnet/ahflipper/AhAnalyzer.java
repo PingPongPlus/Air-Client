@@ -56,7 +56,7 @@ public class AhAnalyzer {
         AhMarketData.RuneStats stats = AhMarketData.runeStats(item.tag, item.runeLevel);
         if (stats == null || stats.sales < 2 || stats.median <= 0) {
             result.reasons.add("Rune-Level " + item.runeLevel
-                    + " ohne ausreichende VerkÃ¤ufe");
+                    + " ohne ausreichende Verkäufe");
             result.buyable = false;
             return result;
         }
@@ -121,24 +121,12 @@ public class AhAnalyzer {
         boolean pet = item.isPet();
         String petFilter = pet ? item.petFilter() : "";
         if (pet && petFilter.isBlank()) {
-            result.reasons.add("Pet-Level/RaritÃ¤t nicht erkannt");
+            result.reasons.add("Pet-Level/Rarität nicht erkannt");
         }
 
         AhMarketData.Analysis clean;
         long cleanSales;
         if (pet) {
-            AhMarketData.Analysis level1 = AhMarketData.analysis(item.tag, "&PetLevel=1");
-            long level1Sales = level1 == null ? 0 : level1.totalSales;
-            if (level1 == null || level1.totalSales <= AhFlipperMod.CONFIG.petLevel1MinSales) {
-                result.reasons.add("Zu wenig Level-1-VerkÃ¤ufe (" + level1Sales + ")");
-            }
-            AhMarketData.Analysis level = AhMarketData.analysis(item.tag,
-                    "&PetLevel=" + item.petLevel);
-            long levelSales = level == null ? 0 : level.totalSales;
-            if (level == null || level.totalSales <= AhFlipperMod.CONFIG.petLevelMinSales) {
-                result.reasons.add("Zu wenig Level-" + item.petLevel + "-VerkÃ¤ufe ("
-                        + levelSales + ")");
-            }
             clean = AhMarketData.analysis(item.tag, petFilter);
             if (clean == null || clean.totalSales < 5) {
                 AhMarketData.Analysis fallback = AhMarketData.analysis(item.tag,
@@ -196,13 +184,17 @@ public class AhAnalyzer {
         result.overallSales = overall.totalSales;
         result.addonValue = AhAddonValues.bazaarValue(item);
 
+        if (pet && overall.totalSales <= 0) {
+            // Pets only need any sales at all (any level), no level-specific minimum.
+            result.reasons.add("Keine Pet-Verkäufe");
+        }
         if (!pet && overall.totalSales <= AhFlipperMod.CONFIG.minTotalSales) {
-            result.reasons.add("Zu wenig Gesamt-VerkÃ¤ufe (" + overall.totalSales + ")");
+            result.reasons.add("Zu wenig Gesamt-Verkäufe (" + overall.totalSales + ")");
         }
         if (!pet
                 && result.addonValue <= AhFlipperMod.CONFIG.cleanSalesAddonValueCoins
                 && result.cleanSales < AhFlipperMod.CONFIG.minCleanSales) {
-            result.reasons.add("Zu wenig Clean-VerkÃ¤ufe (" + result.cleanSales + ")");
+            result.reasons.add("Zu wenig Clean-Verkäufe (" + result.cleanSales + ")");
         }
         if (result.cleanCv > AhFlipperMod.CONFIG.maxDeviationPercent / 100.0) {
             result.reasons.add(String.format(Locale.US, "%s-Preis schwankt %.1f%% (> %.0f%%)",
@@ -334,7 +326,7 @@ public class AhAnalyzer {
             result.minAddonSales = 0;
         }
         if (sold.isEmpty() && supportedAddons > 0) {
-            result.reasons.add("Verkaufsdaten fehlen (Addons nicht prÃ¼fbar)");
+            result.reasons.add("Verkaufsdaten fehlen (Addons nicht prüfbar)");
         }
 
         double feeFraction = AhFlipperMod.CONFIG.ahFeePercent / 100.0;
