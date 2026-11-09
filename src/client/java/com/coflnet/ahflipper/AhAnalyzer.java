@@ -293,21 +293,9 @@ public class AhAnalyzer {
             check.supported = false;
             result.addons.add(check);
         }
-        if (!item.skin.isBlank()) {
-            int sales = countNbtText(sold, "skin", item.skin);
-            if (sold.isEmpty() || sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                result.reasons.add("Skin " + item.skin + " nur " + sales
-                        + "x/Woche auf " + item.tag);
-            }
-        }
-        if (!item.dyeItem.isBlank()) {
-            int sales = countNbtText(sold, "dye_item", item.dyeItem);
-            if (sold.isEmpty() || sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                result.reasons.add("Dye " + item.dyeItem + " nur " + sales
-                        + "x/Woche auf " + item.tag);
-            }
-        }
-
+        // Skins, dyes and addons that hardly sell no longer reject the item:
+        // AhValuation takes rareAddonDeductPercent of their value off instead
+        // (AhRareAddons). The counts here only feed the quality score.
         result.minAddonSales = Integer.MAX_VALUE;
         int supportedAddons = 0;
         for (AddonCheck check : result.addons) {
@@ -316,11 +304,6 @@ public class AhAnalyzer {
             }
             supportedAddons++;
             result.minAddonSales = Math.min(result.minAddonSales, check.sales);
-            if (!sold.isEmpty()
-                    && check.sales < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                result.reasons.add(check.label + " nur " + check.sales + "x/Woche auf "
-                        + item.tag);
-            }
         }
         if (result.minAddonSales == Integer.MAX_VALUE) {
             result.minAddonSales = 0;
@@ -342,10 +325,10 @@ public class AhAnalyzer {
             result.reasons.add("Addon-Vergleich unbrauchbar (zu wenige belastbare "
                     + "Verk\u00e4ufe / zu viele Ausrei\u00dfer)");
         }
-        if (estimate.candyPet) {
-            result.reasons.add("Pet mit Candies - kein Kauf");
-        }
         System.out.println("[AH-Flipper] Bewertung " + item.tag + ": " + estimate.source
+                + (estimate.rareAddonDeduction > 0 ? " Selten=" + estimate.rareAddonValue
+                + " Abzug=" + estimate.rareAddonDeduction : "")
+                + (estimate.candyDiscount > 0 ? " Candy=-" + estimate.candyDiscount : "")
                 + " Referenz=" + estimate.reference + " Addons=" + estimate.addonValue
                 + " AddonsAsk=" + estimate.addonValueAsk
                 + " Gems=" + estimate.gemValue
@@ -390,22 +373,6 @@ public class AhAnalyzer {
         result.score = Math.max(0, result.profit) * result.quality;
         result.buyable = result.reasons.isEmpty();
         return result;
-    }
-
-    private static int countNbtText(List<AhMarketData.Sold> sold, String key, String value) {
-        if (key == null || key.isBlank() || value == null || value.isBlank()) {
-            return 0;
-        }
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
-                continue;
-            }
-            if (sale.nbt.get(key).getAsString().equalsIgnoreCase(value)) {
-                count++;
-            }
-        }
-        return count;
     }
 
     private static int countEnchant(List<AhMarketData.Sold> sold, String type, int level) {

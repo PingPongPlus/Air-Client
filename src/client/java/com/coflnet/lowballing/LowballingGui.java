@@ -122,8 +122,17 @@ public final class LowballingGui {
         if (!title.startsWith("you ")) {
             return false;
         }
-        return name == null || name.isBlank()
-                || title.contains(name.toLowerCase(Locale.ROOT));
+        if (name == null || name.isBlank()) {
+            return true;
+        }
+        // The title cuts long names ("You   MuteCupid8" for MuteCupid81683).
+        String shown = title.substring(3).trim();
+        int space = shown.lastIndexOf(' ');
+        if (space >= 0) {
+            shown = shown.substring(space + 1);
+        }
+        String wanted = name.toLowerCase(Locale.ROOT);
+        return shown.isEmpty() || wanted.startsWith(shown) || shown.startsWith(wanted);
     }
 
     public static boolean isTradeWindow(String previousTitle) {
@@ -255,6 +264,18 @@ public final class LowballingGui {
             return lore(itemAt(container, slot));
         });
         return lines == null ? Collections.emptyList() : lines;
+    }
+
+    /** Copy of the stack in the slot (EMPTY if none). */
+    public static ItemStack stackAt(int slot) {
+        ItemStack stack = ScreenUtil.sync(() -> {
+            AbstractContainerScreen<?> container = currentContainer();
+            if (container == null || slot < 0 || slot >= containerSize(container)) {
+                return ItemStack.EMPTY;
+            }
+            return itemAt(container, slot).copy();
+        });
+        return stack == null ? ItemStack.EMPTY : stack;
     }
 
     public static AhItem itemAt(int slot) {

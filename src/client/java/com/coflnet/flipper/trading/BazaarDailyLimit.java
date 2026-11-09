@@ -95,6 +95,17 @@ public final class BazaarDailyLimit {
         save();
     }
 
+    /** A cancelled sell offer sold nothing: it no longer counts. */
+    public static synchronized void removeSale(long coins) {
+        if (coins <= 0) {
+            return;
+        }
+        ensureLoaded();
+        rollIfNeeded();
+        sold = Math.max(0L, sold - coins);
+        save();
+    }
+
     public static synchronized String tradeDay() {
         ensureLoaded();
         rollIfNeeded();

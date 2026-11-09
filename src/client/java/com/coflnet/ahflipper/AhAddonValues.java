@@ -200,6 +200,11 @@ public class AhAddonValues {
         if (!key.endsWith("_SKIN")) {
             candidates.add(key + "_SKIN");
         }
+        // petInfo stores the skin as "ENDER_DRAGON_BABY_BLUE", the item is
+        // PET_SKIN_ENDER_DRAGON_BABY_BLUE; pet skins used to be worth 0.
+        if (!key.startsWith("PET_SKIN_")) {
+            candidates.add("PET_SKIN_" + key);
+        }
         for (String candidate : candidates) {
             AhMarketData.MarketEntry entry = AhMarketData.market().get(candidate);
             if (entry != null && entry.value() > 0) {
@@ -213,6 +218,108 @@ public class AhAddonValues {
             }
         }
         return 0;
+    }
+
+    /** Value of a held pet item: Bazaar first, else AH market, else lowest BIN. */
+    public static double petItemValue(String petItem) {
+        return itemValue(petItem);
+    }
+
+    /** Bazaar sell value, else AH market value, else lowest BIN of any item id. */
+    public static double itemValue(String itemId) {
+        if (itemId == null || itemId.isBlank()) {
+            return 0;
+        }
+        String id = itemId.trim().toUpperCase(Locale.ROOT);
+        double bazaar = productValue(id);
+        if (bazaar > 0) {
+            return bazaar;
+        }
+        AhMarketData.MarketEntry entry = AhMarketData.market().get(id);
+        if (entry != null && entry.value() > 0) {
+            return entry.value();
+        }
+        return Math.max(0, AhMarketData.binReference(id, ""));
+    }
+
+    /**
+     * Reforge (NBT "modifier") -> reforge stone. Reforges that are not in here
+     * come from the blacksmith (Wise, Heroic ...) and cost almost nothing.
+     */
+    private static final Map<String, String> REFORGE_STONES = Map.ofEntries(
+            Map.entry("ancient", "PRECURSOR_GEAR"),
+            Map.entry("withered", "WITHER_BLOOD"),
+            Map.entry("fabled", "DRAGON_CLAW"),
+            Map.entry("giant", "GIANT_TOOTH"),
+            Map.entry("necrotic", "NECROMANCER_BROOCH"),
+            Map.entry("renowned", "DRAGON_HORN"),
+            Map.entry("spiritual", "SPIRIT_DECOY"),
+            Map.entry("submerged", "DEEP_SEA_ORB"),
+            Map.entry("jaded", "JADERALD"),
+            Map.entry("loving", "RED_SCARF"),
+            Map.entry("shaded", "DARK_ORB"),
+            Map.entry("mossy", "OVERGROWN_GRASS"),
+            Map.entry("festive", "FROZEN_BAUBLE"),
+            Map.entry("bustling", "SKYMART_BROCHURE"),
+            Map.entry("blooming", "FLOWERING_BOUQUET"),
+            Map.entry("rooted", "BURROWING_SPORES"),
+            Map.entry("auspicious", "ROCK_GEMSTONE"),
+            Map.entry("fleet", "DIAMONITE"),
+            Map.entry("glistening", "SHINY_PRISM"),
+            Map.entry("mithraic", "PURE_MITHRIL"),
+            Map.entry("lustrous", "GLEAMING_CRYSTAL"),
+            Map.entry("refined", "REFINED_AMBER"),
+            Map.entry("blessed", "BLESSED_FRUIT"),
+            Map.entry("bountiful", "GOLDEN_BALL"),
+            Map.entry("squeaky", "SQUEAKY_TOY"),
+            Map.entry("empowered", "SADAN_BROOCH"),
+            Map.entry("warped", "AOTE_STONE"),
+            Map.entry("toil", "TOIL_LOG"),
+            Map.entry("gilded", "MIDAS_JEWEL"),
+            Map.entry("reinforced", "RARE_DIAMOND"),
+            Map.entry("perfect", "DIAMOND_ATOM"),
+            Map.entry("ridiculous", "RED_NOSE"),
+            Map.entry("treacherous", "RUSTY_ANCHOR"),
+            Map.entry("stiff", "HARDENED_WOOD"),
+            Map.entry("lucky", "LUCKY_DICE"),
+            Map.entry("strengthened", "SEARING_STONE"),
+            Map.entry("fortified", "METEOR_SHARD"),
+            Map.entry("waxed", "BLAZE_WAX"),
+            Map.entry("cubic", "MOLTEN_CUBE"),
+            Map.entry("hyper", "ENDSTONE_GEODE"),
+            Map.entry("undead", "PREMIUM_FLESH"),
+            Map.entry("spiked", "DRAGON_SCALE"),
+            Map.entry("suspicious", "SUSPICIOUS_VIAL"),
+            Map.entry("salty", "SALT_CUBE"),
+            Map.entry("pitchin", "PITCHIN_KOI"),
+            Map.entry("stellar", "PETRIFIED_STARFALL"),
+            Map.entry("heated", "HOT_STUFF"),
+            Map.entry("ambered", "AMBER_MATERIAL"),
+            Map.entry("dirty", "DIRT_BOTTLE"),
+            Map.entry("fruitful", "ONYX"),
+            Map.entry("magnetic", "LAPIS_CRYSTAL"),
+            Map.entry("chomp", "KUUDRA_MANDIBLE"),
+            Map.entry("groovy", "MANGROVE_GEM"),
+            Map.entry("moil", "MOIL_LOG"),
+            Map.entry("precise", "OPTICAL_LENS"),
+            Map.entry("bulky", "BULKY_STONE"),
+            Map.entry("candied", "CANDY_CORN"),
+            Map.entry("snowy", "TERRY_SNOWGLOBE"),
+            Map.entry("dimensional", "TITANIUM_TESSERACT"),
+            Map.entry("bloody", "BEATING_HEART"));
+
+    /** Item id of the reforge stone, "" for blacksmith reforges. */
+    public static String reforgeStone(String reforge) {
+        if (reforge == null || reforge.isBlank()) {
+            return "";
+        }
+        return REFORGE_STONES.getOrDefault(reforge.trim().toLowerCase(Locale.ROOT), "");
+    }
+
+    /** Price of the reforge stone, 0 for blacksmith reforges. */
+    public static double reforgeStoneValue(String reforge) {
+        String stone = reforgeStone(reforge);
+        return stone.isEmpty() ? 0 : itemValue(stone);
     }
 
     public static double masterStarValue(int stars) {

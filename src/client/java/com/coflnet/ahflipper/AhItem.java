@@ -115,6 +115,10 @@ public class AhItem {
     public long coflLbin;
     public String coflPick = "";
     public int coflLbinCount = -1;
+    /** LBin exactly as Cofl showed it (coflLbin may be replaced by the real BIN price). */
+    public long coflLbinShown;
+    /** How the count was checked: true = exact price (addon comparison), false = +-search. */
+    public boolean coflLbinExact;
     public String killKey = "";
     public int kills;
     public boolean ethermerge;
@@ -144,6 +148,7 @@ public class AhItem {
         }
         coflMed = values.median();
         coflLbin = values.lbin;
+        coflLbinShown = values.lbin;
         coflPick = values.pick();
         coflLbinCount = -1;
     }
@@ -212,11 +217,13 @@ public class AhItem {
             String petTier = extra.getString("tier").orElse("");
             String heldItem = extra.getString("heldItem").orElse("");
             String petSkin = "";
+            String petType = "";
             CompoundTag petInfo = extra.getCompound("petInfo").orElse(null);
             if (petInfo != null) {
                 petTier = petInfo.getString("tier").orElse(petTier);
                 heldItem = petInfo.getString("heldItem").orElse(heldItem);
                 petSkin = petInfo.getString("skin").orElse(petSkin);
+                petType = petInfo.getString("type").orElse(petType);
             }
             String petInfoRaw = extra.getString("petInfo").orElse("");
             if (!petInfoRaw.isBlank()) {
@@ -225,8 +232,13 @@ public class AhItem {
                     petTier = jsonString(json, "tier", petTier);
                     heldItem = jsonString(json, "heldItem", heldItem);
                     petSkin = jsonString(json, "skin", petSkin);
+                    petType = jsonString(json, "type", petType);
                 } catch (Exception ignored) {
                 }
+            }
+            item.tag = marketTag(item.tag, extra, petType);
+            if (item.runeLevel <= 0) {
+                item.runeLevel = runeLevelFromRunes(extra);
             }
             item.petRarity = petTier.toUpperCase(Locale.ROOT);
             item.petItem = heldItem;
@@ -308,7 +320,8 @@ public class AhItem {
         while (System.currentTimeMillis() < end) {
             item = fromStackWithTooltip(stack);
             if (item.coflValue() > 0) {
-                AhMarketData.ensureLbinCount(item);
+                // the LBin check runs inside AhValuation: only there it is known
+                // whether the item gets an addon comparison (exact price check)
                 return item;
             }
             ScreenUtil.sleep(100);
@@ -363,6 +376,13 @@ public class AhItem {
                 continue;
             }
             String clean = ScreenUtil.cleanName(line);
+            // Our own value lines ("Cofl-LBin: 2.8M", "Lowest Addon-BIN: ...") show
+            // ROUNDED numbers. They used to be parsed as Cofl values here and,
+            // via Math.max in merge(), replaced e.g. the real 2.75M LBin by 2.8M,
+            // so the LBin check found no auction and fell back to the median.
+            if (AhItemValueTooltip.isOwnLine(clean)) {
+                continue;
+            }
             Matcher estimated = COFL_ESTIMATED.matcher(clean);
             if (estimated.find()) {
                 values.estimated = Math.max(values.estimated,
@@ -482,11 +502,89 @@ public class AhItem {
     }
 
     public boolean isPet() {
-        return (tag != null && tag.toUpperCase(Locale.ROOT).startsWith("PET_")) || petLevel > 0;
+        return isPetTag(tag) || petLevel > 0;
+    }
+
+    /**
+     * PET_LION is a pet; PET_SKIN_* and PET_ITEM_* are normal items that
+     * only share the prefix. They used to be treated as pets (and rejected).
+     */
+    public static boolean isPetTag(String tag) {
+        if (tag == null) {
+            return false;
+        }
+        String upper = tag.trim().toUpperCase(Locale.ROOT);
+        return upper.startsWith("PET_") && !upper.startsWith("PET_SKIN_")
+                && !upper.startsWith("PET_ITEM_");
+    }
+
+    /**
+     * Hypixel stores every pet as id "PET" and every rune as id "RUNE" /
+     * "UNIQUE_RUNE"; the price API only knows PET_LION, RUNE_MUSIC ... With
+     * the raw id every price, sales and LBin lookup returned nothing, so all
+     * pets/runes from a stack (lowballing, tooltip) were rejected.
+     */
+    private static String marketTag(String id, CompoundTag extra, String petType) {
+        if (id == null || id.isBlank()) {
+            return "";
+        }
+        if (id.equals("PET") && petType != null && !petType.isBlank()) {
+            return "PET_" + petType.trim().toUpperCase(Locale.ROOT);
+        }
+        if ((id.equals("RUNE") || id.equals("UNIQUE_RUNE")) && extra != null) {
+            CompoundTag runes = extra.getCompound("runes").orElse(null);
+            if (runes != null) {
+                for (String key : runes.keySet()) {
+                    if (!key.isBlank()) {
+                        return id + "_" + key.toUpperCase(Locale.ROOT);
+                    }
+                }
+            }
+        }
+        return id;
+    }
+
+    private static int runeLevelFromRunes(CompoundTag extra) {
+        if (extra == null) {
+            return 0;
+        }
+        CompoundTag runes = extra.getCompound("runes").orElse(null);
+        if (runes == null) {
+            return 0;
+        }
+        for (String key : runes.keySet()) {
+            int level = runes.getInt(key).orElse(0);
+            if (level > 0) {
+                return level;
+            }
+        }
+        return 0;
     }
 
     public boolean isRune() {
         return runeLevel > 0 || isRuneTag(tag);
+    }
+
+    /**
+     * Same item tag. A remembered purchase from before the PET_x / RUNE_x fix
+     * may still carry the bare "PET" / "RUNE" id: that matches every pet/rune.
+     */
+    public static boolean sameTag(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        String x = a.trim().toUpperCase(Locale.ROOT);
+        String y = b.trim().toUpperCase(Locale.ROOT);
+        if (x.equals(y)) {
+            return true;
+        }
+        for (String generic : new String[]{"PET", "RUNE", "UNIQUE_RUNE"}) {
+            if ((x.equals(generic) && y.startsWith(generic + "_"))
+                    || (y.equals(generic) && x.startsWith(generic + "_"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isRuneTag(String tag) {
@@ -674,7 +772,15 @@ public class AhItem {
         if (petLevel <= 0 || petRarity == null || petRarity.isBlank()) {
             return "";
         }
-        return "&PetLevel=" + petLevel + "&Rarity=" + petRarity;
+        return "&PetLevel=" + petCompareLevel(petLevel) + "&Rarity=" + petRarity;
+    }
+
+    /** Pets below level 95 are valued as level 1; from 95 on the exact level counts. */
+    public static int petCompareLevel(int level) {
+        if (level <= 0) {
+            return 0;
+        }
+        return level >= 95 ? level : 1;
     }
 
     public static int petLevel(String itemName) {

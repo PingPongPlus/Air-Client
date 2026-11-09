@@ -140,6 +140,30 @@ tasks.register('ahFlipperConfigTest', JavaExec) {
 }
 tasks.named('check') { dependsOn 'ahFlipperConfigTest' }
 
+tasks.register('ahLbinMatchTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.ahflipper.AhLbinMatchTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'ahLbinMatchTest' }
+
+tasks.register('ahValuationRulesTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.ahflipper.AhValuationRulesTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'ahValuationRulesTest' }
+
+tasks.register('bazaarChatEventTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.flipper.trading.BazaarChatEventTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'bazaarChatEventTest' }
+
 tasks.register('spotifySmokeTest', JavaExec) {
     dependsOn voiceTestClasses, clientClasses
     classpath = sourceSets.voiceTest.runtimeClasspath
@@ -218,3 +242,27 @@ publishing {
         // retrieving dependencies.
     }
 }
+
+tasks.register('lowballingHubsTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.lowballing.LowballingHubsTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'lowballingHubsTest' }
+
+tasks.register('lowballingChatTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.lowballing.LowballingChatTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'lowballingChatTest' }
+
+tasks.register('ahProtectedBiddersTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.ahflipper.AhProtectedBiddersTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'ahProtectedBiddersTest' }

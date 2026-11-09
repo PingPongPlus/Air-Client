@@ -4,7 +4,9 @@ import com.coflnet.CoflModClient;
 import com.coflnet.ahflipper.AhAnalyzer;
 import com.coflnet.ahflipper.AhFlipperMod;
 import com.coflnet.ahflipper.AhItem;
+import com.coflnet.ahflipper.AhItemValueTooltip;
 import com.coflnet.ahflipper.AhValuation;
+import net.minecraft.world.item.ItemStack;
 import com.coflnet.flipper.trading.ScreenUtil;
 import com.coflnet.flipper.trading.SignInput;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -124,6 +126,14 @@ public final class LowballingMod {
 
     private static int cycles;
     private static int hubNumber;
+    /** Hub we want to advertise in (hubStartNumber or the one after it). */
+    private static int targetHub;
+    /** Hub we are in right now (0 = unknown). */
+    private static int currentHub;
+    /** Hub whose ad cooldowns adCooldowns holds. */
+    private static int cooldownHub;
+    /** The target hub was full: we are in a later one and retry the target. */
+    private static boolean targetHubFull;
     private static int hubClicks;
     private static int selectorClicks;
     private static boolean hubMenuStarted;
@@ -131,6 +141,24 @@ public final class LowballingMod {
     private static long warpRequestedAt;
     private static long switchConfirmedAt;
     private static long levelChangedAt;
+    /** Start of the current /hub trip and when the hub world really loaded. */
+    private static long hubTripStartedAt;
+    private static long hubArrivedAt;
+    /** levelChangedAt when the bot settled on the island / in the hub (0 = none). */
+    private static long stableLevelAt;
+
+    /**
+     * True once the world really changed after {@code since} and had a moment to
+     * load. "Sende zum Server ..." arrives BEFORE the transfer, and the old
+     * coordinate check fired while the bot was still on the previous server, so
+     * it e.g. "arrived on the island" while still standing in the hub and sent
+     * trade requests to hub players.
+     */
+    private static boolean levelArrivedAfter(long since, long now) {
+        Minecraft client = Minecraft.getInstance();
+        return client.player != null && client.level != null
+                && levelChangedAt > since && now - levelChangedAt >= 600L;
+    }
     private static Object lastLevel;
     private static State stateBeforeDisconnect = State.IDLE;
     private static double warpX;
@@ -223,6 +251,11 @@ public final class LowballingMod {
                 stateBeforeDisconnect = State.IDLE;
             }
         });
+    }
+
+    /** The lowballer never jumps; in water jumping is swimming, so that stays. */
+    public static boolean blocksJump(net.minecraft.client.player.LocalPlayer player) {
+        return running && player != null && !player.isInWater();
     }
 
     public static boolean isRunning() {
@@ -383,12 +416,23 @@ public final class LowballingMod {
             message("§c[Lowballing] läuft bereits.");
             return;
         }
+        if (com.coflnet.flipper.ServerRestartHandler.isActive()) {
+            // Running next to the reboot warp sequence made both send /hub and
+            // /is at the same time. Start automatically once it is done.
+            com.coflnet.flipper.ServerRestartHandler.resumeLowballingAfterwards();
+            message("§e[Lowballing] §7Server-Restart läuft - starte danach automatisch.");
+            return;
+        }
         if (!ScreenUtil.onSkyBlock()) {
             message("§c[Lowballing] kann nur auf Hypixel SkyBlock gestartet werden.");
             return;
         }
         running = true;
         cycles = 0;
+        targetHub = CONFIG.hubStartNumber;
+        currentHub = 0;
+        cooldownHub = 0;
+        targetHubFull = false;
         targetUuid = null;
         targetName = "";
         targetEntity = null;
@@ -411,28 +455,7 @@ public final class LowballingMod {
     }
 
     private static void stop(String text) {
-        running = false;
-        releaseSneak();
-        releaseForward();
-        LowballingRotation.clear();
-        LowballingNavigator.stop();
-        LowballingGui.close();
-        SignInput.clear();
-        PENDING_CHAT.clear();
-        pausedAt = 0;
-        PLAYER_QUEUE.clear();
-        TRACKED.clear();
-        PROCESSED.clear();
-        pendingOffer = null;
-        secondOffer = false;
-        finalizingSecond = false;
-        kickAfterMenu = false;
-        valuationOffer = null;
-        valuationError = null;
-        currentTradeTag = "";
-        currentTradeName = "";
-        currentTradeValue = 0;
-        setState(State.IDLE);
+        shutDown();
         if (text != null && !text.isBlank()) {
             message(text);
         }
@@ -440,24 +463,71 @@ public final class LowballingMod {
 
     private static void fail(String reason) {
         System.out.println("[Lowballing] Fehler: " + reason);
-        LowballingGui.close();
+        shutDown();
+        message("§c[Lowballing] Fehler: §f" + reason + " §c- Lowballing beendet.");
+    }
+
+    private static void shutDown() {
         running = false;
         releaseSneak();
         releaseForward();
         LowballingRotation.clear();
         LowballingNavigator.stop();
+        LowballingGui.close();
         SignInput.clear();
         PENDING_CHAT.clear();
+        // A reply still waiting here would be sent at the next start otherwise.
+        synchronized (DELAYED_CHAT) {
+            DELAYED_CHAT.clear();
+        }
         pausedAt = 0;
         PLAYER_QUEUE.clear();
         TRACKED.clear();
         PROCESSED.clear();
+        HANDLED_NAMES.clear();
         pendingOffer = null;
+        pendingTradeItems = List.of();
+        rejectedTradeNames = List.of();
         secondOffer = false;
         finalizingSecond = false;
         kickAfterMenu = false;
+        partialStage = 0;
+        visitorPending = false;
+        visitorPendingName = "";
+        valuationOffer = null;
+        valuationError = null;
+        currentTradeTag = "";
+        currentTradeName = "";
+        currentTradeValue = 0;
         setState(State.IDLE);
-        message("§c[Lowballing] Fehler: §f" + reason + " §c- Lowballing beendet.");
+    }
+
+    private static final int MAX_RECOVERIES = 4;
+    private static final long RECOVERY_WINDOW_MS = 10 * 60_000L;
+    private static int recoveries;
+    private static long recoveryWindowAt;
+
+    /**
+     * A full hub, a lag spike or a selector that did not load is no reason to end
+     * the whole bot: start the sequence over. Only if that keeps happening within
+     * a few minutes something is really wrong, and the bot stops.
+     */
+    private static void recover(String reason) {
+        long now = System.currentTimeMillis();
+        if (now - recoveryWindowAt > RECOVERY_WINDOW_MS) {
+            recoveryWindowAt = now;
+            recoveries = 0;
+        }
+        recoveries++;
+        if (recoveries > MAX_RECOVERIES) {
+            fail(reason + " (" + MAX_RECOVERIES + "x in kurzer Zeit)");
+            return;
+        }
+        System.out.println("[Lowballing] Problem: " + reason + " - starte neu ("
+                + recoveries + "/" + MAX_RECOVERIES + ")");
+        message("§e[Lowballing] §7" + reason + " - starte Sequenz neu.");
+        kickAfterMenu = false;
+        enterGoHub();
     }
 
     private static void setState(State next) {
@@ -479,6 +549,9 @@ public final class LowballingMod {
         LowballingChat.reset();
         setState(State.GO_HUB);
         warpWatchAt = stateAt;
+        hubTripStartedAt = stateAt;
+        hubArrivedAt = 0;
+        stableLevelAt = 0;
         warpRequestedAt = 0;
         switchConfirmedAt = 0;
         levelChangedAt = 0;
@@ -486,15 +559,16 @@ public final class LowballingMod {
         stateBeforeDisconnect = State.IDLE;
         // A visitor that arrived just before /hub must not be forgotten: the
         // hub sequence returns to the island for them as soon as it can.
-        long lastVisit = LowballingChat.lastVisitorAt();
-        if (lastVisit > 0 && System.currentTimeMillis() - lastVisit < 30_000L) {
+        // Only a visitor that was not handled yet counts; the one we just
+        // traded/kicked used to send the bot straight back to the island.
+        String pending = unhandledVisitor(30_000L);
+        if (pending != null) {
             visitorPending = true;
-            if (visitorPendingName.isBlank()) {
-                visitorPendingName = "Besucher";
-            }
+            visitorPendingName = pending;
         } else {
             visitorPending = false;
             visitorPendingName = "";
+            LowballingChat.clearVisitor();
         }
         setWarpPosition();
         sendChat("/hub");
@@ -523,7 +597,7 @@ public final class LowballingMod {
         releaseSneak();
         if (!hubMenuStarted) {
             hubMenuStarted = true;
-            hubNumber = CONFIG.hubStartNumber;
+            hubNumber = targetHub();
             hubClicks = 0;
         }
         LowballingChat.clearWarp();
@@ -544,12 +618,18 @@ public final class LowballingMod {
     }
 
     private static void enterHubSettle() {
+        // a real warp starts a fresh spawn: the extra walks start from 0 again
+        boolean spawnRewalk = state == State.ADVERTISE;
         releaseSneak();
         releaseForward();
         LowballingNavigator.stop();
         LowballingGui.close();
         LowballingRotation.clear();
         setState(State.HUB_SETTLE);
+        if (!spawnRewalk) {
+            spawnWalks = 0;
+        }
+        currentHub = hubNumber;
         switchConfirmedAt = System.currentTimeMillis();
         actionAt = stateAt;
         Minecraft client = Minecraft.getInstance();
@@ -579,9 +659,35 @@ public final class LowballingMod {
         LowballingChat.clearWarp();
         setState(State.ADVERTISE);
         advertiseStartedAt = stateAt;
+        HANDLED_NAMES.clear();
+        stableLevelAt = Math.max(1L, levelChangedAt);
         nextAdAt = stateAt + 3000L;
         bankrollMissingSince = 0;
-        debug("Warp erfolgreich - Werbung");
+        if (currentHub > 0 && currentHub == targetHub()) {
+            targetHubFull = false;
+        }
+        if (currentHub > 0 && currentHub != cooldownHub) {
+            // new hub, new audience: every ad message may be used again
+            if (cooldownHub > 0) {
+                java.util.Arrays.fill(adCooldowns, 0L);
+                debug("Hub #" + cooldownHub + " -> #" + currentHub + ": Cooldowns zurueckgesetzt");
+            }
+            cooldownHub = currentHub;
+        }
+        debug("Warp erfolgreich - Werbung in Hub #" + currentHub
+                + (targetHubFull ? " (Ziel-Hub #" + targetHub() + " war voll)" : ""));
+    }
+
+    private static int targetHub() {
+        return targetHub > 0 ? targetHub : CONFIG.hubStartNumber;
+    }
+
+    /** Leave the current hub through the hub selector towards {@code hub}. */
+    private static void switchHub(int hub, String reason) {
+        hubNumber = hub;
+        hubMenuStarted = false;
+        message("\u00a76[Lowballing] \u00a77" + reason);
+        enterFindSelector();
     }
 
     private static void enterReturnIsland() {
@@ -603,6 +709,7 @@ public final class LowballingMod {
     }
 
     private static void enterIslandScan() {
+        stableLevelAt = Math.max(1L, levelChangedAt);
         releaseSneak();
         LowballingNavigator.stop();
         LowballingChat.clearWarp();
@@ -620,7 +727,8 @@ public final class LowballingMod {
         setState(State.APPROACH_PLAYER);
         actionAt = stateAt;
         coinsClicked = false;
-        kickAfterMenu = false;
+        // kickAfterMenu stays: when the visitor walked away during a kick, this
+        // used to turn the kick into a new trade request after walking back.
         unSneakClicks = 0;
         offerSearchStartedAt = 0;
         if (!secondOffer) {
@@ -693,7 +801,16 @@ public final class LowballingMod {
         setState(State.SET_COINS);
         actionAt = stateAt;
         setCoinsClosedAt = 0;
+        coinsSignSeen = false;
+        coinsReclicked = false;
     }
+
+    /** The coins sign opened in this SET_COINS step. */
+    private static boolean coinsSignSeen;
+    private static boolean coinsReclicked;
+    /** The sign can open more than 1 s after the click (lag): wait this long for it. */
+    private static final long COINS_SIGN_WAIT_MS = 4_000L;
+    private static long straySignAt;
 
     private static void enterWaitTrade() {
         setState(State.WAIT_TRADE);
@@ -724,6 +841,7 @@ public final class LowballingMod {
     }
 
     private static void enterNextPlayer() {
+        kickAfterMenu = false;
         releaseSneak();
         releaseForward();
         LowballingRotation.clear();
@@ -756,6 +874,7 @@ public final class LowballingMod {
         lastLevel = client.level;
         try {
             long now = System.currentTimeMillis();
+            holdBazaarFlipper(now);
             if (pauseForForeignGui(client, now)) {
                 return;
             }
@@ -766,7 +885,11 @@ public final class LowballingMod {
                 enterGoHub();
                 return;
             }
-            if (!expectsWarp() && now - stateAt > 5000 && LowballingChat.consumeWarp(0)) {
+            // Only a real world change counts as an unexpected server switch; an
+            // old "Sende zum Server" line used to restart the sequence mid-trade.
+            if (!expectsWarp() && state != State.RECONNECTING && stableLevelAt > 0
+                    && levelChangedAt > stableLevelAt && now - levelChangedAt > 1000L) {
+                stableLevelAt = 0;
                 message("§e[Lowballing] §7Serverwechsel erkannt - starte Sequenz neu.");
                 enterGoHub();
                 return;
@@ -807,7 +930,7 @@ public final class LowballingMod {
             }
         } catch (Exception e) {
             System.out.println("[Lowballing] Tick-Fehler: " + e);
-            fail("Interner Fehler: " + e.getMessage());
+            recover("Interner Fehler: " + e.getMessage());
         }
     }
 
@@ -837,7 +960,10 @@ public final class LowballingMod {
             return false;
         }
         boolean canLeave = switch (state) {
-            case FIND_SELECTOR, OPEN_SELECTOR, HUB_SETTLE, ADVERTISE -> true;
+            // still on the island while /hub is in flight: wait until the hub
+            // really loaded, otherwise the island position is taken as warp start
+            case FIND_SELECTOR, OPEN_SELECTOR -> hubArrivedAt > hubTripStartedAt;
+            case HUB_SETTLE, ADVERTISE -> true;
             case HUB_MENU -> hubClicks == 0 && warpRequestedAt == 0;
             default -> false;
         };
@@ -863,12 +989,17 @@ public final class LowballingMod {
         boolean screenOpen = client.gui.screen() != null;
         boolean ahScreen = com.coflnet.ahflipper.AhScreenUtil.currentScreen()
                 != com.coflnet.ahflipper.AhScreenUtil.AhScreen.NONE;
+        if (screenOpen && !ahScreen) {
+            // An open Bazaar menu must not be taken for the player or hub menu.
+            com.coflnet.flipper.trading.Trader trader = com.coflnet.flipper.trading.Trader.get();
+            ahScreen = trader != null && trader.hasBazaarContainer();
+        }
         boolean ahBusy = com.coflnet.ahflipper.AhFlipperMod.automationBusyExcept("lowball");
         boolean block = switch (state) {
             case IDLE, RECONNECTING, LISTING -> false;
             // our own GUI (hub menu, trade, player menu) is expected here
             case HUB_MENU, PLAYER_MENU, OPEN_OFFER, VALUING, OFFER_READY, SET_COINS,
-                 WAIT_TRADE, KICK_WAIT -> ahScreen;
+                 WAIT_TRADE, KICK_WAIT -> ahScreen && !LowballingGui.isSignOpen();
             // a GUI may open as the result of our own click
             case FIND_SELECTOR, OPEN_SELECTOR, OPEN_MENU -> ahScreen || ahBusy;
             // walking, turning, chatting: nothing may be open
@@ -880,7 +1011,8 @@ public final class LowballingMod {
                 releaseForward();
                 LowballingNavigator.stop();
                 LowballingRotation.clear();
-                debug("Pause - " + (ahBusy ? "AH-Flipper beschäftigt" : "GUI offen"));
+                debug("Pause - " + (ahBusy ? "AH-Flipper beschäftigt"
+                        : "GUI offen: '" + LowballingGui.currentTitle() + "'") + " in " + state);
             }
             return true;
         }
@@ -894,15 +1026,47 @@ public final class LowballingMod {
             if (phaseAt > 0) {
                 phaseAt += paused;
             }
-            if (nextAdAt > 0) {
-                nextAdAt += paused;
-            }
+            // nextAdAt is NOT shifted: the ad timer keeps running while we
+            // wait, only the message itself is held back until we may write.
             if (islandArrivedAt > 0) {
                 islandArrivedAt += paused;
+            }
+            if (reachSince > 0) {
+                reachSince += paused;
+            }
+            if (offerSearchStartedAt > 0) {
+                offerSearchStartedAt += paused;
+            }
+            if (kickRequestedAt > 0) {
+                kickRequestedAt += paused;
             }
             debug("Weiter nach " + (paused / 1000) + "s Pause");
         }
         return false;
+    }
+
+    private static long lastBazaarHoldAt;
+
+    /**
+     * Both bots use the same GUI: "/bz" in the middle of a trade closes the trade
+     * window, and the open Bazaar menu looks like the player menu to this bot. While
+     * a menu of this bot matters, the Bazaar flipper waits.
+     */
+    private static void holdBazaarFlipper(long now) {
+        boolean guiNeeded = switch (state) {
+            case OPEN_SELECTOR, HUB_MENU, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU, OPEN_OFFER,
+                 VALUING, OFFER_READY, SET_COINS, WAIT_TRADE, CHAT_OFFER, KICK_WAIT,
+                 NEXT_PLAYER -> true;
+            default -> false;
+        };
+        if (!guiNeeded || now - lastBazaarHoldAt < 2_000L) {
+            return;
+        }
+        lastBazaarHoldAt = now;
+        com.coflnet.flipper.trading.Trader trader = com.coflnet.flipper.trading.Trader.get();
+        if (trader != null && trader.isRunning()) {
+            trader.holdGuiFor(5_000L);
+        }
     }
 
     private static void flushPendingChat(Minecraft client) {
@@ -923,10 +1087,12 @@ public final class LowballingMod {
 
     private static void tickGoHub(Minecraft client, long now) {
         if (LowballingChat.consumeAlreadyHere(warpWatchAt)) {
+            hubArrivedAt = now;
             enterFindSelector();
             return;
         }
-        if (LowballingChat.consumeWarp(warpWatchAt) || coordsMoved(5.0)) {
+        if (levelArrivedAfter(warpWatchAt, now)) {
+            hubArrivedAt = now;
             enterFindSelector();
             return;
         }
@@ -938,6 +1104,7 @@ public final class LowballingMod {
         if (now - stateAt > CONFIG.hubSelectorFallbackSeconds * 1000L
                 && findEntity(CONFIG.hubSelectorName) != null) {
             debug("/hub ohne Koordinatenwechsel - bereits im Hub");
+            hubArrivedAt = now;
             enterFindSelector();
             return;
         }
@@ -958,7 +1125,7 @@ public final class LowballingMod {
         if (selector == null) {
             targetEntity = null;
             if (now - stateAt > CONFIG.hubSelectorFindTimeoutSeconds * 1000L) {
-                fail(CONFIG.hubSelectorName + " nicht gefunden");
+                recover(CONFIG.hubSelectorName + " nicht gefunden");
             }
             return;
         }
@@ -989,7 +1156,7 @@ public final class LowballingMod {
             return;
         }
         if (selectorClicks >= CONFIG.hubSelectorAttempts) {
-            fail(CONFIG.hubSelectorName + "-GUI öffnet nicht");
+            recover(CONFIG.hubSelectorName + "-GUI öffnet nicht");
             return;
         }
         LowballingRotation.lookAt(selector);
@@ -1007,11 +1174,16 @@ public final class LowballingMod {
             LowballingGui.close();
             releaseSneak();
             debug("Already on this server - skipping hub selector warp");
+            currentHub = hubNumber;
             enterAdvertise();
             return;
         }
         if (LowballingChat.consumeWarp(warpWatchAt)) {
             warpRequestedAt = now;
+        }
+        if (LowballingChat.consumeHubFull(warpWatchAt)) {
+            nextHubAfterFull();
+            return;
         }
         if (!LowballingGui.isContainerOpen()) {
             enterWaitHubWarp();
@@ -1025,7 +1197,7 @@ public final class LowballingMod {
             hubClicks = 0;
             actionAt = now;
             if (hubNumber > CONFIG.maxHubNumber) {
-                fail("Kein Hub-Warp möglich");
+                recover("Kein Hub-Warp möglich");
             }
             return;
         }
@@ -1035,7 +1207,7 @@ public final class LowballingMod {
             hubClicks = 0;
             actionAt = now;
             if (hubNumber > CONFIG.maxHubNumber) {
-                fail("Kein Skyblock-Hub-Slot gefunden");
+                recover("Kein Skyblock-Hub-Slot gefunden");
             }
             return;
         }
@@ -1047,10 +1219,15 @@ public final class LowballingMod {
     }
 
     private static void tickWaitHubWarp(Minecraft client, long now) {
+        if (LowballingChat.consumeHubFull(warpWatchAt)) {
+            nextHubAfterFull();
+            return;
+        }
         if (LowballingChat.consumeAlreadyHere(warpWatchAt)) {
             LowballingGui.close();
             releaseSneak();
             debug("Already on this server - skipping warp wait");
+            currentHub = hubNumber;
             enterAdvertise();
             return;
         }
@@ -1064,6 +1241,22 @@ public final class LowballingMod {
         if (now - actionAt > CONFIG.hubMenuCloseGraceMs) {
             enterOpenSelector();
         }
+    }
+
+    /** The clicked hub is full: try the next number (wrap around) via the selector. */
+    private static void nextHubAfterFull() {
+        if (hubNumber == targetHub()) {
+            // remembered: from the fallback hub the target is retried later
+            targetHubFull = true;
+        }
+        hubNumber++;
+        if (hubNumber > CONFIG.maxHubNumber) {
+            hubNumber = CONFIG.hubStartNumber;
+        }
+        hubClicks = 0;
+        LowballingGui.close();
+        debug("Hub voll - versuche Hub #" + hubNumber);
+        enterOpenSelector();
     }
 
     private static boolean serverSwitchDetected(long now) {
@@ -1109,6 +1302,26 @@ public final class LowballingMod {
             enterReturnIsland();
             return;
         }
+        if (LowballingHubs.retryTargetDue(targetHubFull, currentHub, targetHub(),
+                advertiseStartedAt, now, CONFIG.fullHubRetrySeconds * 1000L)) {
+            switchHub(targetHub(), "Hub #" + targetHub() + " war voll - versuche es erneut.");
+            return;
+        }
+        if (lastAdSentAt > 0 && LowballingChat.consumeSpawnChatBlocked(lastAdSentAt)) {
+            // the ad never reached the chat: that message is free again, walk
+            // a bit further away from spawn and write again
+            if (lastAdIndex >= 0 && lastAdIndex < adCooldowns.length) {
+                adCooldowns[lastAdIndex] = 0;
+            }
+            lastAdSentAt = 0;
+            if (spawnWalks < 3) {
+                spawnWalks++;
+                message("\u00a7e[Lowballing] \u00a77Zu nah am Spawn zum Schreiben - gehe weiter weg.");
+                enterHubSettle();
+                return;
+            }
+            nextAdAt = now;
+        }
         if (now < nextAdAt) {
             return;
         }
@@ -1128,15 +1341,32 @@ public final class LowballingMod {
         String text = pickMessage(CONFIG.adMessages, adCooldowns,
                 CONFIG.advertiseCooldownSeconds * 1000L, bankroll);
         if (text == null) {
+            if (CONFIG.rotateHubsOnCooldown && CONFIG.adMessages != null
+                    && !CONFIG.adMessages.isEmpty()) {
+                // every message used here: go to the other hub, the cooldowns
+                // are reset there (enterAdvertise) and we advertise again
+                int here = currentHub > 0 ? currentHub : targetHub();
+                int next = LowballingHubs.alternate(here, CONFIG.hubStartNumber,
+                        CONFIG.maxHubNumber);
+                if (next != here) {
+                    targetHub = next;
+                    targetHubFull = false;
+                    switchHub(next, "Alle Nachrichten auf Cooldown - wechsle zu Hub #"
+                            + next + ".");
+                }
+            }
             return;
         }
         sendChat(text);
+        lastAdSentAt = now;
+        lastAdIndex = lastPickedIndex;
         nextAdAt = now + CONFIG.advertiseIntervalSeconds * 1000L;
         debug("Werbung: " + text);
     }
 
     private static void tickReturnIsland(Minecraft client, long now) {
-        if (coordsMoved(5.0)) {
+        if (levelArrivedAfter(stateAt, now)
+                || LowballingChat.consumeAlreadyHere(warpWatchAt)) {
             enterIslandScan();
             return;
         }
@@ -1146,13 +1376,37 @@ public final class LowballingMod {
             debug("Sende /is");
         }
         if (now - stateAt > CONFIG.returnIslandTimeoutSeconds * 1000L) {
-            fail("/is hat die Insel nicht geladen");
+            recover("/is hat die Insel nicht geladen");
         }
     }
 
     /** After a "X is visiting your island" message the bot stays at least this long. */
     private static final long VISITOR_GRACE_MS = 15_000L;
     private static long lastTrackUpdateAt;
+
+    /** Lower-case names of visitors already handled since the last hub trip. */
+    private static final Set<String> HANDLED_NAMES = new HashSet<>();
+
+    /**
+     * Name of a visitor announced within {@code windowMs} that was not handled
+     * yet and is still here (or was announced just now and may still be
+     * loading), else null.
+     */
+    private static String unhandledVisitor(long windowMs) {
+        long now = System.currentTimeMillis();
+        for (String name : LowballingChat.visitorsSince(now - windowMs)) {
+            if (HANDLED_NAMES.contains(name)) {
+                continue;
+            }
+            if (findPlayerByName(name) != null) {
+                return name;
+            }
+            if (now - LowballingChat.visitAt(name) <= 5_000L) {
+                return name;
+            }
+        }
+        return null;
+    }
 
     private static boolean onIsland() {
         return switch (state) {
@@ -1175,8 +1429,7 @@ public final class LowballingMod {
         }
         long wait = (CONFIG.islandSettleSeconds + CONFIG.islandEmptyWaitSeconds) * 1000L;
         if (now - islandArrivedAt >= wait) {
-            long lastVisit = LowballingChat.lastVisitorAt();
-            if (lastVisit > 0 && now - lastVisit < VISITOR_GRACE_MS) {
+            if (unhandledVisitor(VISITOR_GRACE_MS) != null) {
                 return; // someone just arrived - wait for them instead of leaving
             }
             finishCycle();
@@ -1248,6 +1501,13 @@ public final class LowballingMod {
             return;
         }
         if (kickAfterMenu) {
+            // Without a limit a player whose menu never opens held the bot forever.
+            if (now - kickRequestedAt > KICK_TIMEOUT_MS) {
+                message("§e[Lowballing] §7Kick-Menü von " + targetName
+                        + " öffnet nicht - weiter.");
+                enterNextPlayer();
+                return;
+            }
             if (now - actionAt < CONFIG.menuUnSneakIntervalMs) {
                 return;
             }
@@ -1348,7 +1608,8 @@ public final class LowballingMod {
         Offer offer = valuationOffer;
         if (offer == null) {
             if (now - stateAt > 60000) {
-                fail("Bewertung dauert zu lange");
+                message("§e[Lowballing] §7Bewertung dauert zu lange - kicke Spieler.");
+                requestKick();
             }
             return;
         }
@@ -1363,7 +1624,9 @@ public final class LowballingMod {
     private static void tickOfferReady(Minecraft client, long now) {
         Offer offer = pendingOffer;
         if (offer == null) {
-            fail("Angebot fehlt");
+            System.out.println("[Lowballing] Angebot fehlt - naechster Spieler");
+            LowballingGui.close();
+            enterNextPlayer();
             return;
         }
         if (!offer.buyable()) {
@@ -1416,6 +1679,7 @@ public final class LowballingMod {
 
     private static void tickSetCoins(Minecraft client, long now) {
         if (LowballingGui.isSignOpen()) {
+            coinsSignSeen = true;
             setCoinsClosedAt = 0;
             if (now - stateAt > 3000) {
                 LowballingGui.close();
@@ -1447,6 +1711,25 @@ public final class LowballingMod {
         if (now - stateAt < 1000) {
             return;
         }
+        if (!coinsSignSeen) {
+            // The sign arrived late (this hung the second offer: we went on,
+            // cleared the coins and an empty sign stayed open). Wait for it,
+            // click the coins slot once more, and only then give up waiting.
+            if (now - stateAt < COINS_SIGN_WAIT_MS) {
+                return;
+            }
+            if (!coinsReclicked) {
+                int coins = LowballingGui.findCoinsSlot();
+                if (coins >= 0) {
+                    coinsReclicked = true;
+                    stateAt = now - 1000L;
+                    LowballingGui.clickSlot(coins, 0);
+                    debug("Coins-Schild kam nicht - klicke Coins erneut");
+                    return;
+                }
+            }
+            debug("Coins-Schild nicht gesehen - fahre fort");
+        }
         SignInput.clear();
         if (LowballingGui.isOpenTradeWith(targetName)) {
             // Coins are in and we are inside the trade window already (the
@@ -1474,6 +1757,19 @@ public final class LowballingMod {
     }
 
     private static void tickWaitTrade(Minecraft client, long now) {
+        if (LowballingGui.isSignOpen()) {
+            // a stray (late) coins sign must never block the trade
+            if (straySignAt == 0) {
+                straySignAt = now;
+            }
+            if (now - straySignAt > 1_500L) {
+                debug("Unerwartetes Schild im Trade - schliesse es");
+                LowballingGui.close();
+                straySignAt = 0;
+            }
+            return;
+        }
+        straySignAt = 0;
         boolean container = LowballingGui.isContainerOpen();
         if (container && handleWrongTradePartner(client)) {
             return;
@@ -1759,6 +2055,11 @@ public final class LowballingMod {
         LowballingChat.PlayerLine said = combinedLines(targetName, since);
         String item = shortItemName(offer.displayName());
         if (said != null) {
+            if (LowballingSmartChat.isValueClaim(said.text())) {
+                counterAnswered = true;
+                lastReplyHandledAt = said.at();
+                return LowballingSmartChat.answerValueClaim(offer.chatOffer(), item);
+            }
             long ask = LowballingSmartChat.parseAsk(said.text(), offer.expectedValue());
             if (ask > 0 && ask <= offer.chatOffer()) {
                 agreedSecondPrice = ask;
@@ -1786,6 +2087,15 @@ public final class LowballingMod {
      */
     private static boolean handleChatReply(Offer offer, LowballingChat.PlayerLine reply, long now) {
         String item = shortItemName(offer.displayName());
+        if (LowballingSmartChat.isValueClaim(reply.text())) {
+            // "lbin on one of those is 30m": that is no price they ask for
+            if (!counterAnswered) {
+                counterAnswered = true;
+                sendChatDelayed(LowballingSmartChat.answerValueClaim(offer.chatOffer(), item));
+                phaseAt = now;
+            }
+            return false;
+        }
         long ask = LowballingSmartChat.parseAsk(reply.text(), offer.expectedValue());
         if (ask > 0 && ask <= offer.chatOffer()) {
             agreedSecondPrice = ask;
@@ -1915,7 +2225,8 @@ public final class LowballingMod {
                     boolean listed = AhFlipperMod.listLowballedFixed(
                             item.tag(), item.name(), item.saleValue());
                     if (!listed) {
-                        message("§c[Lowballing] §7Listing fehlgeschlagen: §f" + item.name());
+                        message("§e[Lowballing] §7Noch nicht gelistet, wird im Hintergrund"
+                                + " weiter versucht: §f" + item.name());
                     }
                 }
             } finally {
@@ -2049,15 +2360,14 @@ public final class LowballingMod {
         List<String> actualPrints = new ArrayList<>();
         long actualTotal = 0;
         for (int slot : slots) {
-            AhItem item = LowballingGui.itemAt(slot);
+            AhItem item = valuedItemAt(slot);
             if (item.tag.isBlank()) {
                 return "unbekanntes Item im Trade";
             }
             actualPrints.add(fingerprint(item));
-            long sale = saleValue(item, slot);
-            long value = tooltipValue(item, slot, sale);
+            long value = tooltipValueForCheck(item);
             if (value <= 0) {
-                return "";
+                return ""; // still computing (or no value yet): check again shortly
             }
             actualTotal += value;
         }
@@ -2122,8 +2432,13 @@ public final class LowballingMod {
         enterChatOffer();
     }
 
+    private static final long KICK_TIMEOUT_MS = 12_000L;
+    private static long kickRequestedAt;
+
     private static void requestKick() {
         SignInput.clear();
+        kickRequestedAt = System.currentTimeMillis();
+        reachSince = 0;
         if (LowballingGui.isContainerOpen()) {
             int kick = LowballingGui.findKickSlot();
             if (kick >= 0) {
@@ -2152,7 +2467,7 @@ public final class LowballingMod {
             List<String> rejected = new ArrayList<>();
             List<TradeItem> tradeItems = new ArrayList<>();
             for (int slot : slots) {
-                AhItem item = LowballingGui.itemAt(slot);
+                AhItem item = valuedItemAt(slot);
                 if (item.tag.isBlank()) {
                     List<String> itemReasons = List.of("Item ohne Tag in Slot " + slot);
                     logTradeItem("", item.displayName, 0, false, itemReasons);
@@ -2160,25 +2475,26 @@ public final class LowballingMod {
                     rejected.add(item.displayName);
                     continue;
                 }
-                item.coflMed = AhItem.parseCoflMed(LowballingGui.tooltipLinesAt(slot));
-                long sale = saleValue(item, slot);
-                if (sale <= 0) {
+                // Exactly the value of our tooltip. It used to be the minimum of
+                // all numbers found in the tooltip text (incl. a raw LBin that
+                // failed the LBin check and our own rounded lines).
+                long value = tooltipValue(item);
+                if (value <= 0) {
                     List<String> itemReasons = List.of("Kein Verkaufswert: " + item.tag);
-                    logTradeItem(item.tag, item.displayName, sale, false, itemReasons);
+                    logTradeItem(item.tag, item.displayName, value, false, itemReasons);
                     reasons.addAll(itemReasons);
                     rejected.add(item.displayName);
                     continue;
                 }
                 AhAnalyzer.Result analysis = AhAnalyzer.analyze(item,
-                        Math.max(1, sale), 0, "", CONFIG.minItemCoins);
+                        value, 0, "", CONFIG.minItemCoins);
                 if (!analysis.buyable) {
-                    logTradeItem(item.tag, item.displayName, sale, false,
+                    logTradeItem(item.tag, item.displayName, value, false,
                             analysis.reasons);
                     reasons.addAll(analysis.reasons);
                     rejected.add(item.displayName);
                     continue;
                 }
-                long value = tooltipValue(item, slot, sale);
                 if (firstTag.isBlank()) {
                     firstTag = item.tag;
                     firstName = item.displayName;
@@ -2237,120 +2553,59 @@ public final class LowballingMod {
     private static final long OFFER_ROUND_COINS = 1_000L;
 
     /**
-     * The value shown in OUR item tooltip ("[AH-Flipper] Wert: 12.3M"), i.e.
-     * exactly what the player sees. It used to call AhValuation.estimate with
-     * only the Cofl median filled in (no LBin / LBin count), so the offer was
-     * based on a different number than the tooltip. Off the render thread we
-     * wait up to 6 s for the tooltip to finish computing; otherwise the value
-     * is computed with the same Cofl inputs the tooltip uses.
+     * The item in the slot, valued with exactly the inputs of our tooltip
+     * (NBT + Cofl Med/LBin from the tooltip lines and the Cofl description).
      */
-    private static long tooltipValue(AhItem item, int slot, long fallback) {
-        boolean mayWait = !Minecraft.getInstance().isSameThread();
-        long deadline = System.currentTimeMillis() + (mayWait ? 6_000L : 0L);
-        List<String> lines;
-        while (true) {
-            lines = LowballingGui.tooltipLinesAt(slot);
-            long shown = parseShownTooltipValue(lines);
-            if (shown > 1) {
-                return shown;
-            }
-            if (System.currentTimeMillis() >= deadline) {
-                break;
-            }
-            ScreenUtil.sleep(250);
+    private static AhItem valuedItemAt(int slot) {
+        ItemStack stack = LowballingGui.stackAt(slot);
+        if (stack.isEmpty()) {
+            return new AhItem();
         }
-        item.applyCoflValues(AhItem.parseCoflValues(lines));
+        return AhItemValueTooltip.valuedItem(stack, LowballingGui.tooltipLinesAt(slot));
+    }
+
+    /**
+     * The exact (unrounded) value of our tooltip ("[AH-Flipper] Wert: ...").
+     * The old code parsed the shown text, so 2.75M became 2.8M. Falls back to
+     * the Cofl value when we have no own valuation; 0 = no sale value.
+     */
+    private static long tooltipValue(AhItem item) {
+        if (item == null || item.tag == null || item.tag.isBlank()) {
+            return 0;
+        }
         AhValuation.Estimate estimate = AhValuation.estimate(item, "");
         if (estimate.estimated > 1) {
             return estimate.estimated;
         }
-        return fallback > 0 ? fallback : saleValue(item, slot);
+        return Math.max(0, item.coflValue());
     }
 
-    private static final java.util.regex.Pattern SHOWN_VALUE = java.util.regex.Pattern.compile(
-            "(?i)\\[AH-Flipper\\]\\s*Wert:\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
+    private static volatile boolean checkValueComputing;
 
-    private static long parseShownTooltipValue(List<String> lines) {
-        for (String line : lines) {
-            if (line == null) {
-                continue;
-            }
-            java.util.regex.Matcher matcher = SHOWN_VALUE.matcher(ScreenUtil.cleanName(line));
-            if (matcher.find()) {
-                return parseCompactCoins(matcher.group(1));
-            }
+    /**
+     * Same as {@link #tooltipValue}, but never blocks the render thread with
+     * price downloads: -1 = not computed yet (computed in the background).
+     */
+    private static long tooltipValueForCheck(AhItem item) {
+        if (!Minecraft.getInstance().isSameThread()) {
+            return tooltipValue(item);
         }
-        return 0;
-    }
-
-    private static long saleValue(AhItem item, int slot) {
-        List<String> texts = new ArrayList<>(LowballingGui.tooltipLinesAt(slot));
-        if (texts.isEmpty()) {
-            if (item.displayName != null) {
-                texts.add(item.displayName);
-            }
-            texts.addAll(LowballingGui.loreAt(slot));
+        AhValuation.Estimate hot = AhValuation.peek(item, "");
+        if (hot != null) {
+            return hot.estimated > 1 ? hot.estimated : Math.max(0, item.coflValue());
         }
-        long med = parseLabeledCoins(texts, "med");
-        long lbin = parseLabeledCoins(texts, "lbin");
-        long addonAverage = parseLabeledCoins(texts, "addon-vergleich");
-        long addonBin = parseLabeledCoins(texts, "lowest addon-bin");
-        long best = 0;
-        for (long value : new long[]{med, lbin, addonAverage, addonBin}) {
-            if (value > 0 && (best <= 0 || value < best)) {
-                best = value;
-            }
-        }
-        AhValuation.Estimate estimate = AhValuation.estimate(item, "");
-        long ahValue = estimate.estimated;
-        if (best > 0) {
-            return ahValue > 1 ? Math.min(best, ahValue) : best;
-        }
-        return ahValue;
-    }
-
-    private static long parseLabeledCoins(List<String> lines, String label) {
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "(?i)" + label + "\\s*:?\\s*([0-9][0-9.,]*\\s*[kmbt]?)");
-        for (String line : lines) {
-            if (line == null) {
-                continue;
-            }
-            java.util.regex.Matcher matcher = pattern.matcher(
-                    ScreenUtil.cleanName(line));
-            if (matcher.find()) {
-                long value = parseCompactCoins(matcher.group(1));
-                if (value > 0) {
-                    return value;
+        if (!checkValueComputing) {
+            checkValueComputing = true;
+            Thread.startVirtualThread(() -> {
+                try {
+                    AhValuation.estimate(item, "");
+                } catch (Exception ignored) {
+                } finally {
+                    checkValueComputing = false;
                 }
-            }
+            });
         }
-        return 0;
-    }
-
-    private static long parseCompactCoins(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return 0;
-        }
-        String text = raw.trim().toLowerCase(Locale.ROOT).replace(",", "");
-        double multiplier = 1.0;
-        char last = text.charAt(text.length() - 1);
-        if (last == 'k' || last == 'm' || last == 'b' || last == 't') {
-            multiplier = switch (last) {
-                case 'k' -> 1_000.0;
-                case 'm' -> 1_000_000.0;
-                case 'b' -> 1_000_000_000.0;
-                default -> 1_000_000_000_000.0;
-            };
-            text = text.substring(0, text.length() - 1);
-        } else {
-            text = text.replace(".", "");
-        }
-        try {
-            return Math.max(0, Math.round(Double.parseDouble(text) * multiplier));
-        } catch (NumberFormatException ignored) {
-            return 0;
-        }
+        return -1;
     }
 
     private static long floorTo(double value, long unit) {
@@ -2384,6 +2639,7 @@ public final class LowballingMod {
             PROCESSED.add(id);
             targetUuid = id;
             targetName = player.getName().getString();
+            HANDLED_NAMES.add(targetName.toLowerCase(Locale.ROOT));
             targetEntity = player;
             secondOffer = false;
             finalizingSecond = false;
@@ -2420,13 +2676,18 @@ public final class LowballingMod {
             return;
         }
         for (Player player : client.level.players()) {
-            if (player == client.player) {
+            if (player == client.player || !isRealPlayer(player)) {
                 continue;
             }
             PlayerTrack track = new PlayerTrack(player.position());
             markIfAtSpawn(client, player, track);
             TRACKED.put(player.getUUID(), track);
         }
+    }
+
+    /** NPCs are players to the client too, but Hypixel gives them version 2 UUIDs. */
+    private static boolean isRealPlayer(Player player) {
+        return player.getUUID().version() == 4;
     }
 
     private static final double SPAWN_RADIUS = 3.0;
@@ -2455,7 +2716,7 @@ public final class LowballingMod {
             return;
         }
         for (Player player : client.level.players()) {
-            if (player == client.player) {
+            if (player == client.player || !isRealPlayer(player)) {
                 continue;
             }
             PlayerTrack track = TRACKED.get(player.getUUID());
@@ -2534,15 +2795,20 @@ public final class LowballingMod {
             return null;
         }
         String wanted = name.toLowerCase(Locale.ROOT);
+        Player partial = null;
         for (Player player : client.level.players()) {
             if (player == client.player) {
                 continue;
             }
-            if (player.getName().getString().toLowerCase(Locale.ROOT).contains(wanted)) {
+            String candidate = player.getName().getString().toLowerCase(Locale.ROOT);
+            if (candidate.equals(wanted)) {
                 return player;
             }
+            if (partial == null && candidate.startsWith(wanted)) {
+                partial = player;
+            }
         }
-        return null;
+        return partial;
     }
 
     private static Entity resolveTarget() {
@@ -2593,29 +2859,44 @@ public final class LowballingMod {
      */
     private static boolean handleWrongTradePartner(Minecraft client) {
         String title = LowballingGui.currentTitle().toLowerCase(Locale.ROOT).trim();
-        if (!title.startsWith("you ") || targetName == null || targetName.isBlank()
-                || title.contains(targetName.toLowerCase(Locale.ROOT))) {
+        if (!title.startsWith("you ") || targetName == null || targetName.isBlank()) {
             return false;
         }
-        String other = "";
+        // The title cuts long names ("You   MuteCupid8" for MuteCupid81683), so
+        // compare the shown name as a prefix. Only abort when it clearly belongs
+        // to ANOTHER player who is here - anything unclear counts as our target.
+        String shown = title.substring(3).trim();
+        int space = shown.lastIndexOf(' ');
+        if (space >= 0) {
+            shown = shown.substring(space + 1);
+        }
+        String target = targetName.toLowerCase(Locale.ROOT);
+        if (shown.length() < 3 || target.startsWith(shown) || shown.startsWith(target)) {
+            return false;
+        }
+        Player otherPlayer = null;
         if (client.level != null) {
             for (Player player : client.level.players()) {
-                String name = player.getName().getString();
-                if (player != client.player && title.contains(name.toLowerCase(Locale.ROOT))) {
-                    other = name;
-                    if (!PROCESSED.contains(player.getUUID())
-                            && !PLAYER_QUEUE.contains(player.getUUID())) {
-                        PlayerTrack track = TRACKED.computeIfAbsent(player.getUUID(),
-                                ignored -> new PlayerTrack(player.position()));
-                        track.moved = true;
-                        PLAYER_QUEUE.addFirst(player.getUUID());
-                    }
+                String name = player.getName().getString().toLowerCase(Locale.ROOT);
+                if (player != client.player && (name.startsWith(shown) || shown.startsWith(name))) {
+                    otherPlayer = player;
                     break;
                 }
             }
         }
-        message("§e[Lowballing] §7Trade mit falschem Spieler"
-                + (other.isBlank() ? "" : " (" + other + ")") + " geöffnet - schließe, weiter mit "
+        if (otherPlayer == null) {
+            return false;
+        }
+        UUID otherId = otherPlayer.getUUID();
+        if (!PROCESSED.contains(otherId) && !PLAYER_QUEUE.contains(otherId)) {
+            Player queued = otherPlayer;
+            PlayerTrack track = TRACKED.computeIfAbsent(otherId,
+                    ignored -> new PlayerTrack(queued.position()));
+            track.moved = true;
+            PLAYER_QUEUE.addFirst(otherId);
+        }
+        message("§e[Lowballing] §7Trade mit falschem Spieler ("
+                + otherPlayer.getName().getString() + ") geöffnet - schließe, weiter mit "
                 + targetName + ".");
         SignInput.clear();
         LowballingGui.close();
@@ -2778,12 +3059,19 @@ public final class LowballingMod {
             return null;
         }
         int index = available.get(ThreadLocalRandom.current().nextInt(available.size()));
+        lastPickedIndex = index;
         cooldowns[index] = now + cooldownMs;
         String template = messages.get(index);
         String replacement = messages == CONFIG.bestOfferMessages
                 ? formatOffer(value) : formatBankroll(value);
         return template.replace("{bankroll}", replacement).replace("{offer}", replacement);
     }
+
+    private static int lastPickedIndex = -1;
+    private static int lastAdIndex = -1;
+    private static long lastAdSentAt;
+    /** Extra walks away from spawn in the current hub. */
+    private static int spawnWalks;
 
     private static void ensureCooldowns() {
         if (adCooldowns.length != CONFIG.adMessages.size()) {
@@ -2802,8 +3090,8 @@ public final class LowballingMod {
         if (text == null || text.isBlank()) {
             return;
         }
-        long due = System.currentTimeMillis() + 1000L
-                + ThreadLocalRandom.current().nextInt(501);
+        long due = System.currentTimeMillis() + LowballingSmartChat.typingDelayMs(text,
+                ThreadLocalRandom.current().nextDouble());
         synchronized (DELAYED_CHAT) {
             DELAYED_CHAT.add(new DelayedChat(due, text));
         }

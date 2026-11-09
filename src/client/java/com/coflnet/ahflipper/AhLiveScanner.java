@@ -212,8 +212,8 @@ public final class AhLiveScanner {
         if (auction.tag.isBlank() || auction.price <= 0) {
             return;
         }
-        if (auction.tag.toUpperCase(Locale.ROOT).startsWith("PET_")
-                || (auction.itemName != null && auction.itemName.startsWith("[Lvl"))) {
+        if (!AhFlipperMod.CONFIG.petsEnabled && (AhItem.isPetTag(auction.tag)
+                || (auction.itemName != null && auction.itemName.startsWith("[Lvl")))) {
             return;
         }
         if (AhFlipperMod.isOwnSeller(auction.seller, auction.playerName)) {
@@ -322,7 +322,7 @@ public final class AhLiveScanner {
             update(candidate, "CLEAN", "");
             AhItem item = AhItem.fromAuction(details);
             boolean rune = item.isRune();
-            boolean pet = candidate.tag.toUpperCase(Locale.ROOT).startsWith("PET_")
+            boolean pet = AhItem.isPetTag(candidate.tag)
                     || (candidate.name != null && candidate.name.startsWith("[Lvl"));
             String petFilter = "";
             if (!rune) {
@@ -402,7 +402,7 @@ public final class AhLiveScanner {
             }
             }
 
-            if (item.isPet()) {
+            if (item.isPet() && !AhFlipperMod.CONFIG.petsEnabled) {
                 reject(candidate, "PET", "Pets im AH-Flipper deaktiviert");
                 return;
             }
@@ -431,26 +431,16 @@ public final class AhLiveScanner {
                     + estimate.comparableExcluded + " Ausrei\u00dfer) Bin="
                     + estimate.comparableBin + " AskSafety="
                     + estimate.askSafetyValue
-                    + " Ceiling=" + estimate.ceiling + " -> " + estimated);
-            if (estimated <= 0) {
+                    + " Ceiling=" + estimate.ceiling
+                    + (estimate.rareAddonDeduction > 0 ? " Selten=" + estimate.rareAddonValue
+                    + " Abzug=" + estimate.rareAddonDeduction : "")
+                    + (estimate.candyDiscount > 0 ? " Candy=-" + estimate.candyDiscount : "")
+                    + " -> " + estimated);
+            // Candies and rarely sold addons/skins/dyes are already priced into
+            // the estimate (discount / 90 % deduction) instead of rejecting.
+            if (estimated <= 1) {
                 reject(candidate, "VALUE", "Keine belastbare Bewertung");
                 return;
-            }
-            if (estimate.candyPet) {
-                reject(candidate, "VALUE", "Pet mit Candies - kein Kauf");
-                return;
-            }
-            boolean hasCosmetic = (item.skin != null && !item.skin.isBlank())
-                    || (item.dyeItem != null && !item.dyeItem.isBlank())
-                    || (item.petSkin != null && !item.petSkin.isBlank());
-            AhMarketData.Breakdown breakdown = null;
-            if ((candidate.addonValue > 0 || hasCosmetic)
-                    && !estimate.addonValueUnbacked) {
-                breakdown = AhMarketData.breakdown(details);
-                if (breakdown == null || breakdown.parts.isEmpty()) {
-                    reject(candidate, "ADDONS", "Addon-Breakdown nicht abrufbar");
-                    return;
-                }
             }
             candidate.estimatedValue = estimated;
             candidate.estimatedDiscount = discount(candidate.price, estimated);
@@ -461,12 +451,6 @@ public final class AhLiveScanner {
                 reject(candidate, "CLEAN", "Clean-Sales " + candidate.cleanSales
                         + " < " + AhFlipperMod.CONFIG.minCleanSales
                         + " (Addon " + Math.round(candidate.addonValue / 1_000_000.0) + "M)");
-                return;
-            }
-
-            update(candidate, "ADDONS", "");
-            if (!estimate.addonValueUnbacked
-                    && !checkBreakdown(candidate, breakdown, item, candidate.tag)) {
                 return;
             }
 
@@ -526,263 +510,6 @@ public final class AhLiveScanner {
             }
             System.out.println("[AH-Flipper] Live-Fehler für " + candidate.tag + ": " + e);
             reject(candidate, "ERROR", e.getMessage() == null ? e.toString() : e.getMessage());
-        }
-    }
-
-    private static boolean checkBreakdown(Candidate candidate, AhMarketData.Breakdown breakdown,
-                                          AhItem item, String tag) {
-        if (breakdown == null || breakdown.parts.isEmpty()) {
-            return true;
-        }
-        List<AhMarketData.Sold> sold = AhMarketData.sold(tag);
-        if (item.skin != null && !item.skin.isBlank()) {
-            int count = countNbtText(sold, "skin", item.skin);
-            if (count < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                reject(candidate, "ADDONS", "Skin " + item.skin + " nur " + count
-                        + "x/Woche < " + AhFlipperMod.CONFIG.addonMinSalesPerWeek);
-                return false;
-            }
-        }
-        if (item.dyeItem != null && !item.dyeItem.isBlank()) {
-            int count = countNbtText(sold, "dye_item", item.dyeItem);
-            if (count < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                reject(candidate, "ADDONS", "Dye " + item.dyeItem + " nur " + count
-                        + "x/Woche < " + AhFlipperMod.CONFIG.addonMinSalesPerWeek);
-                return false;
-            }
-        }
-        candidate.addonParts = 0;
-        candidate.addonPartsPassed = 0;
-        candidate.minAddonSales = Integer.MAX_VALUE;
-        for (AhMarketData.BreakdownPart part : breakdown.parts) {
-            if (isBase(part, tag)) {
-                continue;
-            }
-            candidate.addonParts++;
-            int count = countAddonSales(part, item, sold);
-            if (count >= 0) {
-                candidate.minAddonSales = Math.min(candidate.minAddonSales, count);
-                if (count < AhFlipperMod.CONFIG.addonMinSalesPerWeek) {
-                    reject(candidate, "ADDONS", part.itemTag + " nur " + count
-                            + "x/Woche auf " + tag + " < "
-                            + AhFlipperMod.CONFIG.addonMinSalesPerWeek);
-                    return false;
-                }
-            }
-            candidate.addonPartsPassed++;
-        }
-        if (candidate.minAddonSales == Integer.MAX_VALUE) {
-            candidate.minAddonSales = 0;
-        }
-        return true;
-    }
-
-    private static boolean isBase(AhMarketData.BreakdownPart part, String tag) {
-        return part.reason.toLowerCase(Locale.ROOT).contains("base item")
-                || (!part.itemTag.isBlank() && part.itemTag.equalsIgnoreCase(tag)
-                && part.reason.toLowerCase(Locale.ROOT).contains("base"));
-    }
-
-    private static int countAddonSales(AhMarketData.BreakdownPart part, AhItem item,
-                                       List<AhMarketData.Sold> sold) {
-        String product = part.itemTag.toUpperCase(Locale.ROOT);
-        if (product.endsWith("_GEM")) {
-            return -1;
-        }
-        if (product.startsWith("ENCHANTMENT_")) {
-            String rest = product.substring("ENCHANTMENT_".length());
-            int split = rest.lastIndexOf('_');
-            if (split > 0) {
-                String type = rest.substring(0, split).toLowerCase(Locale.ROOT);
-                int level;
-                try {
-                    level = Integer.parseInt(rest.substring(split + 1));
-                } catch (NumberFormatException e) {
-                    return -1;
-                }
-                return countEnchant(sold, type, level);
-            }
-        }
-        if (product.contains("RECOMBOBULATOR") || part.attribute.contains("rarity_upgrades")) {
-            return countRecomb(sold);
-        }
-        if (product.contains("HOT_POTATO") || part.attribute.contains("hpc")
-                || part.attribute.contains("hot_potato")) {
-            return countHpb(sold, Math.max(1, item.hpb));
-        }
-        if (product.contains("ART_OF_WAR") || part.attribute.contains("art_of_war")) {
-            return countArtOfWar(sold);
-        }
-        if (product.contains("WOOD_SINGULARITY") || part.attribute.contains("wood_singularity")) {
-            return countWood(sold);
-        }
-        if (product.contains("_SCROLL") || part.attribute.contains("ability_scroll")) {
-            return countScroll(sold, product);
-        }
-        if (product.startsWith("DYE_") || part.attribute.equals("dye_item")) {
-            return countNbtText(sold, "dye_item", product);
-        }
-        if (part.attribute.contains("upgrade_level") || part.attribute.contains("dungeon_item_level")) {
-            return countStars(sold, Math.max(1, item.stars));
-        }
-        if (part.attribute.contains("modifier") || part.attribute.contains("reforge")
-                || part.reason.toLowerCase(Locale.ROOT).contains("reforge")) {
-            return countReforge(sold, item.reforge);
-        }
-        return -1;
-    }
-
-    private static int countEnchant(List<AhMarketData.Sold> sold, String type, int level) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            for (AhMarketData.Enchant enchant : sale.enchants) {
-                if (enchant.type.equalsIgnoreCase(type) && enchant.level == level) {
-                    count++;
-                    break;
-                }
-            }
-        }
-        return count;
-    }
-
-    private static int countRecomb(List<AhMarketData.Sold> sold) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (nbtInt(sale, "rarity_upgrades") > 0) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countHpb(List<AhMarketData.Sold> sold, int hpb) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (nbtInt(sale, "hpc") >= hpb) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countArtOfWar(List<AhMarketData.Sold> sold) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (nbtInt(sale, "art_of_war_count") > 0) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countWood(List<AhMarketData.Sold> sold) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (nbtInt(sale, "wood_singularity_count") > 0) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countScroll(List<AhMarketData.Sold> sold, String product) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            String raw = nbtText(sale, "ability_scroll");
-            if (!raw.isBlank()
-                    && raw.toUpperCase(Locale.ROOT).contains(product)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countReforge(List<AhMarketData.Sold> sold, String reforge) {
-        if (reforge == null || reforge.isBlank()) {
-            return -1;
-        }
-        String display = reforgeDisplay(reforge);
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            String value = nbtText(sale, "modifier");
-            if (value.isBlank()) {
-                value = nbtText(sale, "reforge");
-            }
-            if (!value.isBlank()) {
-                if (value.equalsIgnoreCase(reforge)) {
-                    count++;
-                }
-            } else if (!display.isBlank()
-                    && sale.itemName.toLowerCase(Locale.ROOT)
-                            .startsWith(display.toLowerCase(Locale.ROOT) + " ")) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static String nbtText(AhMarketData.Sold sale, String key) {
-        if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
-            return "";
-        }
-        try {
-            return sale.nbt.get(key).getAsString();
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private static String reforgeDisplay(String reforge) {
-        String[] parts = reforge.split("_");
-        StringBuilder builder = new StringBuilder();
-        for (String part : parts) {
-            if (part.isBlank()) {
-                continue;
-            }
-            if (!builder.isEmpty()) {
-                builder.append(' ');
-            }
-            builder.append(Character.toUpperCase(part.charAt(0)))
-                    .append(part.substring(1).toLowerCase(Locale.ROOT));
-        }
-        return builder.toString();
-    }
-
-    private static int countNbtText(List<AhMarketData.Sold> sold, String key, String value) {
-        if (key.isBlank() || value.isBlank()) {
-            return -1;
-        }
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
-                continue;
-            }
-            if (sale.nbt.get(key).getAsString().equalsIgnoreCase(value)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int countStars(List<AhMarketData.Sold> sold, int stars) {
-        int count = 0;
-        for (AhMarketData.Sold sale : sold) {
-            if (nbtInt(sale, "upgrade_level") >= stars
-                    || nbtInt(sale, "dungeon_item_level") >= stars) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private static int nbtInt(AhMarketData.Sold sale, String key) {
-        if (!sale.nbt.has(key) || sale.nbt.get(key).isJsonNull()) {
-            return 0;
-        }
-        try {
-            return (int) Double.parseDouble(sale.nbt.get(key).getAsString());
-        } catch (Exception ignored) {
-            return 0;
         }
     }
 

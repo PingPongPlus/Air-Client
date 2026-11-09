@@ -44,7 +44,20 @@ public class AhFlipperConfig {
     public long cleanSalesAddonValueCoins = 15_000_000L;
     public int analysisCacheMinutes = 2;
     public int coflLbinMinCount = 2;
-    public double coflLbinMatchPercent = 1.0;
+    /** BINs from the LBin up to this much above it confirm the LBin (min coflLbinMinCount). */
+    public double coflLbinMatchPercent = 5.0;
+    /** No active BIN at the Cofl LBin (+-match%): look this far below/above for the real one. */
+    public double coflLbinSearchPercent = 5.0;
+    /** Items with an addon comparison: only BINs this close to the Cofl LBin count. */
+    public double coflLbinExactMatchPercent = 1.0;
+    /** Share of a rarely sold addon's value that is taken off the item value. */
+    public double rareAddonDeductPercent = 90.0;
+    /** Reforges are only checked for sales when their reforge stone costs at least this. */
+    public long reforgeStoneCheckMinCoins = 1_000_000L;
+    /** Pets with candies are worth this much less. */
+    public double petCandyDiscountPercent = 10.0;
+    /** Pets in the AH flipper (live scanner, bid macro, buy). */
+    public boolean petsEnabled = true;
     public double scoreCleanWeight = 0.40;
     public double scoreSalesWeight = 0.25;
     public double scoreVolumeWeight = 0.20;
@@ -161,6 +174,10 @@ public class AhFlipperConfig {
     public int profitPanelRows = 5;
     public boolean profitPanelFooter = true;
     public List<String> blacklist = new ArrayList<>();
+    /** Bid macro never outbids these players and never bids where they are highest. */
+    public List<String> dontOutbidPlayers = new ArrayList<>();
+    /** Non-premium clients wait this long before each flip action (AH buy/bid, Bazaar order). */
+    public long nonPremiumDelayMs = 1000L;
     public Map<String, String> blacklistTags = new ConcurrentHashMap<>();
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -262,6 +279,31 @@ public class AhFlipperConfig {
             return "";
         }
         return itemTag + "\u0000" + name;
+    }
+
+    public boolean addDontOutbid(String value) {
+        String name = value == null ? "" : value.trim();
+        if (!name.matches("[A-Za-z0-9_]{2,16}")) {
+            return false;
+        }
+        if (dontOutbidPlayers == null) {
+            dontOutbidPlayers = new ArrayList<>();
+        }
+        for (String entry : dontOutbidPlayers) {
+            if (entry.equalsIgnoreCase(name)) {
+                return false;
+            }
+        }
+        dontOutbidPlayers.add(name);
+        AhProtectedBidders.warmUp();
+        return true;
+    }
+
+    public boolean removeDontOutbid(String value) {
+        if (dontOutbidPlayers == null || value == null) {
+            return false;
+        }
+        return dontOutbidPlayers.removeIf(entry -> entry.equalsIgnoreCase(value.trim()));
     }
 
     public boolean addBlocked(String value) {
@@ -410,11 +452,31 @@ public class AhFlipperConfig {
                     if (loaded.coflLbinMinCount > 5) {
                         loaded.coflLbinMinCount = 5;
                     }
-                    if (loaded.coflLbinMatchPercent <= 0) {
-                        loaded.coflLbinMatchPercent = 1.0;
+                    // 1.0 was the old default and only counted BINs at the same price
+                    if (loaded.coflLbinMatchPercent <= 0 || loaded.coflLbinMatchPercent == 1.0) {
+                        loaded.coflLbinMatchPercent = 5.0;
                     }
                     if (loaded.coflLbinMatchPercent > 10) {
                         loaded.coflLbinMatchPercent = 10.0;
+                    }
+                    if (loaded.coflLbinExactMatchPercent <= 0
+                            || loaded.coflLbinExactMatchPercent > 10) {
+                        loaded.coflLbinExactMatchPercent = 1.0;
+                    }
+                    if (loaded.coflLbinSearchPercent <= 0) {
+                        loaded.coflLbinSearchPercent = 5.0;
+                    }
+                    if (loaded.coflLbinSearchPercent > 15) {
+                        loaded.coflLbinSearchPercent = 15.0;
+                    }
+                    if (loaded.rareAddonDeductPercent < 0 || loaded.rareAddonDeductPercent > 100) {
+                        loaded.rareAddonDeductPercent = 90.0;
+                    }
+                    if (loaded.reforgeStoneCheckMinCoins <= 0) {
+                        loaded.reforgeStoneCheckMinCoins = 1_000_000L;
+                    }
+                    if (loaded.petCandyDiscountPercent < 0 || loaded.petCandyDiscountPercent > 90) {
+                        loaded.petCandyDiscountPercent = 10.0;
                     }
                     if (loaded.selectorIntervalMs <= 0) {
                         loaded.selectorIntervalMs = 10;

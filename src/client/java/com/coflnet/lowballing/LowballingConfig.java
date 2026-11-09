@@ -35,6 +35,10 @@ public class LowballingConfig {
 
     public int advertiseIntervalSeconds = 30;
     public int advertiseCooldownSeconds = 300;
+    /** All ad messages on cooldown: switch between hub start and start+1, cooldowns reset. */
+    public boolean rotateHubsOnCooldown = true;
+    /** Landed in a later hub because the wanted one was full: retry it after this long. */
+    public int fullHubRetrySeconds = 10;
     public int bestOfferCooldownSeconds = 0;
     public int visitCommandIntervalSeconds = 5;
     public int returnIslandTimeoutSeconds = 120;
@@ -130,6 +134,7 @@ public class LowballingConfig {
 
         advertiseIntervalSeconds = clamp(advertiseIntervalSeconds, 30, 300);
         advertiseCooldownSeconds = clamp(advertiseCooldownSeconds, 1, 3600);
+        fullHubRetrySeconds = clamp(fullHubRetrySeconds, 5, 300);
         bestOfferCooldownSeconds = clamp(bestOfferCooldownSeconds, 0, 3600);
         visitCommandIntervalSeconds = clamp(visitCommandIntervalSeconds, 1, 60);
         returnIslandTimeoutSeconds = clamp(returnIslandTimeoutSeconds, 10, 600);

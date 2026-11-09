@@ -158,11 +158,60 @@ public class AhScreenUtil {
                 || lower.contains("manage order");
     }
 
-    public static Integer findSoldAuctionSlot() {
-        Integer found = ScreenUtil.sync(() -> {
+    /**
+     * Contents of the item slot (13) of the "Create BIN Auction" menu. Hypixel
+     * keeps an item in that slot even after the menu was closed, and refuses any
+     * other item until it is taken out ("You already have an item in the auction
+     * slot!"), so every listing has to look at it first.
+     */
+    public record CreateSlot(boolean empty, String tag, String name) {
+    }
+
+    /** Null while no create menu is open or the slot has not been loaded yet. */
+    public static CreateSlot readCreateSlot() {
+        return ScreenUtil.sync(() -> {
             Screen screen = Minecraft.getInstance().gui.screen();
-            if (!(screen instanceof AbstractContainerScreen<?> container)) {
-                return -1;
+            if (!(screen instanceof AbstractContainerScreen<?> container)
+                    || readScreen() != AhScreen.CREATE_BIN) {
+                return null;
+            }
+            ItemStack stack = itemAt(container, 13);
+            if (stack.isEmpty()) {
+                return null;
+            }
+            String hover = ScreenUtil.cleanName(stack.getHoverName().getString())
+                    .toLowerCase(Locale.ROOT);
+            if (hover.contains("click an item")) {
+                return new CreateSlot(true, "", "");
+            }
+            String name = "";
+            boolean pickup = hover.contains("auction for item");
+            for (String line : loreLines(stack)) {
+                String plain = ScreenUtil.cleanName(line).trim();
+                if (plain.isEmpty()) {
+                    continue;
+                }
+                if (name.isEmpty()) {
+                    name = plain;
+                }
+                if (plain.toLowerCase(Locale.ROOT).contains("click to pickup")) {
+                    pickup = true;
+                }
+            }
+            if (!pickup) {
+                return null;
+            }
+            return new CreateSlot(false, AhItem.fromStack(stack).tag, name);
+        });
+    }
+
+    /** The price currently set in the create menu ("Item price: 500 coins"), -1 if unknown. */
+    public static long currentCreatePrice() {
+        Long found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)
+                    || readScreen() != AhScreen.CREATE_BIN) {
+                return -1L;
             }
             int size = containerSize(container);
             for (int i = 0; i < size; i++) {
@@ -170,18 +219,131 @@ public class AhScreenUtil {
                 if (stack.isEmpty()) {
                     continue;
                 }
-                boolean sold = false;
-                boolean own = false;
+                String hover = ScreenUtil.cleanName(stack.getHoverName().getString());
+                if (hover.toLowerCase(Locale.ROOT).startsWith("item price")) {
+                    return parseCoins(hover);
+                }
+            }
+            return -1L;
+        });
+        return found == null ? -1L : found;
+    }
+
+    /**
+     * The auctions button of the AH main menu.
+     *
+     * @param slot    its slot, -1 if not there (yet)
+     * @param loading still shows "Loading...", clicks on it are ignored by Hypixel
+     * @param owned   "You own N auctions in progress or which recently ended", -1 if unknown
+     */
+    public record AuctionsEntry(int slot, boolean loading, int owned) {
+    }
+
+    private static final java.util.regex.Pattern OWNED_AUCTIONS =
+            java.util.regex.Pattern.compile("(?i)you own (\\d+) auction");
+
+    public static AuctionsEntry readAuctionsEntry() {
+        AuctionsEntry entry = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return null;
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                String hover = ScreenUtil.cleanName(stack.getHoverName().getString())
+                        .toLowerCase(Locale.ROOT);
+                boolean create = hover.contains("create auction");
+                if (!create && !hover.contains("manage auctions")
+                        && !hover.contains("auctions management")) {
+                    continue;
+                }
+                boolean loading = false;
+                int owned = create ? 0 : -1;
                 for (String line : loreLines(stack)) {
-                    String lower = ScreenUtil.cleanName(line).toLowerCase(Locale.ROOT);
-                    if (lower.contains("status: sold")) {
-                        sold = true;
+                    String plain = ScreenUtil.cleanName(line);
+                    if (plain.toLowerCase(Locale.ROOT).contains("loading")) {
+                        loading = true;
                     }
-                    if (lower.contains("this is your own auction")) {
-                        own = true;
+                    java.util.regex.Matcher matcher = OWNED_AUCTIONS.matcher(plain);
+                    if (matcher.find()) {
+                        owned = Integer.parseInt(matcher.group(1));
                     }
                 }
-                if (sold && own) {
+                return new AuctionsEntry(i, loading, owned);
+            }
+            return null;
+        });
+        return entry == null ? new AuctionsEntry(-1, false, -1) : entry;
+    }
+
+    /**
+     * The entry of a bought/won item in "Your Bids": same item, already ended and
+     * not won by someone else. A running auction ("Ends in:") or one with another
+     * buyer cannot be claimed as an item, and clicking those made every claim fail.
+     */
+    public static int findClaimableBidSlot(String tag, String name, String ownName) {
+        Integer found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1;
+            }
+            boolean byTag = tag != null && !tag.isBlank();
+            String own = ownName == null ? "" : ownName.toLowerCase(Locale.ROOT);
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                AhItem item = AhItem.fromStack(stack);
+                boolean match = byTag ? tag.equalsIgnoreCase(item.tag)
+                        : ScreenUtil.sameName(name, item.displayName);
+                if (!match) {
+                    continue;
+                }
+                boolean claimable = true;
+                for (String line : loreLines(stack)) {
+                    String lower = ScreenUtil.cleanName(line).trim().toLowerCase(Locale.ROOT);
+                    if (lower.startsWith("ends in:")) {
+                        claimable = false;
+                    } else if ((lower.startsWith("buyer:") || lower.startsWith("bidder:"))
+                            && !own.isEmpty() && !lower.contains(own)
+                            && !lower.contains("refreshing")) {
+                        claimable = false;
+                    }
+                }
+                if (claimable) {
+                    return i;
+                }
+            }
+            return -1;
+        });
+        return found == null ? -1 : found;
+    }
+
+    /** Own ended auction in "Manage Auctions": sold ones, optionally also expired ones. */
+    public static int findEndedAuctionSlot(boolean includeExpired) {
+        Integer found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1;
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                boolean sold = false;
+                boolean expired = false;
+                boolean own = false;
+                for (String line : loreLines(itemAt(container, i))) {
+                    String lower = ScreenUtil.cleanName(line).toLowerCase(Locale.ROOT);
+                    sold |= lower.contains("status: sold");
+                    expired |= lower.contains("status: expired");
+                    own |= lower.contains("this is your own auction");
+                }
+                if (own && (sold || (includeExpired && expired))) {
                     return i;
                 }
             }
@@ -451,6 +613,87 @@ public class AhScreenUtil {
         return stack == null ? ItemStack.EMPTY : stack;
     }
 
+    /**
+     * Slot whose item name is exactly one of {@code names} (case and colour codes
+     * ignored), -1 if none. Unlike findButton there is no fuzzy match: "48 hours"
+     * must not hit "Duration: 6 Hours" in the previous menu.
+     */
+    public static int findSlotNamedExactly(String... names) {
+        Integer found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1;
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                String name = ScreenUtil.cleanName(stack.getHoverName().getString()).trim();
+                for (String wanted : names) {
+                    if (wanted != null && name.equalsIgnoreCase(wanted.trim())) {
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        });
+        return found == null ? -1 : found;
+    }
+
+    /** "Duration: 2 Days" -> "2 days" from the create menu, "" if not readable. */
+    public static String currentCreateDuration() {
+        String found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)
+                    || readScreen() != AhScreen.CREATE_BIN) {
+                return "";
+            }
+            int size = containerSize(container);
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = itemAt(container, i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                String name = ScreenUtil.cleanName(stack.getHoverName().getString()).trim();
+                if (name.toLowerCase(Locale.ROOT).startsWith("duration:")) {
+                    return name.substring("duration:".length()).trim().toLowerCase(Locale.ROOT);
+                }
+            }
+            return "";
+        });
+        return found == null ? "" : found;
+    }
+
+    /** "2 days" == "2 days", also "48 hours" / "2d" for 2 days. */
+    public static boolean durationMatches(String shown, String wanted) {
+        if (shown == null || shown.isBlank() || wanted == null) {
+            return false;
+        }
+        String a = normalizeDuration(shown);
+        String b = normalizeDuration(wanted);
+        return !a.isEmpty() && a.equals(b);
+    }
+
+    /** Duration text -> hours as text ("2 days" -> "48"), "" if unknown. */
+    public static String normalizeDuration(String text) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(?i)(\\d+)\\s*(d|day|days|h|hour|hours|m|min|minute|minutes)\\b")
+                .matcher(text.trim());
+        if (!matcher.find()) {
+            return "";
+        }
+        long amount = Long.parseLong(matcher.group(1));
+        char unit = Character.toLowerCase(matcher.group(2).charAt(0));
+        long minutes = switch (unit) {
+            case 'd' -> amount * 24 * 60;
+            case 'h' -> amount * 60;
+            default -> amount;
+        };
+        return Long.toString(minutes);
+    }
+
     public static boolean currentSlotHasText(int slot, String text) {
         Boolean found = ScreenUtil.sync(() -> {
             Screen screen = Minecraft.getInstance().gui.screen();
@@ -525,28 +768,27 @@ public class AhScreenUtil {
         return found;
     }
 
+    /**
+     * Best inventory match: same id and same name first (owning a second copy with
+     * another reforge must not list the wrong one), then same id, then same name.
+     */
     public static int findInventorySlot(String tag, String displayName) {
         Integer found = ScreenUtil.sync(() -> {
             Screen screen = Minecraft.getInstance().gui.screen();
             if (screen instanceof AbstractContainerScreen<?> container) {
                 int chestSize = containerSize(container);
                 var items = container.getMenu().getItems();
-                int fallback = -1;
+                int best = -1;
+                int bestScore = 0;
                 for (int i = chestSize; i < items.size(); i++) {
-                    ItemStack stack = items.get(i);
-                    if (stack.isEmpty()) {
-                        continue;
-                    }
-                    AhItem item = AhItem.fromStack(stack);
-                    if (tag != null && !tag.isBlank() && tag.equals(item.tag)) {
-                        return i;
-                    }
-                    if (fallback < 0 && matchesInventoryName(displayName, item)) {
-                        fallback = i;
+                    int score = inventoryScore(items.get(i), tag, displayName);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        best = i;
                     }
                 }
-                if (fallback >= 0) {
-                    return fallback;
+                if (best >= 0) {
+                    return best;
                 }
             }
             Minecraft client = Minecraft.getInstance();
@@ -554,23 +796,57 @@ public class AhScreenUtil {
                 return -1;
             }
             var inventory = client.player.getInventory();
-            int fallback = -1;
+            int best = -1;
+            int bestScore = 0;
             for (int i = 0; i < inventory.getContainerSize(); i++) {
-                ItemStack stack = inventory.getItem(i);
-                if (stack.isEmpty()) {
-                    continue;
-                }
-                AhItem item = AhItem.fromStack(stack);
-                if (tag != null && !tag.isBlank() && tag.equals(item.tag)) {
-                    return i;
-                }
-                if (fallback < 0 && matchesInventoryName(displayName, item)) {
-                    fallback = i;
+                int score = inventoryScore(inventory.getItem(i), tag, displayName);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = i;
                 }
             }
-            return fallback;
+            return best;
         });
         return found == null ? -1 : found;
+    }
+
+    /**
+     * Like {@link #findInventorySlot}, but only slots that can be clicked in the
+     * open menu. The fallback above also finds worn armor, whose inventory index
+     * is a completely different slot of the menu.
+     */
+    public static int findClickableInventorySlot(String tag, String displayName) {
+        Integer found = ScreenUtil.sync(() -> {
+            Screen screen = Minecraft.getInstance().gui.screen();
+            if (!(screen instanceof AbstractContainerScreen<?> container)) {
+                return -1;
+            }
+            int chestSize = containerSize(container);
+            var items = container.getMenu().getItems();
+            int best = -1;
+            int bestScore = 0;
+            for (int i = chestSize; i < items.size(); i++) {
+                int score = inventoryScore(items.get(i), tag, displayName);
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            return best;
+        });
+        return found == null ? -1 : found;
+    }
+
+    private static int inventoryScore(ItemStack stack, String tag, String displayName) {
+        if (stack == null || stack.isEmpty()) {
+            return 0;
+        }
+        AhItem item = AhItem.fromStack(stack);
+        boolean sameName = matchesInventoryName(displayName, item);
+        if (tag != null && !tag.isBlank() && AhItem.sameTag(tag, item.tag)) {
+            return sameName ? 3 : 2;
+        }
+        return sameName ? 1 : 0;
     }
 
     public static AhItem findInventoryItem(String tag, String displayName) {
@@ -586,7 +862,7 @@ public class AhScreenUtil {
                         continue;
                     }
                     AhItem item = AhItem.fromStack(stack);
-                    if (tag != null && !tag.isBlank() && tag.equals(item.tag)) {
+                    if (tag != null && !tag.isBlank() && AhItem.sameTag(tag, item.tag)) {
                         return item;
                     }
                     if (fallback == null && matchesInventoryName(displayName, item)) {

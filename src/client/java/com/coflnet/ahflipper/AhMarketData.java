@@ -197,7 +197,7 @@ public class AhMarketData {
     private record AddonBinCache(long price, long at) {
     }
 
-    private record LbinCountCache(int count, long at) {
+    private record LbinCountCache(int count, long price, long at) {
     }
 
     private record ReforgeValueCache(long value, long at) {
@@ -392,25 +392,41 @@ public class AhMarketData {
     }
 
     public static List<ActiveBin> activeBins(String tag) {
+        return activeBins(tag, "");
+    }
+
+    /**
+     * Active BINs of the tag, optionally filtered ("&query%5BStars%5D=5" ...).
+     * The API only returns the 12 cheapest, so without a filter an item with
+     * many variants (stars, pet levels, rune levels) never shows the BINs
+     * that match the Cofl LBin.
+     */
+    public static List<ActiveBin> activeBins(String tag, String filterQuery) {
+        String query = filterQuery == null ? "" : filterQuery;
+        String key = query.isEmpty() ? tag : tag + "|" + query;
         long now = System.currentTimeMillis();
         long ttl = Math.max(0, AhFlipperMod.CONFIG.scanActiveCacheSeconds) * 1000L;
-        ActiveCache cache = ACTIVE_CACHE.get(tag);
+        ActiveCache cache = ACTIVE_CACHE.get(key);
         if (cache != null && ttl > 0 && now - cache.at < ttl) {
             return cache.bins;
         }
-        List<ActiveBin> result = fetchActiveBins(tag);
+        List<ActiveBin> result = fetchActiveBins(tag, query);
         if (result != null) {
-            ACTIVE_CACHE.put(tag, new ActiveCache(result, now));
+            ACTIVE_CACHE.put(key, new ActiveCache(result, now));
             return result;
         }
         return cache != null ? cache.bins : List.of();
     }
 
-    private static List<ActiveBin> fetchActiveBins(String tag) {
+    private static List<ActiveBin> fetchActiveBins(String tag, String filterQuery) {
         String body = get(BASE + "/auctions/tag/" + enc(tag)
-                + "/active/overview?query%5BBin%5D=true");
+                + "/active/overview?query%5BBin%5D=true" + filterQuery);
         if (body == null) {
             return null;
+        }
+        if (!body.trim().startsWith("[")) {
+            // e.g. {"slug":"unknown_filter"}: this filter does not exist for the tag
+            return List.of();
         }
         try {
             JsonArray array = JsonParser.parseString(body).getAsJsonArray();
@@ -434,51 +450,239 @@ public class AhMarketData {
         }
     }
 
+    /**
+     * @param price the real active BIN price the Cofl LBin belongs to (0 = none found)
+     * @param count active BINs (not our own) within +-match% of that price
+     */
+    public record LbinMatch(long price, int count) {
+    }
+
     public static int exactLbinCount(String tag, long lbin) {
-        if (tag == null || tag.isBlank() || lbin <= 0) {
-            return 0;
+        return matchLbin(tag, lbin).count();
+    }
+
+    /**
+     * Finds the active BIN the Cofl LBin stands for. The Cofl value is often a
+     * rounded display number (2.75M for 2,749,000), so an exact match is tried
+     * first, then the nearest BIN below/above within coflLbinSearchPercent.
+     * The auctions are counted around that real price.
+     */
+    public static LbinMatch matchLbin(String tag, long lbin) {
+        AhItem item = new AhItem();
+        item.tag = tag == null ? "" : tag;
+        return matchLbin(item, lbin);
+    }
+
+    /**
+     * Finds the active BIN the Cofl LBin stands for. The Cofl value is often a
+     * rounded display number (2.75M for 2,749,000), so the nearest BIN within
+     * coflLbinSearchPercent below/above is taken. The most specific BIN list
+     * (same stars / pet level+rarity / rune level) is searched first, then
+     * less specific ones. Counted are the BINs from that price up to
+     * coflLbinMatchPercent above it.
+     */
+    public static LbinMatch matchLbin(AhItem item, long lbin) {
+        if (item == null || item.tag == null || item.tag.isBlank() || lbin <= 0) {
+            return new LbinMatch(0, 0);
         }
+        String tag = item.tag;
         long now = System.currentTimeMillis();
-        long tolerance = Math.max(1, Math.round(
-                lbin * Math.max(0, AhFlipperMod.CONFIG.coflLbinMatchPercent) / 100.0));
-        String key = tag.toLowerCase(Locale.ROOT) + "|" + lbin + "|" + tolerance;
+        double matchPercent = Math.max(0, AhFlipperMod.CONFIG.coflLbinMatchPercent);
+        double searchPercent = Math.max(matchPercent, AhFlipperMod.CONFIG.coflLbinSearchPercent);
+        List<String> filters = lbinFilters(item);
+        String key = tag.toLowerCase(Locale.ROOT) + "|" + lbin + "|" + matchPercent
+                + "|" + searchPercent + "|" + filters;
         LbinCountCache cached = LBIN_COUNT_CACHE.get(key);
         if (cached != null && now - cached.at < 30_000L) {
-            return cached.count;
+            return new LbinMatch(cached.price, cached.count);
         }
-        int count = 0;
-        for (ActiveBin bin : activeBins(tag)) {
-            if (Math.abs(bin.price() - lbin) > tolerance) {
-                continue;
+        LbinMatch match = new LbinMatch(0, 0);
+        for (String filter : filters) {
+            List<Long> prices = new ArrayList<>();
+            for (ActiveBin bin : activeBins(tag, filter)) {
+                if (bin.price() <= 0
+                        || AhFlipperMod.isOwnSeller(bin.seller(), bin.playerName())) {
+                    continue;
+                }
+                prices.add(bin.price());
             }
-            if (AhFlipperMod.isOwnSeller(bin.seller(), bin.playerName())) {
-                continue;
+            match = matchLbin(prices, lbin, matchPercent, searchPercent);
+            if (match.price() > 0) {
+                break;
             }
-            count++;
         }
-        LBIN_COUNT_CACHE.put(key, new LbinCountCache(count, now));
+        LBIN_COUNT_CACHE.put(key, new LbinCountCache(match.count(), match.price(), now));
         if (LBIN_COUNT_CACHE.size() > 500) {
             LBIN_COUNT_CACHE.entrySet().removeIf(entry -> now - entry.getValue().at > 60_000L);
         }
-        return count;
+        return match;
     }
 
+    /** Coflnet filters for the item's variant, most specific first, "" (all BINs) last. */
+    static List<String> lbinFilters(AhItem item) {
+        List<String> filters = new ArrayList<>();
+        String tag = item.tag == null ? "" : item.tag.toUpperCase(Locale.ROOT);
+        if (item.isPet() && item.petRarity != null && !item.petRarity.isBlank()) {
+            String rarity = "&query%5BRarity%5D=" + item.petRarity.trim().toUpperCase(Locale.ROOT);
+            if (item.petLevel > 0) {
+                filters.add("&query%5BPetLevel%5D=" + item.petLevel + rarity);
+            }
+            filters.add(rarity);
+        } else if (tag.startsWith("RUNE_") && item.runeLevel > 0) {
+            // RUNE_FIERY_BURST -> filter "FieryBurstRune"
+            StringBuilder name = new StringBuilder();
+            for (String part : tag.substring("RUNE_".length()).split("_")) {
+                if (!part.isEmpty()) {
+                    name.append(part.charAt(0)).append(part.substring(1).toLowerCase(Locale.ROOT));
+                }
+            }
+            if (!name.isEmpty()) {
+                filters.add("&query%5B" + name + "Rune%5D=" + item.runeLevel);
+            }
+        } else if (item.stars > 0) {
+            filters.add("&query%5BStars%5D=" + item.stars);
+        }
+        filters.add("");
+        return filters;
+    }
+
+    /** Pure part of {@link #matchLbin(String, long)}, separated for tests. */
+    static LbinMatch matchLbin(List<Long> prices, long lbin, double matchPercent,
+                               double searchPercent) {
+        if (prices == null || prices.isEmpty() || lbin <= 0) {
+            return new LbinMatch(0, 0);
+        }
+        long window = Math.max(1, Math.round(lbin * Math.max(matchPercent, searchPercent) / 100.0));
+        long anchor = 0;
+        long bestDistance = Long.MAX_VALUE;
+        for (long price : prices) {
+            long distance = Math.abs(price - lbin);
+            if (distance > window) {
+                continue;
+            }
+            // nearest wins; on a tie the cheaper one (the real lowest BIN)
+            if (distance < bestDistance || (distance == bestDistance && price < anchor)) {
+                bestDistance = distance;
+                anchor = price;
+            }
+        }
+        if (anchor <= 0) {
+            return new LbinMatch(0, 0);
+        }
+        // the same price written slightly cheaper (2,749,000 next to 2.75M) is
+        // the real lowest BIN of that group
+        long base = anchor;
+        for (long price : prices) {
+            if (price < base && price >= anchor * (1.0 - SAME_PRICE_FRACTION)) {
+                base = price;
+            }
+        }
+        // every BIN from the LBin up to matchPercent above it confirms it; the
+        // old +-1 % only counted auctions at practically the same price, so
+        // 4.9M / 4.999M / 5.0M was "1 Auktion"
+        double upper = base * (1.0 + Math.max(matchPercent, SAME_PRICE_FRACTION * 100.0) / 100.0);
+        int count = 0;
+        for (long price : prices) {
+            if (price >= base && price <= upper) {
+                count++;
+            }
+        }
+        return new LbinMatch(base, count);
+    }
+
+    /** Prices this close below the anchor are the same price, just written cheaper. */
+    private static final double SAME_PRICE_FRACTION = 0.01;
+
     public static void ensureLbinCount(AhItem item) {
-        if (item == null || item.coflLbinCount >= 0) {
+        ensureLbinCount(item, false);
+    }
+
+    /**
+     * @param exact true for items that got an addon comparison: like the old
+     *              logic only BINs at the Cofl LBin price itself
+     *              (+-coflLbinExactMatchPercent) count and the LBin stays the
+     *              Cofl number. false: the nearest BIN within +-search% and all
+     *              BINs up to +match% above it count.
+     */
+    public static void ensureLbinCount(AhItem item, boolean exact) {
+        if (item == null) {
             return;
         }
+        long shown = item.coflLbinShown > 0 ? item.coflLbinShown : item.coflLbin;
+        if (item.coflLbinCount >= 0 && item.coflLbinExact == exact) {
+            return;
+        }
+        // (re)check from the value Cofl showed
+        item.coflLbin = shown;
+        item.coflLbinExact = exact;
+        item.coflLbinCount = -1;
         if (!item.needsLbinCountCheck()) {
             item.applyLbinCount(0);
             return;
         }
-        int count = exactLbinCount(item.tag, item.coflLbin);
-        item.applyLbinCount(count);
-        long tolerance = Math.max(1, Math.round(item.coflLbin
-                * Math.max(0, AhFlipperMod.CONFIG.coflLbinMatchPercent) / 100.0));
-        System.out.println("[AH-Flipper] LBin-Check " + item.tag + " @ "
-                + item.coflLbin + " (\u00b1" + tolerance + "): " + count
-                + " Auktion(en), min=" + AhFlipperMod.CONFIG.coflLbinMinCount
+        LbinMatch match = exact ? matchLbinExact(item, shown) : matchLbin(item, shown);
+        if (!exact && match.price() > 0 && match.price() < item.coflMed) {
+            // use the real auction price instead of the rounded Cofl number
+            item.coflLbin = match.price();
+        }
+        item.applyLbinCount(match.count());
+        System.out.println("[AH-Flipper] LBin-Check " + item.tag + " @ " + shown
+                + (!exact && match.price() > 0 && match.price() != shown
+                ? " -> echte BIN " + match.price() : "")
+                + (exact
+                ? " (Addon-Vergleich: exakter Preis \u00b1"
+                + AhFlipperMod.CONFIG.coflLbinExactMatchPercent + "%): "
+                : " (Suche \u00b1" + AhFlipperMod.CONFIG.coflLbinSearchPercent
+                + "%, gezaehlt bis +" + AhFlipperMod.CONFIG.coflLbinMatchPercent + "%): ")
+                + match.count() + " Auktion(en), min=" + AhFlipperMod.CONFIG.coflLbinMinCount
                 + " -> " + item.coflPick);
+    }
+
+    /** Old logic: BINs within +-coflLbinExactMatchPercent of the Cofl LBin itself. */
+    public static LbinMatch matchLbinExact(AhItem item, long lbin) {
+        if (item == null || item.tag == null || item.tag.isBlank() || lbin <= 0) {
+            return new LbinMatch(0, 0);
+        }
+        double percent = Math.max(0, AhFlipperMod.CONFIG.coflLbinExactMatchPercent);
+        List<String> filters = lbinFilters(item);
+        long now = System.currentTimeMillis();
+        String key = "exact|" + item.tag.toLowerCase(Locale.ROOT) + "|" + lbin + "|"
+                + percent + "|" + filters;
+        LbinCountCache cached = LBIN_COUNT_CACHE.get(key);
+        if (cached != null && now - cached.at < 30_000L) {
+            return new LbinMatch(cached.price, cached.count);
+        }
+        LbinMatch match = new LbinMatch(0, 0);
+        for (String filter : filters) {
+            List<Long> prices = new ArrayList<>();
+            for (ActiveBin bin : activeBins(item.tag, filter)) {
+                if (bin.price() > 0
+                        && !AhFlipperMod.isOwnSeller(bin.seller(), bin.playerName())) {
+                    prices.add(bin.price());
+                }
+            }
+            match = matchLbinExact(prices, lbin, percent);
+            if (match.count() > 0) {
+                break;
+            }
+        }
+        LBIN_COUNT_CACHE.put(key, new LbinCountCache(match.count(), match.price(), now));
+        return match;
+    }
+
+    /** Pure part of {@link #matchLbinExact(AhItem, long)}, separated for tests. */
+    static LbinMatch matchLbinExact(List<Long> prices, long lbin, double percent) {
+        if (prices == null || prices.isEmpty() || lbin <= 0) {
+            return new LbinMatch(0, 0);
+        }
+        long tolerance = Math.max(1, Math.round(lbin * percent / 100.0));
+        int count = 0;
+        for (long price : prices) {
+            if (Math.abs(price - lbin) <= tolerance) {
+                count++;
+            }
+        }
+        return new LbinMatch(count > 0 ? lbin : 0, count);
     }
 
     public static List<ActiveAuction> activeNonBinEndingSoon(int maxPages, long untilMillis) {
@@ -817,29 +1021,20 @@ public class AhMarketData {
             return null;
         }
         List<Sold> primary = new ArrayList<>();
-        for (Sold sale : all) {
-            if (sale.price <= 0) {
-                continue;
-            }
-            if (item.isPet()) {
-                if (sale.petLevel == item.petLevel
-                        && item.petRarity != null
-                        && item.petRarity.equalsIgnoreCase(sale.petRarity)) {
-                    primary.add(sale);
-                }
-            } else if (isCleanSale(item.tag, sale)) {
-                primary.add(sale);
-            }
-        }
-        if (primary.isEmpty()) {
+        if (item.isPet()) {
+            primary.addAll(petReferenceSales(item, all));
+        } else {
             for (Sold sale : all) {
-                if (sale.price <= 0) {
-                    continue;
-                }
-                if (!item.isPet()
-                        && soldAddonBaseValue(item.tag, sale)
-                        < AhFlipperMod.CONFIG.cleanSalesAddonValueCoins) {
+                if (sale.price > 0 && isCleanSale(item.tag, sale)) {
                     primary.add(sale);
+                }
+            }
+            if (primary.isEmpty()) {
+                for (Sold sale : all) {
+                    if (sale.price > 0 && soldAddonBaseValue(item.tag, sale)
+                            < AhFlipperMod.CONFIG.cleanSalesAddonValueCoins) {
+                        primary.add(sale);
+                    }
                 }
             }
         }
@@ -879,16 +1074,133 @@ public class AhMarketData {
         for (long price : prices) {
             sum += price;
         }
-        double average = sum / prices.size();
-        stats.average = Math.round(average);
-        double variance = 0;
-        for (long price : prices) {
-            double diff = price - average;
-            variance += diff * diff;
-        }
-        stats.coeffVariation = average <= 0 ? 0
-                : Math.sqrt(variance / prices.size()) / average;
+        stats.average = Math.round(sum / prices.size());
+        // Outlier-free spread. The raw CV over all sales made one tag with
+        // several variants (New Year Cake years, Crab Hat colours) look like
+        // 600 % "Schwankung" and was the most common rejection.
+        stats.coeffVariation = robustCvOf(prices, cvOutlierFraction());
         return stats;
+    }
+
+    private static double cvOutlierFraction() {
+        return Math.max(1.0, AhFlipperMod.CONFIG.cvOutlierPercent) / 100.0;
+    }
+
+    /**
+     * Coefficient of variation of the prices within +-outlierFraction of their
+     * median (low AND high outliers removed), measured around that median.
+     */
+    static double robustCvOf(List<Long> prices, double outlierFraction) {
+        if (prices == null || prices.size() < 2) {
+            return 0;
+        }
+        List<Long> sorted = new ArrayList<>(prices);
+        sorted.sort(null);
+        long baseline = median(sorted);
+        if (baseline <= 0) {
+            return 0;
+        }
+        double low = baseline * (1.0 - Math.min(0.95, outlierFraction));
+        double high = baseline * (1.0 + outlierFraction);
+        List<Long> kept = new ArrayList<>();
+        for (long price : sorted) {
+            if (price >= low && price <= high) {
+                kept.add(price);
+            }
+        }
+        if (kept.size() < 2) {
+            return 0;
+        }
+        long center = median(kept);
+        if (center <= 0) {
+            return 0;
+        }
+        double sumSquares = 0;
+        for (long price : kept) {
+            double deviation = price - center;
+            sumSquares += deviation * deviation;
+        }
+        return Math.sqrt(sumSquares / kept.size()) / center;
+    }
+
+    /**
+     * Level a pet is compared with: below 95 every pet counts as level 1, from
+     * 95 on only the exact level matches. When no level-1 sale of that rarity
+     * exists, the lowest level sold up to the pet's own level is used instead.
+     * Returns 0 when there is nothing to compare with.
+     */
+    static int petReferenceLevel(List<Sold> sales, int petLevel, String rarity) {
+        int wanted = AhItem.petCompareLevel(petLevel);
+        if (wanted >= 95) {
+            return wanted;
+        }
+        int best = 0;
+        for (Sold sale : sales) {
+            if (sale.price <= 0 || sale.petLevel <= 0 || sale.petLevel >= 95
+                    || sale.petLevel > Math.max(1, petLevel)
+                    || rarity == null || !rarity.equalsIgnoreCase(sale.petRarity)) {
+                continue;
+            }
+            if (best == 0 || sale.petLevel < best) {
+                best = sale.petLevel;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Sales the pet is valued against: same rarity, reference level, and
+     * preferably without skin / valuable pet item (those count as addons).
+     */
+    static List<Sold> petReferenceSales(AhItem item, List<Sold> all) {
+        int level = petReferenceLevel(all, item.petLevel, item.petRarity);
+        List<Sold> same = new ArrayList<>();
+        if (level <= 0) {
+            return same;
+        }
+        for (Sold sale : all) {
+            if (sale.price > 0 && sale.petLevel == level
+                    && item.petRarity != null && item.petRarity.equalsIgnoreCase(sale.petRarity)) {
+                same.add(sale);
+            }
+        }
+        List<Sold> clean = new ArrayList<>();
+        long minCoins = AhFlipperMod.CONFIG.comparableAddonMinCoins;
+        for (Sold sale : same) {
+            if (soldPetSkin(sale).isBlank()
+                    && AhAddonValues.petItemValue(sale.petItem) < minCoins) {
+                clean.add(sale);
+            }
+        }
+        return clean.isEmpty() ? same : clean;
+    }
+
+    /** Sales of this tag with exactly this pet item (any level). */
+    public static int petItemSales(String tag, String petItem) {
+        if (petItem == null || petItem.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (petItem.equalsIgnoreCase(sale.petItem)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Sales of this tag with exactly this pet skin. */
+    public static int petSkinSales(String tag, String petSkin) {
+        if (petSkin == null || petSkin.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (petSkin.equalsIgnoreCase(soldPetSkin(sale))) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public static long lowestCleanAverage(String tag, int petLevel, String petRarity,
@@ -1281,6 +1593,10 @@ public class AhMarketData {
             return 0;
         }
         boolean pet = petLevel > 0 && petRarity != null && !petRarity.isBlank();
+        int referenceLevel = pet ? petReferenceLevel(all, petLevel, petRarity) : 0;
+        if (pet && referenceLevel <= 0) {
+            return 0;
+        }
         long cutoff = System.currentTimeMillis() - windowMs;
         List<Long> prices = new ArrayList<>();
         for (Sold sale : all) {
@@ -1288,7 +1604,8 @@ public class AhMarketData {
                 continue;
             }
             if (pet) {
-                if (sale.petLevel != petLevel || !petRarity.equalsIgnoreCase(sale.petRarity)) {
+                if (sale.petLevel != referenceLevel
+                        || !petRarity.equalsIgnoreCase(sale.petRarity)) {
                     continue;
                 }
             } else if (!isCleanSale(tag, sale)) {
@@ -1441,6 +1758,72 @@ public class AhMarketData {
                     entry -> now - entry.getValue().at > 10 * 60_000L);
         }
         return value;
+    }
+
+    /** Sales of this enchant at exactly this level on the tag. */
+    public static int enchantSales(String tag, String type, int level) {
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (hasEnchant(sale, type, level)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Sales of this tag with this reforge. */
+    public static int reforgeSales(String tag, String reforge) {
+        if (isNoneReforge(reforge)) {
+            return 0;
+        }
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (matchesReforge(sale, reforge)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Sales of the tag whose NBT int {@code key} is at least {@code min}. */
+    public static int salesWithAtLeast(String tag, int min, String... keys) {
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            int value = 0;
+            for (String key : keys) {
+                value = Math.max(value, nbtInt(sale, key));
+            }
+            if (value >= Math.max(1, min)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Sales of the tag with this ability scroll. */
+    public static int scrollSales(String tag, String scroll) {
+        String wanted = normalizeScroll(scroll);
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (soldScrolls(sale).contains(wanted)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Sales of the tag whose NBT text {@code key} equals {@code value}. */
+    public static int textSales(String tag, String key, String value) {
+        if (value == null || value.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (Sold sale : sold(tag)) {
+            if (matchesNbtText(sale, key, value)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public static AddonPrice averageForPetItem(String tag, int petLevel, String petRarity,
@@ -1974,13 +2357,18 @@ public class AhMarketData {
         if (petLevel > 0 && !pet) {
             return null;
         }
+        int referenceLevel = pet ? petReferenceLevel(sold, petLevel, petRarity) : 0;
+        if (pet && referenceLevel <= 0) {
+            return null;
+        }
         List<Long> prices = new ArrayList<>();
         for (Sold sale : sold) {
             if (sale.price <= 0) {
                 continue;
             }
             if (pet) {
-                if (sale.petLevel != petLevel || !petRarity.equalsIgnoreCase(sale.petRarity)) {
+                if (sale.petLevel != referenceLevel
+                        || !petRarity.equalsIgnoreCase(sale.petRarity)) {
                     continue;
                 }
             } else if (cleanOnly && !isCleanSale(tag, sale)) {
@@ -1996,29 +2384,21 @@ public class AhMarketData {
         if (baseline <= 0) {
             return null;
         }
-        double outlier = Math.max(1.0, AhFlipperMod.CONFIG.cvOutlierPercent) / 100.0;
-        long cutoff = Math.round(baseline * (1.0 + outlier));
+        double outlier = cvOutlierFraction();
+        double low = baseline * (1.0 - Math.min(0.95, outlier));
+        double high = baseline * (1.0 + outlier);
         List<Long> kept = new ArrayList<>();
         for (Long price : prices) {
-            if (price <= cutoff) {
+            if (price >= low && price <= high) {
                 kept.add(price);
             }
         }
         if (kept.size() < 5) {
             return null;
         }
-        long robustMedian = median(kept);
-        if (robustMedian <= 0) {
-            return null;
-        }
-        double sumSquares = 0;
-        for (Long price : kept) {
-            double deviation = price - robustMedian;
-            sumSquares += deviation * deviation;
-        }
         RobustCv result = new RobustCv();
-        result.cv = Math.sqrt(sumSquares / kept.size()) / robustMedian;
-        result.median = robustMedian;
+        result.cv = robustCvOf(kept, outlier);
+        result.median = median(kept);
         result.sample = kept.size();
         result.excluded = prices.size() - kept.size();
         return result;

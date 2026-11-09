@@ -30,6 +30,10 @@ public final class LowballingChat {
     private static volatile long warpAt;
     private static volatile long alreadyHereAt;
     private static volatile long kickAt;
+    private static volatile long hubFullAt;
+    /** "Please move away from spawn to chat!": our ad was not sent. */
+    private static volatile long spawnChatBlockedAt;
+    private static volatile long warpFailedAt;
     private static volatile long tradeSuccessAt;
     private static volatile Visitor visitor;
     private static volatile long tradeRequestSentAt;
@@ -37,9 +41,18 @@ public final class LowballingChat {
     private static final Map<String, PlayerLine> PLAYER_LINES = new HashMap<>();
     /** Last 10 chat lines per player (lower-case name), guarded by PLAYER_LINES. */
     private static final Map<String, Deque<PlayerLine>> PLAYER_HISTORY = new HashMap<>();
-    // "[289] [✌] [MVP+] qbreese: my best offer rn is 190" -> name + message
+    // "[289] [✌] [MVP+] qbreese: my best offer rn is 190" -> name + message.
+    // Also "[110] ᛝ [✌] [MVP+] atqz: ..." : SkyBlock emblems (any symbol that is
+    // not a letter/digit/bracket) may stand between level, icons and rank.
     private static final Pattern PLAYER_CHAT = Pattern.compile(
-            "^(?:\\[[^\\]]*\\]\\s*)*([A-Za-z0-9_]{2,16})\\s*:\\s*(.+)$");
+            "^(?:(?:\\[[^\\]]*\\]|[^A-Za-z0-9_\\s\\[\\]:]+)\\s*)*"
+                    + "([A-Za-z0-9_]{2,16})\\s*:\\s*(.+)$");
+
+    /** {name, message} of a player chat line, null for anything else. */
+    static String[] splitPlayerChat(String text) {
+        Matcher matcher = PLAYER_CHAT.matcher(text == null ? "" : text);
+        return matcher.find() ? new String[]{matcher.group(1), matcher.group(2).trim()} : null;
+    }
 
     public record PlayerLine(String name, String text, long at) {
     }
@@ -82,10 +95,23 @@ public final class LowballingChat {
                 || lower.contains("kicked while joining")
                 || lower.contains("couldn't connect")
                 || lower.contains("could not connect")
-                || lower.contains("server is full")
                 || lower.contains("an exception occurred")) {
             kickAt = now;
             return;
+        }
+        // "This server is full!" / "Couldn't warp you! (SERVER_FULL)" is the
+        // answer to joining a full hub, not a kick: the bot should try the next
+        // hub instead of restarting the whole sequence.
+        if (lower.contains("please move away from spawn to chat")) {
+            spawnChatBlockedAt = now;
+            return;
+        }
+        if (lower.contains("server is full") || lower.contains("server_full")) {
+            hubFullAt = now;
+            return;
+        }
+        if (lower.contains("couldn't warp you") || lower.contains("could not warp you")) {
+            warpFailedAt = now;
         }
         if (lower.contains("you are already on this server")
                 || lower.contains("already connected to this server")) {
@@ -165,6 +191,21 @@ public final class LowballingChat {
             Long at = RECENT_VISITORS.get(name.toLowerCase(Locale.ROOT));
             return at != null && at >= since;
         }
+    }
+
+    /** Time of the visit message of {@code name} (0 = none). */
+    public static long visitAt(String name) {
+        if (name == null) {
+            return 0;
+        }
+        synchronized (RECENT_VISITORS) {
+            Long at = RECENT_VISITORS.get(name.toLowerCase(Locale.ROOT));
+            return at == null ? 0 : at;
+        }
+    }
+
+    public static void clearVisitor() {
+        visitor = null;
     }
 
     /** Time of the newest visitor message (0 = none). */
@@ -273,6 +314,30 @@ public final class LowballingChat {
 
     public static void clearTradeRequest() {
         tradeRequestSentAt = 0;
+    }
+
+    public static boolean consumeSpawnChatBlocked(long since) {
+        long at = spawnChatBlockedAt;
+        if (at > 0 && at >= since) {
+            spawnChatBlockedAt = 0;
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean consumeHubFull(long since) {
+        long at = hubFullAt;
+        if (at > 0 && at >= since) {
+            hubFullAt = 0;
+            return true;
+        }
+        return false;
+    }
+
+    /** "Couldn't warp you! Try again later." (cooldown etc.) since {@code since}. */
+    public static boolean warpFailedSince(long since) {
+        long at = warpFailedAt;
+        return at > 0 && at >= since;
     }
 
     public static boolean consumeWarp(long since) {

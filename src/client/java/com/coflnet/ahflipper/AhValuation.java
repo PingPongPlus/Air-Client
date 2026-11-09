@@ -1,5 +1,6 @@
 package com.coflnet.ahflipper;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
@@ -42,6 +43,13 @@ public class AhValuation {
         public boolean addonValueUnbacked;
         public boolean coflFallback;
         public boolean candyPet;
+        /** Coins taken off for pet candies. */
+        public long candyDiscount;
+        /** Value before the deduction for rarely sold addons. */
+        public long fullValue;
+        public long rareAddonValue;
+        public long rareAddonDeduction;
+        public java.util.List<AhRareAddons.Addon> rareAddons = java.util.List.of();
     }
 
     public static Estimate peek(AhItem item, String excludeUuid) {
@@ -131,13 +139,9 @@ public class AhValuation {
             est.source = "no-tag";
             return est;
         }
-        AhMarketData.ensureLbinCount(item);
-        est.coflMed = item.coflMed;
-        est.coflLbin = item.coflLbin;
-        est.coflChosen = item.coflValue();
-        est.coflLbinCount = item.coflLbinCount;
-        est.coflPick = item.coflPick;
         if (item.isRune()) {
+            AhMarketData.ensureLbinCount(item, false);
+            copyCofl(item, est);
             String runeTag = item.tag;
             if (runeTag == null || runeTag.isBlank() || runeTag.equalsIgnoreCase("RUNE")) {
                 String derived = AhItem.runeMarketTag(item.displayName);
@@ -169,7 +173,10 @@ public class AhValuation {
         AhMarketData.RuneStats cleanRef = AhMarketData.referenceMedian(item);
         if (cleanRef == null || cleanRef.median <= 0) {
             est.source = "no-clean-data";
-            est.estimated = blendCofl(item, 0, est);
+            AhMarketData.ensureLbinCount(item, false);
+            copyCofl(item, est);
+            long coflOnly = blendCofl(item, 0, est);
+            est.estimated = coflOnly > 1 ? applyCandyAndRareAddons(item, coflOnly, est) : coflOnly;
             return est;
         }
         long cleanAverage = cleanRef.median;
@@ -185,6 +192,7 @@ public class AhValuation {
         long addonValueAsk = 0;
         long comparableAverage = 0;
         int comparableSales = 0;
+        boolean addonComparison = false;
         if (!pet) {
             long starPremium = AhMarketData.cleanStarPremium(item.tag, item,
                     cleanAverage > 0 ? cleanAverage : reference);
@@ -201,7 +209,8 @@ public class AhValuation {
                     && addonValue * 100.0 > shareBase
                     * AhFlipperMod.CONFIG.comparableAddonSharePercent;
             est.comparableAttempted = addonValue > 0;
-            if (!aspectOfTheVoid && addonValue > 0 && addonDominant) {
+            addonComparison = !aspectOfTheVoid && addonValue > 0 && addonDominant;
+            if (addonComparison) {
                 AhMarketData.AddonPrice comparable = AhMarketData.averageForComparable(item.tag,
                         item, AhFlipperMod.CONFIG.comparableAddonMinCoins);
                 if (comparable != null && comparable.average > 0
@@ -229,6 +238,10 @@ public class AhValuation {
                 est.comparableNote = "Addon nicht dominant";
             }
         }
+        // LBin check: items with an addon comparison only accept BINs at the
+        // exact Cofl LBin price (old logic), all others the +-search logic.
+        AhMarketData.ensureLbinCount(item, addonComparison);
+        copyCofl(item, est);
         long coflCap = Math.max(reference + addonValue, bin);
         est.coflCap = coflCap;
         long coflMedian = item.coflMed;
@@ -250,31 +263,20 @@ public class AhValuation {
         est.ceiling = 0;
         if (pet) {
             est.candyPet = item.petCandies > 0;
-            String petItem = item.petItem == null ? "" : item.petItem.trim();
-            if (!petItem.isBlank()) {
-                double petItemValue = AhAddonValues.productValue(
-                        petItem.toUpperCase(java.util.Locale.ROOT));
-                if (petItemValue > 5_000_000.0) {
-                    AhMarketData.AddonPrice comparable = AhMarketData.averageForPetItem(
-                            item.tag, item.petLevel, item.petRarity, petItem);
-                    if (comparable != null && comparable.average > 0
-                            && comparable.sample >= 2) {
-                        comparableAverage = comparable.average;
-                        comparableSales = comparable.sample;
-                    } else {
-                        est.addonValueUnbacked = true;
-                    }
-                }
-            }
+            // Pet item and pet skin are addons like enchants on a weapon: the
+            // reference is the pet (rarity, level 1 / exact level from 95)
+            // without them, their value comes on top.
+            addonValue = Math.round(AhAddonValues.petItemValue(item.petItem)
+                    + AhAddonValues.cosmeticValue(item.petSkin, false));
+            addonValueAsk = addonValue;
+            est.addonValue = addonValue;
+            est.addonValueAsk = addonValueAsk;
         }
 
         boolean addonsWorthwhile = addonValue
                 >= AhFlipperMod.CONFIG.minAddonValueMillions * 1_000_000.0;
         long estimated;
-        if (pet && comparableAverage > 0) {
-            estimated = comparableAverage;
-            est.source = "pet-item";
-        } else if (comparableAverage > 0) {
+        if (comparableAverage > 0) {
             long refPlusAddons = reference + addonValue;
             if (refPlusAddons <= 0 || comparableAverage <= refPlusAddons) {
                 estimated = comparableAverage;
@@ -313,11 +315,12 @@ public class AhValuation {
             // the flipper/lowballer apply their own margins on top of it.
         } else {
             estimated = reference;
-            if (!pet && (addonsWorthwhile || aspectOfTheVoid)) {
+            if (addonsWorthwhile || (!pet && aspectOfTheVoid)) {
                 estimated += addonValue;
             }
             if (pet) {
-                est.source = "pet";
+                est.source = "pet-lvl" + AhItem.petCompareLevel(item.petLevel)
+                        + (addonsWorthwhile ? "+addons" : "");
             } else if (aspectOfTheVoid) {
                 est.source = "aotv-ref+addons";
             } else {
@@ -328,11 +331,52 @@ public class AhValuation {
         if (item.coflValue() > 0) {
             estimated = Math.min(estimated, item.coflValue());
         }
+        estimated = applyCandyAndRareAddons(item, estimated, est);
         if (estimated <= 0) {
             est.source = est.source + " (wertlos)";
         }
         est.estimated = Math.max(1, estimated);
         return est;
+    }
+
+    /**
+     * Pets with candies are worth a bit less (no longer rejected). Addons that
+     * hardly sell on this item are valued like everything else first and then
+     * rareAddonDeductPercent of their value is taken off the result.
+     */
+    private static long applyCandyAndRareAddons(AhItem item, long estimated, Estimate est) {
+        if (estimated <= 1) {
+            return estimated;
+        }
+        if (item.isPet() && item.petCandies > 0) {
+            double discount = Math.max(0, AhFlipperMod.CONFIG.petCandyDiscountPercent) / 100.0;
+            est.candyDiscount = Math.round(estimated * discount);
+            estimated -= est.candyDiscount;
+            if (est.candyDiscount > 0) {
+                est.source = est.source + " -candy";
+            }
+        }
+        est.fullValue = estimated;
+        List<AhRareAddons.Addon> rare = AhRareAddons.find(item);
+        est.rareAddons = rare;
+        if (!rare.isEmpty()) {
+            est.rareAddonValue = AhRareAddons.totalValue(rare);
+            est.rareAddonDeduction = AhRareAddons.deduction(rare,
+                    AhFlipperMod.CONFIG.rareAddonDeductPercent);
+            estimated = AhRareAddons.apply(estimated, est.rareAddonDeduction);
+            if (est.rareAddonDeduction > 0) {
+                est.source = est.source + " -selten";
+            }
+        }
+        return estimated;
+    }
+
+    private static void copyCofl(AhItem item, Estimate est) {
+        est.coflMed = item.coflMed;
+        est.coflLbin = item.coflLbin;
+        est.coflChosen = item.coflValue();
+        est.coflLbinCount = item.coflLbinCount;
+        est.coflPick = item.coflPick;
     }
 
     private static long blendCofl(AhItem item, long ourValue, Estimate est) {

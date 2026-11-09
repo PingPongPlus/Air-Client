@@ -1,6 +1,5 @@
 package com.coflnet.ahflipper;
 
-import com.coflnet.flipper.trading.ScreenUtil;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
@@ -32,6 +31,47 @@ public final class AhItemValueTooltip {
     private AhItemValueTooltip() {
     }
 
+    /** Start of every line this class adds (after formatting codes are stripped). */
+    private static final String[] OWN_PREFIXES = {
+            "[AH-Flipper]", "Cofl genommen:", "Cofl-Median:", "Cofl-LBin:", "LBin-Check:",
+            "Referenz:", "Ø Addon-Vergleich:", "Lowest Addon-BIN:",
+            "BestAsk-Sicherheit:", "Deckel:", "Seltene Addons:", "Candy-Abzug:"
+    };
+
+    /**
+     * True for a line of OUR tooltip block. Those lines show our own (rounded)
+     * numbers and must never be read back as Cofl values.
+     */
+    public static boolean isOwnLine(String cleanLine) {
+        if (cleanLine == null) {
+            return false;
+        }
+        String text = cleanLine.trim();
+        for (String prefix : OWN_PREFIXES) {
+            if (text.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The item exactly as the tooltip values it: NBT plus the Cofl Med/LBin from
+     * the tooltip lines and the Cofl description. {@code rawLines} may be null.
+     */
+    public static AhItem valuedItem(ItemStack stack, List<String> rawLines) {
+        AhItem item = AhItem.fromStack(stack);
+        applyCofl(item, stack, rawLines);
+        return item;
+    }
+
+    private static void applyCofl(AhItem item, ItemStack stack, List<String> rawLines) {
+        AhItem.CoflValues values = AhItem.parseCoflValues(
+                rawLines == null ? List.of() : rawLines);
+        values.merge(AhItem.coflValuesFromDescription(stack));
+        item.applyCoflValues(values);
+    }
+
     public static void append(ItemStack stack, List<Component> lines) {
         if (!AhFlipperMod.CONFIG.tooltipValue || stack == null || stack.isEmpty()) {
             return;
@@ -44,9 +84,7 @@ public final class AhItemValueTooltip {
         for (Component line : lines) {
             rawLines.add(line.getString());
         }
-        AhItem.CoflValues values = AhItem.parseCoflValues(rawLines);
-        values.merge(AhItem.coflValuesFromDescription(stack));
-        item.applyCoflValues(values);
+        applyCofl(item, stack, rawLines);
         if (item.coflValue() <= 0) {
             AhScreenUtil.loadCoflDescriptions();
             lines.add(Component.literal("\u00a77[AH-Flipper] \u00a7eCofl-Median wird geladen..."));
@@ -93,6 +131,28 @@ public final class AhItemValueTooltip {
         return item;
     }
 
+    /** Like formatCoins, but 2.75M stays 2.75M instead of becoming 2.8M. */
+    static String coins(long value) {
+        double abs = Math.abs((double) value);
+        String unit;
+        double scaled;
+        if (abs >= 1_000_000_000) {
+            unit = "B";
+            scaled = value / 1_000_000_000.0;
+        } else if (abs >= 1_000_000) {
+            unit = "M";
+            scaled = value / 1_000_000.0;
+        } else if (abs >= 1_000) {
+            unit = "K";
+            scaled = value / 1_000.0;
+        } else {
+            return Long.toString(value);
+        }
+        String text = String.format(java.util.Locale.US, "%.3f", scaled);
+        text = text.replaceAll("0+$", "").replaceAll("\\.$", "");
+        return text + unit;
+    }
+
     private static void appendLines(List<Component> lines, AhValuation.Estimate est) {
         if (est.estimated <= 1 && est.reference <= 0
                 && est.comparableAverage <= 0 && !est.comparableAttempted) {
@@ -100,7 +160,24 @@ public final class AhItemValueTooltip {
             return;
         }
         lines.add(Component.literal("\u00a76[AH-Flipper] \u00a77Wert: \u00a7f"
-                + ScreenUtil.formatCoins(est.estimated) + " \u00a77(" + est.source + ")"));
+                + coins(est.estimated) + " \u00a77(" + est.source + ")"));
+        if (est.rareAddonDeduction > 0) {
+            StringBuilder rare = new StringBuilder();
+            for (AhRareAddons.Addon addon : est.rareAddons) {
+                if (!rare.isEmpty()) {
+                    rare.append(", ");
+                }
+                rare.append(addon.label()).append(" ").append(addon.sales()).append("x");
+            }
+            lines.add(Component.literal("\u00a77  Seltene Addons: \u00a7c-"
+                    + coins(est.rareAddonDeduction) + " \u00a77(" + Math.round(
+                    AhFlipperMod.CONFIG.rareAddonDeductPercent) + "% von "
+                    + coins(est.rareAddonValue) + ": " + rare + ")"));
+        }
+        if (est.candyDiscount > 0) {
+            lines.add(Component.literal("\u00a77  Candy-Abzug: \u00a7c-"
+                    + coins(est.candyDiscount)));
+        }
         long coflChosen = est.coflChosen > 0
                 ? est.coflChosen
                 : (est.coflMed > 0 && est.coflLbin > 0
@@ -110,44 +187,44 @@ public final class AhItemValueTooltip {
             String pick = est.coflPick == null || est.coflPick.isBlank()
                     ? "Med" : est.coflPick;
             lines.add(Component.literal("\u00a77  Cofl genommen: \u00a7f"
-                    + ScreenUtil.formatCoins(coflChosen) + " \u00a77(" + pick + ")"));
+                    + coins(coflChosen) + " \u00a77(" + pick + ")"));
         }
         if (est.coflMed > 0) {
             lines.add(Component.literal("\u00a77  Cofl-Median: \u00a7f"
-                    + ScreenUtil.formatCoins(est.coflMed)));
+                    + coins(est.coflMed)));
         }
         if (est.coflLbin > 0) {
             lines.add(Component.literal("\u00a77  Cofl-LBin: \u00a7f"
-                    + ScreenUtil.formatCoins(est.coflLbin)));
+                    + coins(est.coflLbin)));
         }
         if (est.coflLbin > 0 && est.coflMed > 0 && est.coflLbin < est.coflMed
                 && est.coflLbinCount >= 0) {
             lines.add(Component.literal("\u00a77  LBin-Check: \u00a7f"
                     + est.coflLbinCount + (est.coflLbinCount == 1 ? " Auktion" : " Auktionen")
-                    + " @ " + ScreenUtil.formatCoins(est.coflLbin) + " \u00a77-> "
+                    + " @ " + coins(est.coflLbin) + " \u00a77-> "
                     + (est.coflLbinCount > 1 ? "\u00a7aLBin" : "\u00a7eMed")));
         }
         if (!AhFlipperMod.CONFIG.tooltipDetails) {
             return;
         }
         StringBuilder info = new StringBuilder("\u00a77  Referenz: \u00a7f")
-                .append(ScreenUtil.formatCoins(est.reference));
+                .append(coins(est.reference));
         if (est.addonValue > 0) {
             info.append(" \u00a77| Addons: \u00a7f")
-                    .append(ScreenUtil.formatCoins(est.addonValue));
+                    .append(coins(est.addonValue));
         }
         if (est.gemValue > 0) {
             info.append(" \u00a77| Gems: \u00a7f")
-                    .append(ScreenUtil.formatCoins(est.gemValue));
+                    .append(coins(est.gemValue));
         }
         if (est.slotUnlockValue > 0) {
             info.append(" \u00a77| Slots: \u00a7f")
-                    .append(ScreenUtil.formatCoins(est.slotUnlockValue));
+                    .append(coins(est.slotUnlockValue));
         }
         lines.add(Component.literal(info.toString()));
         if (est.comparableAverage > 0) {
             lines.add(Component.literal("\u00a77  \u00d8 Addon-Vergleich: \u00a7f"
-                    + ScreenUtil.formatCoins(est.comparableAverage)
+                    + coins(est.comparableAverage)
                     + " \u00a77(" + est.comparableSales + " Sales, "
                     + est.comparableExcluded + " Ausrei\u00dfer)"
                     + (est.comparableBelowReference ? " \u00a7c(unter Referenz)" : "")));
@@ -158,16 +235,16 @@ public final class AhItemValueTooltip {
         }
         if (est.comparableBin > 0) {
             lines.add(Component.literal("\u00a77  Lowest Addon-BIN: \u00a7f"
-                    + ScreenUtil.formatCoins(est.comparableBin)));
+                    + coins(est.comparableBin)));
         }
         if (est.askSafetyValue > 0) {
             lines.add(Component.literal("\u00a77  BestAsk-Sicherheit: \u00a7f"
-                    + ScreenUtil.formatCoins(est.askSafetyValue)
+                    + coins(est.askSafetyValue)
                     + " \u00a77(50/50 mit BestBid)"));
         }
         if (est.ceiling > 0 && est.source.contains("gecappt")) {
             lines.add(Component.literal("\u00a77  Deckel: \u00a7f"
-                    + ScreenUtil.formatCoins(est.ceiling)));
+                    + coins(est.ceiling)));
         }
     }
 

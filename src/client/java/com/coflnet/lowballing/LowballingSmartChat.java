@@ -50,6 +50,17 @@ public final class LowballingSmartChat {
             "{offer} is my final for the {item}",
             "gotta make a bit on it, {offer} is the max");
 
+    /** "lbin is 30m" / "its worth 20m": a market claim, not a price they ask. */
+    private static final List<String> VALUE_CLAIM_WORDS = List.of(
+            "lbin", "lowest bin", "lowest", "worth", "sells for", "sell for", "selling for",
+            "median", "market", "on ah", "ah price", "cheapest", "goes for", "value");
+    private static final List<String> VALUE_CLAIM = List.of(
+            "lbin isnt what they actually sell for, {offer} is my best for the {item}",
+            "ik the lbin but they dont sell at that, {offer} is the most i can do",
+            "i checked the recent sales, {offer} is my max for the {item}",
+            "thats the listing price not the sale price, {offer} is what i can do",
+            "they sit on ah for ages at that price, {offer} is my offer");
+
     private static final List<String> ACCEPT_FINAL = List.of(
             "ok thats fine, {ask} it is",
             "fine with me, {ask} - trading you again",
@@ -61,7 +72,7 @@ public final class LowballingSmartChat {
             "ill meet you a bit, {ask} is my final offer for the {item}",
             "last one: {ask}, take it or leave it");
 
-    private static final int[] LAST = {-1, -1, -1, -1, -1};
+    private static final int[] LAST = {-1, -1, -1, -1, -1, -1};
 
     private LowballingSmartChat() {
     }
@@ -140,6 +151,38 @@ public final class LowballingSmartChat {
         return text != null && !text.matches(".*\\d.*") && !text.contains("?")
                 && hasWord(text, AGREE) && !hasWord(text, REFUSE)
                 && !hasWord(text, NEGATION) && !isComplaint(text);
+    }
+
+    /**
+     * The visitor names a market value (lbin, "worth", "sells for ...") instead of
+     * a price they want. Answering that with "cant do 30m" sounded like a bot.
+     */
+    public static boolean isValueClaim(String text) {
+        if (text == null) {
+            return false;
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        for (String word : VALUE_CLAIM_WORDS) {
+            if (lower.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static String answerValueClaim(long offer, String item) {
+        return fill(pick(VALUE_CLAIM, 5), 0, offer, item);
+    }
+
+    /**
+     * Human typing time for a reply: a short reading pause plus about 45 ms per
+     * character, a little random, at most 5 s.
+     */
+    static long typingDelayMs(String text, double random) {
+        int length = text == null ? 0 : text.length();
+        double base = 900.0 + 45.0 * length;
+        double jitter = 0.85 + 0.3 * Math.max(0, Math.min(1, random));
+        return Math.max(1_000L, Math.min(5_000L, Math.round(base * jitter)));
     }
 
     public static boolean isRefusal(String text) {

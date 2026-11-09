@@ -23,7 +23,8 @@ public final class ServerRestartHandler {
         IDLE, IS_1, HUB, IS_2
     }
 
-    private static final long COMMAND_INTERVAL_MS = 2000L;
+    private static final long COMMAND_INTERVAL_MS = 4000L;
+    private static final long RETRY_AFTER_FAIL_MS = 3000L;
     private static final long PHASE_TIMEOUT_MS = 60_000L;
     private static final long RESTART_COOLDOWN_MS = 60_000L;
 
@@ -70,13 +71,19 @@ public final class ServerRestartHandler {
             }
             return;
         }
-        if (lower.contains("sending you to")
-                || lower.contains("request join for hub")
-                || lower.contains("sende zum server")
-                || lower.contains("warping")
-                || lower.contains("you are already on this server")
+        // "Warping you to your SkyBlock island..." / "Sende zum Server ..." only
+        // mean a warp was STARTED. Counting them as success made the handler
+        // skip ahead although the warp failed (PLAYER_TRANSFER_COOLDOWN) and
+        // then spam /hub inside the hub for a whole minute. Success is a real
+        // world change (see tick); being there already also counts.
+        if (lower.contains("you are already on this server")
                 || lower.contains("already connected to this server")) {
             warpSignalAt = System.currentTimeMillis();
+        }
+        if (lower.contains("couldn't warp you") || lower.contains("could not warp you")
+                || lower.contains("server is full")) {
+            // Retry the same step after the cooldown instead of advancing.
+            nextCommandAt = System.currentTimeMillis() + RETRY_AFTER_FAIL_MS;
         }
     }
 
@@ -109,9 +116,7 @@ public final class ServerRestartHandler {
         }
         long now = System.currentTimeMillis();
         if (warpSignalAt > phaseAt
-                || (lastLevel != null && client.level != lastLevel)
-                || (lastPosition != null
-                && client.player.position().distanceToSqr(lastPosition) >= 25.0)) {
+                || (lastLevel != null && client.level != lastLevel)) {
             advance(client, now);
             return;
         }
@@ -129,7 +134,9 @@ public final class ServerRestartHandler {
         }
         nextCommandAt = now + COMMAND_INTERVAL_MS;
         lastPosition = client.player.position();
-        lastLevel = client.level;
+        if (lastLevel == null) {
+            lastLevel = client.level;
+        }
         System.out.println("[Restart] Sent " + command);
     }
 
@@ -158,6 +165,15 @@ public final class ServerRestartHandler {
             default -> {
             }
         }
+    }
+
+    public static boolean isActive() {
+        return phase != Phase.IDLE;
+    }
+
+    /** Lowballing was started during the warp sequence: start it when done. */
+    public static void resumeLowballingAfterwards() {
+        lowballingWasRunning = true;
     }
 
     private static void restore() {

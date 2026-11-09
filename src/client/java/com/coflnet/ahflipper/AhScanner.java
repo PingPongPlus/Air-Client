@@ -91,7 +91,7 @@ public final class AhScanner {
         }
         List<AhMarketData.MarketEntry> tags = new ArrayList<>();
         for (AhMarketData.MarketEntry entry : market.values()) {
-            if (entry.tag.toUpperCase(java.util.Locale.ROOT).startsWith("PET_")) {
+            if (AhItem.isPetTag(entry.tag) && !AhFlipperMod.CONFIG.petsEnabled) {
                 continue;
             }
             if (entry.value() < AhFlipperMod.CONFIG.minItemCoins) {

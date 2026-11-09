@@ -6,7 +6,13 @@ public class BazaarChatEvent {
         CANCELLED, EXPIRED, ORDER_LIMIT, INVENTORY_FULL, OTHER
     }
 
+    /** Which kind of order a cancel/expire line is about. */
+    public enum Side {
+        BUY, SELL, UNKNOWN
+    }
+
     public Type type;
+    public Side side = Side.UNKNOWN;
     public String item;
     public long qty;
     public double price;
@@ -20,6 +26,14 @@ public class BazaarChatEvent {
         BazaarChatEvent event = new BazaarChatEvent();
         event.raw = stripped;
         try {
+            if (!isBazaarLine(stripped)) {
+                // All chat comes through here. Without the prefix, only the limit and
+                // inventory messages count: "You claimed X from Y's auction!" was taken
+                // for a claimed order, and a player writing "5x hype claimed" as well.
+                return stripped.contains(": ") ? null : parseWithoutPrefix(event, stripped);
+            }
+            event.side = stripped.contains("Sell Offer") ? Side.SELL
+                    : stripped.contains("Buy Order") ? Side.BUY : Side.UNKNOWN;
             if (stripped.contains("Buy Order Setup!")) {
                 event.type = Type.BUY_SETUP;
                 parseSetup(event, stripped);
@@ -38,6 +52,18 @@ public class BazaarChatEvent {
             if (stripped.contains("was filled!")) {
                 event.type = stripped.contains("Sell Offer") ? Type.SELL_FILLED : Type.BUY_FILLED;
                 parseFilled(event, stripped);
+                return event;
+            }
+            // "Claimed 5,040,000 coins from selling 5x Singed Powder at 1,008,000 each!"
+            // also contains "5x ...", so it used to be read as a claim of 5 items.
+            java.util.regex.Matcher coinsMatcher = java.util.regex.Pattern
+                    .compile("Claimed ([\\d,.]+) coins from selling (?:([\\d,]+)x )?(.+?) at ")
+                    .matcher(stripped);
+            if (coinsMatcher.find()) {
+                event.type = Type.CLAIMED_COINS;
+                event.coins = Math.round(parseDouble(coinsMatcher.group(1)));
+                event.qty = coinsMatcher.group(2) == null ? 0 : parseLong(coinsMatcher.group(2));
+                event.item = coinsMatcher.group(3).trim();
                 return event;
             }
             if (stripped.contains("Claimed") || stripped.contains("claimed")) {
@@ -72,24 +98,34 @@ public class BazaarChatEvent {
                 event.qty = firstNumber(stripped);
                 return event;
             }
-            String lower = stripped.toLowerCase();
-            if (lower.contains("inventory") && (lower.contains("full") || lower.contains("space"))) {
-                event.type = Type.INVENTORY_FULL;
+            return parseWithoutPrefix(event, stripped);
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** Hypixel's own Bazaar lines, as opposed to everything else in the chat. */
+    public static boolean isBazaarLine(String stripped) {
+        return stripped != null && stripped.trim().startsWith("[Bazaar]");
+    }
+
+    private static BazaarChatEvent parseWithoutPrefix(BazaarChatEvent event, String stripped) {
+        String lower = stripped.toLowerCase();
+        if (lower.contains("inventory") && (lower.contains("full") || lower.contains("space"))) {
+            event.type = Type.INVENTORY_FULL;
+            return event;
+        }
+        if (lower.contains("order") || lower.contains("offer")) {
+            boolean limitSignal = lower.contains("too many")
+                    || lower.contains("at once") || lower.contains("concurrent")
+                    || lower.contains("order limit") || lower.contains("offer limit")
+                    || lower.contains("maximum amount") || lower.contains("max amount")
+                    || lower.contains("reached your maximum") || lower.contains("maximum of ")
+                    || lower.contains("cancel some");
+            if (limitSignal) {
+                event.type = Type.ORDER_LIMIT;
                 return event;
             }
-            if (lower.contains("order") || lower.contains("offer")) {
-                boolean limitSignal = lower.contains("too many")
-                        || lower.contains("at once") || lower.contains("concurrent")
-                        || lower.contains("order limit") || lower.contains("offer limit")
-                        || lower.contains("maximum amount") || lower.contains("max amount")
-                        || lower.contains("reached your maximum") || lower.contains("maximum of ")
-                        || lower.contains("cancel some");
-                if (limitSignal) {
-                    event.type = Type.ORDER_LIMIT;
-                    return event;
-                }
-            }
-        } catch (Exception ignored) {
         }
         return null;
     }

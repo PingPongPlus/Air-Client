@@ -139,6 +139,7 @@ public final class AhBidMacro {
         if (running) {
             return;
         }
+        AhProtectedBidders.warmUp();
         Thread previous = worker;
         if (previous != null && previous.isAlive()) {
             previous.interrupt();
@@ -275,6 +276,29 @@ public final class AhBidMacro {
             return;
         }
         long now = System.currentTimeMillis();
+        String outbidder = AhProtectedBidders.outbidder(ScreenUtil.cleanName(message.getString()));
+        if (AhProtectedBidders.isProtectedName(outbidder)) {
+            // "Don't outbid player": let them have it - no rebid, no new bid
+            String uuid = uuidFromCommand(findRunCommand(message));
+            if (!uuid.isBlank()) {
+                Tracked lost = trackedFor(uuid);
+                if (lost != null && !lost.refunded) {
+                    ProfitTracker.receive(ProfitTracker.AH, lost.bid);
+                    lost.refunded = true;
+                }
+                if (lost != null) {
+                    TRACKED.remove(lost.uuid);
+                }
+                REBID_COMMANDS.remove(uuidKey(uuid));
+                REBID_ATTEMPTS.remove(uuidKey(uuid));
+                remember(dashedUuid(uuid));
+            }
+            AhFlipperMod.message("\u00a7e[Bid-Macro] \u00a7f" + outbidder
+                    + " \u00a77hat dich ueberboten - steht auf 'Dont outbid', kein Rebid.");
+            System.out.println("[AH-Flipper] Outbid von geschuetztem Spieler " + outbidder
+                    + " - kein Rebid: " + message.getString());
+            return;
+        }
         lastOutbidAt = now;
         rebidRequested = true;
         outbidCheckPending = true;
@@ -296,6 +320,26 @@ public final class AhBidMacro {
         }
         System.out.println("[AH-Flipper] Outbid-Chat erkannt: " + message.getString()
                 + (clickCommand.isBlank() ? "" : " -> " + clickCommand));
+    }
+
+    /** A "don't outbid" player holds the highest bid: stop bidding on that auction. */
+    private static void concedeToProtected(String uuid, String name) {
+        if (uuid == null || uuid.isBlank()) {
+            return;
+        }
+        Tracked tracked = trackedFor(uuid);
+        if (tracked != null) {
+            if (!tracked.refunded) {
+                ProfitTracker.receive(ProfitTracker.AH, tracked.bid);
+                tracked.refunded = true;
+            }
+            TRACKED.remove(tracked.uuid);
+        }
+        REBID_COMMANDS.remove(uuidKey(uuid));
+        REBID_ATTEMPTS.remove(uuidKey(uuid));
+        remember(uuid);
+        System.out.println("[AH-Flipper] Dont-outbid-Spieler ist Highest-Bidder - kein Gebot: "
+                + name + " (" + uuid + ")");
     }
 
     private static String findRunCommand(Component component) {
@@ -438,6 +482,10 @@ public final class AhBidMacro {
                     REBID_COMMANDS.remove(uuidKey(tracked.uuid));
                     continue;
                 }
+                if (AhProtectedBidders.isProtectedBidder(details.highestBidder)) {
+                    concedeToProtected(tracked.uuid, tracked.name);
+                    continue;
+                }
                 if (highest <= tracked.bid) {
                     REBID_COMMANDS.remove(uuidKey(tracked.uuid));
                     continue;
@@ -486,6 +534,10 @@ public final class AhBidMacro {
                     || AhFlipperMod.isOwnSeller(details.highestBidder, "")) {
                 REBID_COMMANDS.remove(entry.getKey());
                 REBID_ATTEMPTS.remove(entry.getKey());
+                continue;
+            }
+            if (AhProtectedBidders.isProtectedBidder(details.highestBidder)) {
+                concedeToProtected(details.uuid, details.itemName);
                 continue;
             }
             if (recentlyRejected(details.uuid) || RECENT.containsKey(entry.getKey())) {
@@ -545,6 +597,10 @@ public final class AhBidMacro {
                             + tracked.name);
                     System.out.println("[AH-Flipper] Claim(2x, 3s) fehlgeschlagen, "
                             + "Kauf wird als nicht gewonnen betrachtet: " + tracked.name);
+                    if (AhFlipperMod.CONFIG.bidMacroAutoList) {
+                        AhFlipperMod.rememberUnclaimed(tracked.tag, tracked.name,
+                                tracked.value, tracked.bid, tracked.uuid);
+                    }
                     return;
                 }
                 tracked.claimed = true;
@@ -619,8 +675,8 @@ public final class AhBidMacro {
                 skipEnding++;
                 continue;
             }
-            if (auction.tag.toUpperCase(Locale.ROOT).startsWith("PET_")
-                    || (auction.itemName != null && auction.itemName.startsWith("[Lvl"))) {
+            if (!AhFlipperMod.CONFIG.petsEnabled && (AhItem.isPetTag(auction.tag)
+                    || (auction.itemName != null && auction.itemName.startsWith("[Lvl")))) {
                 skipBlocked++;
                 continue;
             }
@@ -717,9 +773,16 @@ public final class AhBidMacro {
                         candidate.profitPercent(), 0, "Eigener Highest-Bidder"));
                 continue;
             }
+            if (AhProtectedBidders.isProtectedBidder(details.highestBidder)) {
+                remember(details.uuid);
+                analyzedRows.add(new ReportRow(details.itemName, details.tag, details.uuid,
+                        details.end, candidate.nextBid(), candidate.marketValue(),
+                        candidate.profitPercent(), 0, "Dont-outbid-Spieler ist Highest-Bidder"));
+                continue;
+            }
             long bid = nextBid(details);
             AhItem apiItem = AhItem.fromAuction(details);
-            if (apiItem.isPet()) {
+            if (apiItem.isPet() && !AhFlipperMod.CONFIG.petsEnabled) {
                 remember(details.uuid);
                 analyzedRows.add(new ReportRow(details.itemName, details.tag, details.uuid,
                         details.end, bid, candidate.marketValue(), 0, 0,
@@ -916,6 +979,10 @@ public final class AhBidMacro {
         if (details == null || details.uuid.isBlank() || details.bin) {
             return false;
         }
+        if (running && AhProtectedBidders.isProtectedBidder(details.highestBidder)) {
+            concedeToProtected(details.uuid, details.itemName);
+            return false;
+        }
         if (!running || AhFlipperMod.isOwnSeller(details.highestBidder, "")) {
             return false;
         }
@@ -925,7 +992,7 @@ public final class AhBidMacro {
         }
         double target = Math.max(1.0, AhFlipperMod.CONFIG.bidMacroMinProfitPercent);
         AhItem apiItem = AhItem.fromAuction(details);
-        if (apiItem.isPet()) {
+        if (apiItem.isPet() && !AhFlipperMod.CONFIG.petsEnabled) {
             remember(details.uuid);
             return false;
         }
@@ -1025,6 +1092,7 @@ public final class AhBidMacro {
                 remember(details.uuid);
                 return false;
             }
+            Premium.applyDelay();
             if (!submitAndConfirmBid(slot)) {
                 System.out.println("[AH-Flipper] Bid-Macro: Submit/Confirm fehlgeschlagen: "
                         + item.displayName);

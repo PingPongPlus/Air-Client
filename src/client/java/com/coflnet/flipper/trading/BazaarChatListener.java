@@ -37,12 +37,11 @@ public class BazaarChatListener {
                     return;
                 }
                 BazaarChatEvent event = BazaarChatEvent.parse(stripped);
-                if (event == null) {
-                    String lower = stripped.toLowerCase();
-                    if (lower.contains("order") || lower.contains("offer")
-                            || lower.contains("bazaar")) {
-                        System.out.println("[Flipper] Unerkannte Bazaar-Nachricht: " + stripped);
-                    }
+                // Progress lines ("Submitting buy order...") are no events; real Bazaar
+                // lines that are not understood are worth a look in the log.
+                if (event == null && BazaarChatEvent.isBazaarLine(stripped)
+                        && !stripped.endsWith("...")) {
+                    System.out.println("[Flipper] Unerkannte Bazaar-Nachricht: " + stripped);
                 }
                 ChatEntry entry = new ChatEntry(System.currentTimeMillis(), stripped, event);
                 synchronized (RECENT) {
@@ -93,7 +92,7 @@ public class BazaarChatListener {
                 return false;
             }
             for (ChatEntry entry : since(start)) {
-                if (entry.text.contains(contains)) {
+                if (BazaarChatEvent.isBazaarLine(entry.text) && entry.text.contains(contains)) {
                     return true;
                 }
             }

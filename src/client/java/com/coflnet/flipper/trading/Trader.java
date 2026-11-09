@@ -50,6 +50,7 @@ public class Trader {
     private volatile boolean paused;
     private volatile boolean ahPriorityActive;
     private volatile long ahPriorityUntil;
+    private volatile long guiHoldUntil;
     private volatile boolean stopRequested;
     private Thread thread;
     private volatile MarketData market;
@@ -70,6 +71,7 @@ public class Trader {
     private volatile boolean ordersBusy;
     private volatile boolean recentFillChat;
     private volatile boolean orderLimitReached;
+    private volatile boolean lastFailureItemSpecific;
     private volatile int lastScannedOrderCount;
     private volatile long lastDailyLimitLogAt;
     private volatile long heartbeat = System.currentTimeMillis();
@@ -176,7 +178,7 @@ public class Trader {
                 log("SUPERVISOR: Trader seit " + idle + "ms ohne Herzschlag. screen="
                         + ScreenUtil.currentScreen() + " market=" + (market != null ? market.products.size() : -1)
                         + " threadAlive=" + (thread != null && thread.isAlive()));
-                ScreenUtil.closeCurrentScreen();
+                closeOwnGuiOnly();
                 traderOwnsGui = false;
                 SignInput.clear();
                 flowStartAt = 0;
@@ -202,7 +204,7 @@ public class Trader {
         SignInput.clear();
         traderOwnsGui = false;
         ScreenUtil.onClient(() -> {
-            if (isBazaarScreen(ScreenUtil.currentScreen())) {
+            if (isBazaarScreen(ScreenUtil.currentScreen()) && !isAhPriority()) {
                 ScreenUtil.closeCurrentScreen();
             }
         });
@@ -216,7 +218,14 @@ public class Trader {
         paused = value;
     }
 
+    /**
+     * True while another automation owns the GUI: the AH flipper (its flows use
+     * this priority) or the lowballing bot (see {@link #holdGuiFor}).
+     */
     public boolean isAhPriority() {
+        if (System.currentTimeMillis() < guiHoldUntil) {
+            return true;
+        }
         if (!ahPriorityActive) {
             return false;
         }
@@ -239,13 +248,45 @@ public class Trader {
         if (until > ahPriorityUntil) {
             ahPriorityUntil = until;
         }
+        if (!wasActive) {
+            handOverGui();
+            log("AH-Priority aktiv (" + hold + "ms) - Bazaar-GUI geschlossen und pausiert");
+        }
+    }
+
+    /**
+     * Keeps the flipper away from the GUI for a moment, for the lowballing bot:
+     * "/bz" in the middle of a trade closes the trade window. Unlike the AH
+     * priority this is not ended by the AH flipper going idle.
+     */
+    public void holdGuiFor(long holdMs) {
+        boolean wasActive = isAhPriority();
+        guiHoldUntil = Math.max(guiHoldUntil, System.currentTimeMillis() + holdMs);
+        if (!wasActive) {
+            handOverGui();
+            log("GUI-Hold aktiv (" + holdMs + "ms) - Bazaar pausiert");
+        }
+    }
+
+    /**
+     * Only once, when the priority starts. It is refreshed every few seconds while
+     * an AH flow runs, and doing this every time deleted the price of that flow
+     * (SignInput is shared) and closed its price sign.
+     */
+    private void handOverGui() {
         traderOwnsGui = false;
         SignInput.clear();
         flowStartAt = 0;
-        closeBazaarGui();
-        if (!wasActive) {
-            log("AH-Priority aktiv (" + hold + "ms) - Bazaar-GUI geschlossen und pausiert");
+        for (int i = 0; i < 3 && isBazaarScreen(ScreenUtil.currentScreen()); i++) {
+            ScreenUtil.closeCurrentScreen();
+            ScreenUtil.sleep(10);
         }
+    }
+
+    /** A Bazaar menu is open (a sign does not count: it can belong to anyone). */
+    public boolean hasBazaarContainer() {
+        ScreenUtil.BzScreen screen = ScreenUtil.currentScreen();
+        return isBazaarScreen(screen) && screen != ScreenUtil.BzScreen.SIGN;
     }
 
     public void releaseAhPriority() {
@@ -267,14 +308,22 @@ public class Trader {
         return traderOwnsGui;
     }
 
+    /**
+     * Closes Bazaar menus. Signs stay open: while the AH flipper or the lowballing
+     * bot own the GUI, an open sign is theirs (the flipper's loop calls this every
+     * 100 ms during the priority and used to close the AH price sign).
+     */
     public void closeBazaarGui() {
-        for (int i = 0; i < 3; i++) {
-            ScreenUtil.BzScreen screen = ScreenUtil.currentScreen();
-            if (!isBazaarScreen(screen)) {
-                return;
-            }
+        for (int i = 0; i < 3 && hasBazaarContainer(); i++) {
             ScreenUtil.closeCurrentScreen();
             ScreenUtil.sleep(10);
+        }
+    }
+
+    /** Self-healing: only ever a menu of the flipper itself, never someone else's. */
+    private void closeOwnGuiOnly() {
+        if (!isAhPriority() && isBazaarScreen(ScreenUtil.currentScreen())) {
+            ScreenUtil.closeCurrentScreen();
         }
     }
 
@@ -322,6 +371,41 @@ public class Trader {
             cfg.blacklist.add(productId);
             cfg.save();
             chat("\u00a76[Flipper] \u00a7cItem permanently blacklisted after repeated failures: \u00a7f" + displayName);
+        }
+    }
+
+    /**
+     * After a failed buy order. Interrupted by the AH flipper: not the item's fault
+     * and no failure at all (these interruptions made items end up on the permanent
+     * blacklist). GUI hiccup: skip the item for now, without a strike.
+     *
+     * @return false if the order was only interrupted
+     */
+    private boolean onBuyOrderFailed(FlipAnalyzer.FlipPlan plan) {
+        if (isAhPriority()) {
+            log("Buy Order unterbrochen (AH hat Vorrang): " + plan.displayName);
+            return false;
+        }
+        if (lastFailureItemSpecific) {
+            blacklistProduct(plan.productId, plan.displayName);
+        } else {
+            itemBlacklist.put(plan.productId, System.currentTimeMillis()
+                    + (long) Math.max(1.0, cfg.blacklistMinutes * 60_000.0));
+        }
+        return true;
+    }
+
+    /** A new order counts as existing right away, the next scan can be 60 s away. */
+    private void rememberPlacedOrder(FlipAnalyzer.FlipPlan plan) {
+        scannedOrderProductIds.add(plan.productId);
+        lastScannedOrderCount++;
+        markProductSuccess(plan.productId);
+    }
+
+    /** The sign text is shared: during a priority it belongs to the AH / lowballing flow. */
+    private void setSign(String text) {
+        if (!isAhPriority()) {
+            SignInput.set(text);
         }
     }
 
@@ -432,9 +516,9 @@ public class Trader {
                             + " onSkyBlock=" + ScreenUtil.onSkyBlock() + " combat=" + ScreenUtil.inCombatOrDead()
                             + " market=" + (market != null ? market.products.size() : -1)
                             + " ownsGui=" + traderOwnsGui + " stop=" + stopRequested);
-                    if (watchdogStrikes >= 3) {
+                    if (watchdogStrikes >= 3 && !isAhPriority()) {
                         log("WATCHDOG: Selbstheilung - schließe GUI und setze Flags zurück");
-                        ScreenUtil.closeCurrentScreen();
+                        closeOwnGuiOnly();
                         traderOwnsGui = false;
                         SignInput.clear();
                         flowStartAt = 0;
@@ -525,6 +609,13 @@ public class Trader {
     }
 
     private void cleanupGui() {
+        if (isAhPriority()) {
+            // The GUI and the sign text belong to someone else now.
+            traderOwnsGui = false;
+            flowStartAt = 0;
+            closeBazaarGui();
+            return;
+        }
         if (traderOwnsGui) {
             traderOwnsGui = false;
             ScreenUtil.closeAndWait(250);
@@ -547,6 +638,11 @@ public class Trader {
     }
 
     private void failPause(String reason) {
+        if (isAhPriority()) {
+            log("Unterbrochen (AH hat Vorrang): " + reason);
+            cleanupGui();
+            return;
+        }
         log("Fehler - 5s Pause: " + reason);
         cleanupGui();
         ScreenUtil.BzScreen current = ScreenUtil.currentScreen();
@@ -568,6 +664,15 @@ public class Trader {
         while (!stopRequested) {
             heartbeat = System.currentTimeMillis();
             long heartbeatNow = System.currentTimeMillis();
+            if (isAhPriority()) {
+                // Waiting for the AH flipper is no hang. This watchdog used to
+                // close whatever was open after 90 s, also the AH's listing menu.
+                lastHeartbeatAt = heartbeatNow;
+                watchdogStrikes = 0;
+                closeBazaarGui();
+                sleepOrStop(100);
+                continue;
+            }
             if (heartbeatNow - lastHeartbeatAt > 30_000L) {
                 lastHeartbeatAt = heartbeatNow;
                 watchdogStrikes++;
@@ -577,17 +682,12 @@ public class Trader {
                         + " ownsGui=" + traderOwnsGui + " stop=" + stopRequested);
                 if (watchdogStrikes >= 3) {
                     log("WATCHDOG: Selbstheilung - schließe GUI und setze Flags zurück");
-                    ScreenUtil.closeCurrentScreen();
+                    closeOwnGuiOnly();
                     traderOwnsGui = false;
                     SignInput.clear();
                     flowStartAt = 0;
                     watchdogStrikes = 0;
                 }
-            }
-            if (isAhPriority()) {
-                closeBazaarGui();
-                sleepOrStop(100);
-                continue;
             }
             if (paused) {
                 sleepOrStop(500);
@@ -840,6 +940,9 @@ public class Trader {
                 sleepOrStop(400);
                 return true;
             }
+            if (isAhPriority()) {
+                return false;
+            }
             lastBazaarFailAt = now;
             chat("\u00a76[Flipper] \u00a7cCould not open Bazaar (Booster Cookie active?).");
             return false;
@@ -894,6 +997,9 @@ public class Trader {
                 flowStartAt = System.currentTimeMillis();
                 sleepOrStop(400);
                 return true;
+            }
+            if (isAhPriority()) {
+                return false;
             }
             lastOrdersFailAt = now;
             chat("\u00a76[Flipper] \u00a7cCould not open Orders GUI.");
@@ -1025,7 +1131,7 @@ public class Trader {
     private boolean searchProductOnce(String displayName, String productId) {
         boolean signSeen = false;
         for (int attempt = 0; attempt < 2 && !signSeen && !stopRequested; attempt++) {
-            SignInput.set(displayName);
+            setSign(displayName);
             if (!clickByName("Search", 0, 4000, "Search-Button")) {
                 log("Search-Slot nicht gefunden. " + ScreenUtil.screenDebugInfo());
                 return false;
@@ -1100,6 +1206,7 @@ public class Trader {
             return false;
         }
         beat();
+        lastFailureItemSpecific = false;
         log("Platziere Buy Order: " + plan.qty + "x " + plan.displayName + " @ " + plan.buyPrice);
         if (!openBazaar()) {
             log("openBazaar fehlgeschlagen");
@@ -1107,7 +1214,9 @@ public class Trader {
         }
         if (!searchProduct(plan.displayName, plan.productId)) {
             log("searchProduct fehlgeschlagen: " + plan.displayName);
-            ;
+            // With the menu gone, this says nothing about the item.
+            lastFailureItemSpecific = !isAhPriority()
+                    && ScreenUtil.currentScreen() != ScreenUtil.BzScreen.NONE;
             cleanupGui();
             return false;
         }
@@ -1118,14 +1227,14 @@ public class Trader {
         }
         if (!productPageMatches(plan.productId, plan.displayName)) {
             chat("\u00a76[Flipper] \u00a7cWrong product detected - purchase cancelled: \u00a7f" + plan.displayName);
-            blacklistProduct(plan.productId, plan.displayName);
+            lastFailureItemSpecific = true;
             cleanupGui();
             return false;
         }
         String actualId = ItemNames.productId(ScreenUtil.productName());
         if (!actualProductPriceSane(actualId, plan.buyPrice, plan.sellPrice)) {
             chat("\u00a76[Flipper] \u00a7cWeekly average check failed - purchase cancelled: \u00a7f" + plan.displayName);
-            blacklistProduct(plan.productId, plan.displayName);
+            lastFailureItemSpecific = true;
             cleanupGui();
             return false;
         }
@@ -1139,7 +1248,7 @@ public class Trader {
             cleanupGui();
             return false;
         }
-        SignInput.set(String.valueOf(plan.qty));
+        setSign(String.valueOf(plan.qty));
         if (!clickSign(5000, "Mengen-Sign")) {
             log("Mengen-Sign nicht gefunden");
             cleanupGui();
@@ -1151,7 +1260,7 @@ public class Trader {
             return false;
         }
         sleepOrStop(ScreenUtil.jitter(400));
-        SignInput.set(ScreenUtil.formatPrice(plan.buyPrice));
+        setSign(ScreenUtil.formatPrice(plan.buyPrice));
         if (!clickSign(5000, "Preis-Sign")) {
             log("Preis-Sign nicht gefunden");
             cleanupGui();
@@ -1243,6 +1352,7 @@ public class Trader {
                         plan.displayName, plan.buyPrice, plan.sellPrice, plan.profitPerUnit,
                         plan.hourlyVolume, plan.uBuy, plan.uSell, plan.c, plan.qty,
                         plan.coinsPerHour, plan.r, plan.e, plan.limitPerHour, plan.lambda, plan.score));
+                rememberPlacedOrder(plan);
                 placed++;
             } else {
                 trade.state = Trade.State.ABANDONED;
@@ -1251,7 +1361,9 @@ public class Trader {
                     chat("\u00a76[Flipper] \u00a7eOrder limit reached - no new orders until claim/cancel.");
                     break;
                 }
-                blacklistProduct(plan.productId, plan.displayName);
+                if (!onBuyOrderFailed(plan)) {
+                    break;
+                }
                 chat("\u00a76[Flipper] \u00a7cBuy order failed: \u00a7f" + plan.displayName + " \u00a77(blacklisted " + (int) Math.max(1.0, cfg.blacklistMinutes) + "m)");
                 failPause("Buy Order fehlgeschlagen: " + plan.displayName);
                 break;
@@ -1342,6 +1454,7 @@ public class Trader {
         if (placeBuyOrder(trade, best)) {
             trade.state = Trade.State.BUY_OPEN;
             ledger.update(trade);
+            rememberPlacedOrder(best);
             chat("\u00a76[Flipper] \u00a7aNew Buy Order: \u00a7f" + best.qty + "x " + best.displayName + " \u00a77@ \u00a7f" + ScreenUtil.formatPrice(best.buyPrice));
         } else {
             trade.state = Trade.State.ABANDONED;
@@ -1350,7 +1463,9 @@ public class Trader {
                 chat("\u00a76[Flipper] \u00a7eOrder limit reached - replacement cancelled.");
                 return;
             }
-            blacklistProduct(best.productId, best.displayName);
+            if (!onBuyOrderFailed(best)) {
+                return;
+            }
             chat("\u00a76[Flipper] \u00a7cReplacement buy failed: \u00a7f" + best.displayName + " \u00a77(blacklisted " + (int) Math.max(1.0, cfg.blacklistMinutes) + "m)");
         }
     }
@@ -1369,7 +1484,25 @@ public class Trader {
             return true;
         }
         waitForOrderGuiStable(4000);
+        if (ScreenUtil.currentScreen() != ScreenUtil.BzScreen.ORDERS) {
+            // Menu closed during the wait (AH priority ...): "no orders found" here
+            // made the bot place the same buy orders a second time.
+            log("Orders-GUI nicht mehr offen - Scan verworfen");
+            cleanupGui();
+            ordersBusy = true;
+            return true;
+        }
         List<ScreenUtil.GuiOrder> orders = ScreenUtil.scanOrders();
+        if (orders.isEmpty() && lastScannedOrderCount > 0) {
+            // Items may just not have arrived yet.
+            sleepOrStop(800);
+            if (ScreenUtil.currentScreen() != ScreenUtil.BzScreen.ORDERS) {
+                cleanupGui();
+                ordersBusy = true;
+                return true;
+            }
+            orders = ScreenUtil.scanOrders();
+        }
         lastScannedOrders = List.copyOf(orders);
         cleanupGui();
         beat();
@@ -1681,6 +1814,7 @@ public class Trader {
     }
 
     private boolean processSellEntry(ScreenUtil.GuiOrder order, MarketData data) {
+        com.coflnet.ahflipper.Premium.applyDelay();
         if (!openOrdersGui()) {
             return false;
         }
@@ -1793,6 +1927,7 @@ public class Trader {
     }
 
     private boolean processBuyEntry(ScreenUtil.GuiOrder order, MarketData data) {
+        com.coflnet.ahflipper.Premium.applyDelay();
         if (!openOrdersGui()) {
             return false;
         }
@@ -1866,7 +2001,7 @@ public class Trader {
                         cleanupGui();
                         return false;
                     }
-                    SignInput.set(ScreenUtil.formatPrice(targetSell));
+                    setSign(ScreenUtil.formatPrice(targetSell));
                     boolean flipped = waitForFlipChat(12_000);
                     if (flipped) {
                         Trade trade = ensureTradeFor(order);
@@ -1942,7 +2077,7 @@ public class Trader {
         Trade best = null;
         long bestDiff = Long.MAX_VALUE;
         for (Trade trade : ledger.all()) {
-            if (!trade.displayName.equalsIgnoreCase(itemName)) {
+            if (!trade.isOpen() || !trade.displayName.equalsIgnoreCase(itemName)) {
                 continue;
             }
             boolean tradeIsSell = trade.state == Trade.State.SELL_OPEN
@@ -2096,10 +2231,8 @@ public class Trader {
         int foreignStreak = 0;
         while (System.currentTimeMillis() < deadline) {
             beat();
-            for (BazaarChatListener.ChatEntry entry : BazaarChatListener.since(start)) {
-                if (entry.text.toLowerCase().contains("cancelled")) {
-                    return true;
-                }
+            if (cancelledChatSince(start)) {
+                return true;
             }
             if (stuck()) {
                 return false;
@@ -2131,8 +2264,14 @@ public class Trader {
             }
             sleepOrStop(150);
         }
+        return cancelledChatSince(start);
+    }
+
+    /** A player writing "cancelled", or an auction line, is no cancelled order. */
+    private boolean cancelledChatSince(long start) {
         for (BazaarChatListener.ChatEntry entry : BazaarChatListener.since(start)) {
-            if (entry.text.toLowerCase().contains("cancelled")) {
+            if (BazaarChatEvent.isBazaarLine(entry.text)
+                    && entry.text.toLowerCase().contains("cancelled")) {
                 return true;
             }
         }
@@ -2260,9 +2399,13 @@ public class Trader {
             cancelled = waitForCancelled(3000);
         }
         if (cancelled) {
+            // What was not sold does not count towards the daily limit. Every
+            // repricing counted the full value again before.
+            BazaarDailyLimit.removeSale(Math.round(
+                    Math.max(0, trade.qty - trade.filledQty) * trade.sellPrice));
             trade.state = Trade.State.CLAIMED;
             ledger.update(trade);
-            chat("\u00a76[Flipper] \u00a7cSell offer cancelled (expired): \u00a7f" + trade.displayName);
+            chat("\u00a76[Flipper] \u00a77Sell offer cancelled for repricing: \u00a7f" + trade.displayName);
         } else {
             failPause("Sell-Cancel nicht bestätigt: " + trade.displayName);
         }
@@ -2327,7 +2470,7 @@ public class Trader {
         ledger.update(trade);
         if (!waitForScreenCancel(ScreenUtil.BzScreen.SELL_PRICE, 4000)) {
             if (waitForScreenCancel(ScreenUtil.BzScreen.SELL_AMOUNT, 4000)) {
-                SignInput.set(String.valueOf(qty));
+                setSign(String.valueOf(qty));
                 if (!clickSign(5000, "Mengen-Sign (Sell)")) {
                     failPause("Mengen-Sign nicht gefunden (Sell): " + trade.displayName);
                     return false;
@@ -2379,7 +2522,7 @@ public class Trader {
                 targetSell = Math.round((targetSell + 0.1) * 10.0) / 10.0;
             } else {
                 log("Kein Preis-Preset gefunden - nutze Sign: " + trade.displayName);
-                SignInput.set(ScreenUtil.formatPrice(targetSell));
+                setSign(ScreenUtil.formatPrice(targetSell));
                 if (!clickSign(5000, "Preis-Sign (Sell)")) {
                     failPause("Preis-Sign nicht gefunden (Sell): " + trade.displayName);
                     return false;
@@ -2598,7 +2741,11 @@ public class Trader {
                 }
                 case CANCELLED, EXPIRED -> {
                     orderLimitReached = false;
-                    Trade trade = ledger.firstMatching(event.item, Trade.State.BUY_OPEN, Trade.State.SELL_OPEN, Trade.State.FILLED);
+                    Trade trade = event.side == BazaarChatEvent.Side.SELL
+                            ? ledger.firstMatching(event.item, Trade.State.SELL_OPEN)
+                            : event.side == BazaarChatEvent.Side.BUY
+                            ? ledger.firstMatching(event.item, Trade.State.BUY_OPEN, Trade.State.FILLED)
+                            : ledger.firstMatching(event.item, Trade.State.BUY_OPEN, Trade.State.SELL_OPEN, Trade.State.FILLED);
                     if (trade != null) {
                         boolean wasBuy = trade.state == Trade.State.BUY_OPEN;
                         trade.state = wasBuy ? Trade.State.CANCELLED : Trade.State.CLAIMED;

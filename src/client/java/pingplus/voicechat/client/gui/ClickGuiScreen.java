@@ -693,6 +693,15 @@ public final class  ClickGuiScreen extends Screen {
                 AhFlipperMod.CONFIG.bidMacroAutoList=!AhFlipperMod.CONFIG.bidMacroAutoList;
                 AhFlipperMod.CONFIG.save();
             });
+            blockedItemBox(skyblock,"Dont outbid player (Enter)","Bid-Macro",
+                    AhFlipperMod.CONFIG::addDontOutbid,()->AhFlipperMod.CONFIG.save());
+            List<String> protectedPlayers = AhFlipperMod.CONFIG.dontOutbidPlayers == null
+                    ? List.of() : List.copyOf(AhFlipperMod.CONFIG.dontOutbidPlayers);
+            optionLabel(skyblock,protectedPlayers.isEmpty()
+                    ? "Dont outbid: nobody - Enter adds a name"
+                    : "Dont outbid: "+protectedPlayers.size()+" player(s) - x removes");
+            for (String protectedName : protectedPlayers) blockedItemRow(skyblock,protectedName,"Bid-Macro",
+                    AhFlipperMod.CONFIG::removeDontOutbid,()->AhFlipperMod.CONFIG.save());
         });
         toggle(skyblock,"Bazaar Flipper",FlipperMod::isRunning,FlipperMod::toggle);
         options(skyblock,"Bazaar Flipper Settings",()-> {
