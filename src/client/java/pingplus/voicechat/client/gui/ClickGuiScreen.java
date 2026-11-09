@@ -53,7 +53,8 @@ public final class  ClickGuiScreen extends Screen {
     private final List<Runnable> offActions = new ArrayList<>();
     private final Map<String, OptionsPanel> optionPanels = new LinkedHashMap<>();
     private final Map<String, int[]> positions = new HashMap<>();
-    private final Set<String> collapsedCategories = new HashSet<>();
+    /** Categories start collapsed; only the ones the user opened stay open. */
+    private final Set<String> expandedCategories = new HashSet<>();
     private static final int OPTIONS_WIDTH = 220;
     private OptionsPanel buildingOptions;
     private String openOptions;
@@ -558,15 +559,77 @@ public final class  ClickGuiScreen extends Screen {
             add(automation,new CombatSlider(panelWidth-20,"Turn speed",45,540,15,()->PlayerSettings.killAuraTurnSpeed,v->PlayerSettings.killAuraTurnSpeed=(float)v),26);
         });
         nameBox(automation,"Follow",()->PlayerSettings.followTarget,v->PlayerSettings.followTarget=v);
+        options(automation,"Follow options",()-> {
+            optionLabel(automation,"Player, mob or type");
+            toggle(automation,"Attack target",()->PlayerSettings.followAttack,
+                ()->PlayerSettings.followAttack=!PlayerSettings.followAttack);
+            add(automation,new CombatSlider(panelWidth-20,"Follow distance",1,16,1,
+                ()->PlayerSettings.followDistance,v->PlayerSettings.followDistance=(int)Math.round(v)),26);
+            add(automation,new CombatSlider(panelWidth-20,"CPS min",1,20,.5,
+                ()->PlayerSettings.followCpsMin,v->{PlayerSettings.followCpsMin=v;
+                    if(PlayerSettings.followCpsMax<v)PlayerSettings.followCpsMax=v;}),26);
+            add(automation,new CombatSlider(panelWidth-20,"CPS max",1,20,.5,
+                ()->PlayerSettings.followCpsMax,v->{PlayerSettings.followCpsMax=v;
+                    if(PlayerSettings.followCpsMin>v)PlayerSettings.followCpsMin=v;}),26);
+        });
         toggle(automation,"Look at nearby players",()->PlayerSettings.followLookAtNearbyPlayers,
             ()->PlayerSettings.followLookAtNearbyPlayers=!PlayerSettings.followLookAtNearbyPlayers);
         toggle(automation,"Hand swap",()->PlayerSettings.handSwap,()->PlayerSettings.handSwap=!PlayerSettings.handSwap);
         options(automation,"Swap interval",()-> {
             add(automation,new SpeedSlider(panelWidth-20),26);
         });
+        Category pathfinder = category("PATHFINDER", "Baritone tuning and fault learning");
+        {
+            com.coflnet.pathing.PathfinderConfig pf = com.coflnet.pathing.PathfinderConfig.get();
+            statusLabel(pathfinder, com.coflnet.pathing.PathfinderTuning.stats().summary(), GlassStyle.STATUS);
+            toggle(pathfinder,"Allow jumps",()->pf.allowJumps,()->{pf.allowJumps=!pf.allowJumps;pf.save();});
+            toggle(pathfinder,"Allow parkour",()->pf.allowParkour,()->{pf.allowParkour=!pf.allowParkour;pf.save();});
+            toggle(pathfinder,"Allow sprint",()->pf.allowSprint,()->{pf.allowSprint=!pf.allowSprint;pf.save();});
+            options(pathfinder,"Tuning",()-> {
+                add(pathfinder,new CombatSlider(panelWidth-20,"Jump penalty",0,10,.5,
+                        ()->pf.jumpPenalty,v->{pf.jumpPenalty=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Search speed",1,5,.1,
+                        ()->pf.costHeuristic,v->{pf.costHeuristic=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Move timeout",5,60,1,
+                        ()->pf.movementTimeoutTicks,v->{pf.movementTimeoutTicks=(int)Math.round(v);pf.save();}),26);
+            });
+            actionButton(pathfinder,"AOTV: "+com.coflnet.pathing.AotvAssist.mode().name().toLowerCase(Locale.ROOT),()->{
+                com.coflnet.pathing.AotvAssist.Mode[] modes=com.coflnet.pathing.AotvAssist.Mode.values();
+                pf.aotvMode=modes[(com.coflnet.pathing.AotvAssist.mode().ordinal()+1)%modes.length].name();
+                pf.save();rebuildWidgets();});
+            options(pathfinder,"AOTV settings",()-> {
+                optionLabel(pathfinder,"Teleport: right click");
+                optionLabel(pathfinder,"Etherwarp: shift + click");
+                add(pathfinder,new CombatSlider(panelWidth-20,"Teleport blocks",4,20,1,
+                        ()->pf.aotvTeleportBlocks,v->{pf.aotvTeleportBlocks=(int)Math.round(v);pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Min gain",3,40,1,
+                        ()->pf.aotvMinGain,v->{pf.aotvMinGain=(int)Math.round(v);pf.save();}),26);
+                optionLabel(pathfinder,"Warps: "+com.coflnet.pathing.AotvAssist.warps());
+            });
+            toggle(pathfinder,"Learn from faults",()->pf.learnFromFaults,()->{pf.learnFromFaults=!pf.learnFromFaults;pf.save();});
+            options(pathfinder,"Fault learning",()-> {
+                add(pathfinder,new CombatSlider(panelWidth-20,"Avoid strength",.5,10,.5,
+                        ()->pf.faultPenaltyStrength,v->{pf.faultPenaltyStrength=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Forget after (h)",1,240,1,
+                        ()->pf.faultHalfLifeHours,v->{pf.faultHalfLifeHours=v;pf.save();}),26);
+                toggle(pathfinder,"Faults in chat",()->pf.showFaultsInChat,()->{pf.showFaultsInChat=!pf.showFaultsInChat;pf.save();});
+                optionLabel(pathfinder,"Faults: "+com.coflnet.pathing.FaultMemory.activeSize()+" here / "
+                        +com.coflnet.pathing.FaultMemory.size()+" all");
+                optionLabel(pathfinder,"This session: "+com.coflnet.pathing.PathfinderSystem.sessionFaults());
+                String last=com.coflnet.pathing.PathfinderSystem.lastFault();
+                if(!last.isEmpty()) optionLabel(pathfinder,"Last: "+last);
+                actionButton(pathfinder,"Clear faults",()->{com.coflnet.pathing.FaultMemory.clear();rebuildWidgets();});
+            });
+        }
         Category skyblock = category("SKYBLOCK", "Hypixel skyblock helpers");
+        boolean premium = com.coflnet.ahflipper.PriorityAccess.isLocalPriority();
+        statusLabel(skyblock, premium
+                ? "Premium - full speed"
+                : "Standard - " + AhFlipperMod.CONFIG.standardDelayMs + "ms delay",
+                premium ? GlassStyle.STATUS : GlassStyle.MUTED);
         toggle(skyblock,"Auction Flipper",AhFlipperMod::isRunning,AhFlipperMod::toggle);
         options(skyblock,"Auction Flipper Settings",()-> {
+            sessionOptions(skyblock,com.coflnet.session.BotSessions.Bot.AH);
             toggle(skyblock,"AH Flip GUI",()->AhFlipperMod.CONFIG.ahPanelEnabled,()-> {
                 AhFlipperMod.CONFIG.ahPanelEnabled=!AhFlipperMod.CONFIG.ahPanelEnabled;
                 AhFlipperMod.CONFIG.save();
@@ -632,6 +695,7 @@ public final class  ClickGuiScreen extends Screen {
             toggle(skyblock,"Tooltip details",AhFlipperMod::isTooltipDetailsOn,AhFlipperMod::toggleTooltipDetails);
         });
         options(skyblock,"Bids Settings",null,()-> {
+            sessionOptions(skyblock,com.coflnet.session.BotSessions.Bot.BID);
             toggle(skyblock,"Auto-Bid",AhBidMacro::isRunning,()->{
                 boolean enable=!AhBidMacro.isRunning();
                 AhFlipperMod.CONFIG.bidMacro=enable;
@@ -693,18 +757,34 @@ public final class  ClickGuiScreen extends Screen {
                 AhFlipperMod.CONFIG.bidMacroAutoList=!AhFlipperMod.CONFIG.bidMacroAutoList;
                 AhFlipperMod.CONFIG.save();
             });
-            blockedItemBox(skyblock,"Dont outbid player (Enter)","Bid-Macro",
+            blockedItemBox(skyblock,"Dont outbid (Enter)","Bid-Macro",
                     AhFlipperMod.CONFIG::addDontOutbid,()->AhFlipperMod.CONFIG.save());
             List<String> protectedPlayers = AhFlipperMod.CONFIG.dontOutbidPlayers == null
                     ? List.of() : List.copyOf(AhFlipperMod.CONFIG.dontOutbidPlayers);
             optionLabel(skyblock,protectedPlayers.isEmpty()
-                    ? "Dont outbid: nobody - Enter adds a name"
-                    : "Dont outbid: "+protectedPlayers.size()+" player(s) - x removes");
+                    ? "Dont outbid: nobody"
+                    : "Dont outbid: "+protectedPlayers.size()+" - x removes");
             for (String protectedName : protectedPlayers) blockedItemRow(skyblock,protectedName,"Bid-Macro",
                     AhFlipperMod.CONFIG::removeDontOutbid,()->AhFlipperMod.CONFIG.save());
         });
         toggle(skyblock,"Bazaar Flipper",FlipperMod::isRunning,FlipperMod::toggle);
         options(skyblock,"Bazaar Flipper Settings",()-> {
+            sessionOptions(skyblock,com.coflnet.session.BotSessions.Bot.BAZAAR);
+            com.coflnet.flipper.FlipperConfig fc=FlipperMod.CONFIG;
+            add(skyblock,new CombatSlider(panelWidth-20,"Max/session (M)",0,1000,5,
+                    ()->fc.maxCoinsPerSessionMillions,v->{fc.maxCoinsPerSessionMillions=v;fc.save();}),26);
+            if(fc.maxCoinsPerSessionMillions>0) optionLabel(skyblock,"Offers: "
+                    +com.coflnet.flipper.trading.ScreenUtil.formatCoins(com.coflnet.flipper.trading.BazaarLimits.sessionSellVolume())
+                    +" / "+com.coflnet.flipper.trading.ScreenUtil.formatCoins(fc.maxCoinsPerSessionMillions*1_000_000.0));
+            add(skyblock,new CombatSlider(panelWidth-20,"Max invested (M)",0,2000,10,
+                    ()->fc.maxInvestedMillions,v->{fc.maxInvestedMillions=v;fc.save();}),26);
+            toggle(skyblock,"Item mode",()->fc.onlyItemsMode,()->{fc.onlyItemsMode=!fc.onlyItemsMode;fc.save();});
+            itemListBox(skyblock,"Flip item (Enter)","Bazaar item mode",fc::addOnlyItem,fc::save,
+                    "Added","is already listed","Type a Bazaar item name and press Enter: item mode flips only these.");
+            List<String> onlyItems=fc.onlyItems==null?List.of():List.copyOf(fc.onlyItems);
+            if(fc.onlyItemsMode&&onlyItems.isEmpty()) optionLabel(skyblock,"Item mode: list empty");
+            for(String item:onlyItems) itemListRow(skyblock,item,"Bazaar item mode",fc::removeOnlyItem,fc::save,
+                    "Removed","was not listed","Click to remove");
             toggle(skyblock,"Bazaar GUI",()->FlipperMod.CONFIG.bazaarPanelEnabled,()-> {
                 FlipperMod.CONFIG.bazaarPanelEnabled=!FlipperMod.CONFIG.bazaarPanelEnabled;
                 FlipperMod.CONFIG.save();
@@ -743,6 +823,7 @@ public final class  ClickGuiScreen extends Screen {
         });
         toggle(skyblock,"Lowballing",LowballingMod::isRunning,LowballingMod::toggle);
         options(skyblock,"Lowballing Settings",()-> {
+            sessionOptions(skyblock,com.coflnet.session.BotSessions.Bot.LOWBALL);
             toggle(skyblock,"Lowballing GUI",()->LowballingMod.CONFIG.panelEnabled,()-> {
                 LowballingMod.CONFIG.panelEnabled=!LowballingMod.CONFIG.panelEnabled;
                 LowballingMod.CONFIG.save();
@@ -893,7 +974,7 @@ public final class  ClickGuiScreen extends Screen {
     }
     private Category category(String name,String subtitle) {
         Category c=new Category(name,subtitle);
-        if (collapsedCategories.contains(name)) {
+        if (!expandedCategories.contains(name)) {
             c.collapsed=true;
             c.open=0f;
         }
@@ -1095,6 +1176,12 @@ public final class  ClickGuiScreen extends Screen {
     }
     private void blockedItemBox(Category c,String label,String prefix,
                                 java.util.function.Function<String,Boolean> adder,Runnable save) {
+        itemListBox(c,label,prefix,adder,save,"Blocked","is already blocked",
+                "Type an item name and press Enter to block it.");
+    }
+    private void itemListBox(Category c,String label,String prefix,
+                             java.util.function.Function<String,Boolean> adder,Runnable save,
+                             String addedWord,String existsWords,String tooltip) {
         EditBox box=new EditBox(font,0,0,55,14,Component.literal(label)) {
             @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt) {
                 text(g,label,getX()-(optionsWidth-80),getY()+3,GlassStyle.MUTED);
@@ -1108,8 +1195,8 @@ public final class  ClickGuiScreen extends Screen {
                         boolean added=adder.apply(value);
                         save.run();
                         AhFlipperMod.message(added
-                                ? "Â§a["+prefix+"] Â§7Blocked Â§f"+value
-                                : "Â§e["+prefix+"] Â§f"+value+" Â§7is already blocked");
+                                ? "§a["+prefix+"] §7"+addedWord+" §f"+value
+                                : "§e["+prefix+"] §f"+value+" §7"+existsWords);
                         setValue("");
                         rebuildWidgets();
                     }
@@ -1120,7 +1207,7 @@ public final class  ClickGuiScreen extends Screen {
         };
         box.addFormatter((text,index)->net.minecraft.util.FormattedCharSequence.forward(text,GlassStyle.FONT));
         box.setBordered(false);box.setTextShadow(false);box.setTextColor(GlassStyle.TEXT);box.setMaxLength(64);
-        box.setTooltip(Tooltip.create(Component.literal("Type an item name and press Enter to block it.")));
+        box.setTooltip(Tooltip.create(Component.literal(tooltip)));
         add(c,box,20);
     }
     private void blockedItemRow(Category c,String name) {
@@ -1128,21 +1215,26 @@ public final class  ClickGuiScreen extends Screen {
     }
     private void blockedItemRow(Category c,String name,String prefix,
                                 java.util.function.Function<String,Boolean> remover,Runnable save) {
+        itemListRow(c,name,prefix,remover,save,"Unblocked","was not blocked","Click to unblock");
+    }
+    private void itemListRow(Category c,String name,String prefix,
+                             java.util.function.Function<String,Boolean> remover,Runnable save,
+                             String removedWord,String missingWords,String tooltip) {
         String shown=name.length()>22?name.substring(0,22)+"...":name;
         Button row=new Button(0,0,panelWidth-20,18,Component.literal("Remove "+name),b-> {
             boolean removed=remover.apply(name);
             save.run();
             AhFlipperMod.message(removed
-                    ? "Â§a["+prefix+"] Â§7Unblocked Â§f"+name
-                    : "Â§e["+prefix+"] Â§f"+name+" Â§7was not blocked");
+                    ? "§a["+prefix+"] §7"+removedWord+" §f"+name
+                    : "§e["+prefix+"] §f"+name+" §7"+missingWords);
             rebuildWidgets();
         },supplier->supplier.get()) {
             @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
                 if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
-                text(g,"x "+shown,getX()+4,getY()+4,GlassStyle.MUTED);
+                GlassStyle.line(g,"x "+shown,getX()+4,getY()+4,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             }
         };
-        row.setTooltip(Tooltip.create(Component.literal("Click to unblock")));
+        row.setTooltip(Tooltip.create(Component.literal(tooltip)));
         add(c,row,18);
     }
     private void blockedTagRow(Category c,String tag,String name) {
@@ -1173,7 +1265,7 @@ public final class  ClickGuiScreen extends Screen {
                 String shown=label+": "+(value>=0?"+":"-")
                         +ScreenUtil.formatCoins(Math.abs(value))
                         +(value<0?" (invested)":"");
-                text(g,shown,getX()+4,getY()+4,value>=0?GlassStyle.STATUS:GlassStyle.MUTED);
+                GlassStyle.line(g,shown,getX()+4,getY()+4,width-8,GlassStyle.alpha(value>=0?GlassStyle.STATUS:GlassStyle.MUTED,opacity));
             }
         },18);
     }
@@ -1182,16 +1274,35 @@ public final class  ClickGuiScreen extends Screen {
         add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->action.run(),supplier->supplier.get()) {
             @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
                 if(isHoveredOrFocused()) GlassButtonRenderer.control(g,getX(),getY(),width,height,GlassStyle.alpha(0xFF858585,opacity*.85f));
-                text(g,label,getX()+4,getY()+4,GlassStyle.MUTED);
+                GlassStyle.line(g,label,getX()+4,getY()+4,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             }
         },18);
     }
 
+    /** Session time + break settings of one bot (inside its settings panel). */
+    private void sessionOptions(Category c,com.coflnet.session.BotSessions.Bot bot) {
+        com.coflnet.session.BotSessions.Settings st=com.coflnet.session.BotSessions.settings(bot);
+        String status=com.coflnet.session.BotSessions.status(bot);
+        if(!status.isEmpty()) statusLabel(c,status,GlassStyle.STATUS);
+        add(c,new CombatSlider(panelWidth-20,"Session (min)",0,600,5,
+                ()->st.sessionMinutes,v->{st.sessionMinutes=(int)Math.round(v);com.coflnet.session.BotSessions.save();}),26);
+        toggle(c,"Use break",()->st.useBreak,()->{st.useBreak=!st.useBreak;com.coflnet.session.BotSessions.save();});
+        add(c,new CombatSlider(panelWidth-20,"Break (min)",1,240,1,
+                ()->st.breakMinutes,v->{st.breakMinutes=(int)Math.round(v);com.coflnet.session.BotSessions.save();}),26);
+    }
+    private void statusLabel(Category c,String label,int color) {
+        add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
+            { active=false; }
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                GlassStyle.line(g,label,getX()+4,getY()+4,width-8,GlassStyle.alpha(color,opacity));
+            }
+        },18);
+    }
     private void optionLabel(Category c,String label) {
         add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
             { active=false; }
             @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
-                text(g,label,getX()+4,getY()+4,GlassStyle.MUTED);
+                GlassStyle.line(g,label,getX()+4,getY()+4,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             }
         },18);
     }
@@ -1365,7 +1476,7 @@ public final class  ClickGuiScreen extends Screen {
             boolean header=e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+20;
             if(e.button()==1&&header){
                 c.collapsed=!c.collapsed;
-                if(c.collapsed)collapsedCategories.add(c.title);else collapsedCategories.remove(c.title);
+                if(c.collapsed)expandedCategories.remove(c.title);else expandedCategories.add(c.title);
                 return true;
             }
             if(e.button()==0&&header){dragging=c;dragX=e.x()-c.x;dragY=e.y()-y;return true;}
@@ -1482,7 +1593,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Corners   %d %%",Math.round(GlassCornerSettings.getScale()*100))));}
         @Override protected void applyValue(){GlassCornerSettings.setScale((float)(value*GlassCornerSettings.MAX));updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1509,7 +1620,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(label+"   "+(getter.getAsInt()*percentPerStep)+suffix));}
         @Override protected void applyValue(){setter.accept((int)Math.round(value*steps));updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1529,7 +1640,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"%s   %.1f",label,getter.getAsDouble())));}
         @Override protected void applyValue(){setter.accept(Math.clamp(min+Math.round(value*(max-min)/step)*step,min,max));updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1542,7 +1653,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Interval   %.2f s",PlayerSettings.handSwapIntervalTicks/20.0)));}
         @Override protected void applyValue(){PlayerSettings.handSwapIntervalTicks=1+(int)Math.round(value*19);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1555,7 +1666,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Bar opacity   %d%%",Math.round(value*100))));}
         @Override protected void applyValue(){PlayerSettings.mobBarOpacity=(float)value;updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1568,7 +1679,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Size   %d %%",Math.round(PlayerSettings.dockSize*100))));}
         @Override protected void applyValue(){PlayerSettings.dockSize=(float)(0.5+value*1.5);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1581,7 +1692,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Hide after   %d s",PlayerSettings.dockAutoHideSeconds)));}
         @Override protected void applyValue(){PlayerSettings.dockAutoHideSeconds=5+(int)Math.round(value*115);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1594,7 +1705,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Zoom   %.1fx",1+PlayerSettings.zoomStrength)));}
         @Override protected void applyValue(){PlayerSettings.zoomStrength=(float)(1+value*7);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1607,7 +1718,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Magnification   %d %%",Math.round(PlayerSettings.dockMaxScale*100))));}
         @Override protected void applyValue(){PlayerSettings.dockMaxScale=(float)(value*2.5);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));
@@ -1620,7 +1731,7 @@ public final class  ClickGuiScreen extends Screen {
         @Override protected void updateMessage(){setMessage(Component.literal(String.format(Locale.ROOT,"Falloff   %.1f slots",PlayerSettings.dockRadius)));}
         @Override protected void applyValue(){PlayerSettings.dockRadius=(float)(0.5+value*7.5);updateMessage();}
         @Override public void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float dt){
-            text(g,getMessage().getString(),getX()+4,getY()+3,GlassStyle.MUTED);
+            GlassStyle.line(g,getMessage().getString(),getX()+4,getY()+3,width-8,GlassStyle.alpha(GlassStyle.MUTED,opacity));
             int x=getX()+4,y=getY()+19,length=width-8;
             GlassButtonRenderer.control(g,x,y,length,3,GlassStyle.alpha(0xFF555555,opacity));
             GlassButtonRenderer.control(g,x,y,Math.max(1,(int)(length*value)),3,GlassStyle.alpha(GlassStyle.ACCENT,opacity));

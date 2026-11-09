@@ -330,6 +330,8 @@ public final class AhMobPathfinder {
         settings.blockReachDistance.value = 3.0f;
         settings.chunkCaching.value = true;
         settings.pruneRegionsFromRAM.value = true;
+        // real player stats + Pathfinder tab settings
+        com.coflnet.pathing.PathfinderTuning.apply(settings, false);
     }
 
     /**

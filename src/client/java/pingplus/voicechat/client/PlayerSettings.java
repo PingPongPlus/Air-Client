@@ -74,6 +74,13 @@ public final class PlayerSettings {
     public static float killAuraTurnSpeed = 170f;
     public static String followTarget = "";
     public static boolean followLookAtNearbyPlayers = false;
+    /** Follow: attack the followed target (through KillAura, only that target). */
+    public static boolean followAttack = false;
+    /** Follow: distance in blocks Baritone keeps to the target. */
+    public static int followDistance = 3;
+    /** Follow attack speed (clicks per second, random between min and max). */
+    public static double followCpsMin = 8;
+    public static double followCpsMax = 12;
 
     static {
         load();

@@ -49,11 +49,11 @@ repositories {
     exclusiveContent {
         forRepository {
             flatDir {
-                name = 'bundledBaritone'
+                name = 'bundledNetherPathfinder'
                 dirs 'libs'
             }
         }
-        filter { includeModule('local.baritone', 'baritone-api-fabric') }
+        filter { includeModule('local.babbaj', 'nether-pathfinder') }
     }
     maven { url 'https://jitpack.io' }
     maven { url 'https://api.modrinth.com/maven' }
@@ -83,8 +83,8 @@ dependencies {
     implementation include("com.google.code.gson:gson:2.10.1")
     implementation include("com.neovisionaries:nv-websocket-client:2.14")
     implementation include("maven.modrinth:yacl:3.9.4+26.2-fabric")
-    // Keep Baritone's own Fabric metadata and nested native runtime intact.
-    implementation include('local.baritone:baritone-api-fabric:1.19.0')
+    // Baritone is built from source in ./baritone (LGPL-3.0) and nested as its own mod.
+    implementation include(project(':baritone'))
 }
 
 processResources {
@@ -268,3 +268,11 @@ tasks.register('ahProtectedBiddersTest', JavaExec) {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
 }
 tasks.named('check') { dependsOn 'ahProtectedBiddersTest' }
+
+tasks.register('pathfinderLogicTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.pathing.PathfinderLogicTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'pathfinderLogicTest' }

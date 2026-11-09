@@ -77,6 +77,8 @@ public class Trader {
     private volatile long heartbeat = System.currentTimeMillis();
     private Thread supervisor;
     private final List<ScreenUtil.GuiOrder> lastScannedBuyOrders = new ArrayList<>();
+    private final List<ScreenUtil.GuiOrder> lastScannedSellOffers = new ArrayList<>();
+    private long lastLimitLogAt;
     private volatile List<ScreenUtil.GuiOrder> lastScannedOrders = List.of();
     private volatile List<PlanView> lastPlans = List.of();
 
@@ -1305,7 +1307,22 @@ public class Trader {
             log("Order-Limit erreicht - warte auf Claim/Cancel, keine neuen Käufe");
             return false;
         }
+        if (BazaarLimits.sessionCapReached(cfg)) {
+            if (BazaarLimits.announceCap()) {
+                chat("§6[Flipper] §eSession limit "
+                        + ScreenUtil.formatCoins(cfg.maxCoinsPerSessionMillions * 1_000_000.0)
+                        + " in sell offers reached - no new buy orders, only selling.");
+            }
+            return false;
+        }
         double bankroll = Math.max(0, purse - cfg.reserveCoins);
+        double investRoom = investRoom();
+        if (investRoom <= 0) {
+            logLimit("Max investiert erreicht ("
+                    + ScreenUtil.formatCoins(cfg.maxInvestedMillions * 1_000_000.0) + ") - keine neuen Käufe");
+            return false;
+        }
+        bankroll = Math.min(bankroll, investRoom);
         if (bankroll <= 0) {
             long now = System.currentTimeMillis();
             if (now - lastLowBankrollAt > 10 * 60 * 1000L) {
@@ -1326,14 +1343,21 @@ public class Trader {
             }
         }
         existing.addAll(scannedOrderProductIds);
+        existing.addAll(BazaarLimits.excludedByItemMode(cfg, data));
         List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, availableSlots, this::isStopRequested, 3000L);
         cachePlans(plans);
         log("Neue Käufe: " + plans.size() + " Kandidaten, Bankroll=" + bankroll + ", Slots=" + availableSlots);
         int placed = 0;
+        double plannedSpend = 0;
         for (FlipAnalyzer.FlipPlan plan : plans) {
             if (placed >= cfg.maxNewOrdersPerCycle || stopRequested) {
                 break;
             }
+            double cost = plan.qty * plan.buyPrice;
+            if (plannedSpend + cost > investRoom) {
+                continue; // would go over "max invested"
+            }
+            plannedSpend += cost;
             Trade trade = new Trade();
             trade.productId = plan.productId;
             trade.displayName = plan.displayName;
@@ -1390,8 +1414,25 @@ public class Trader {
         return perUnit * remaining;
     }
 
+    /** Coins that may still go into new orders under "max invested" (no limit = MAX_VALUE). */
+    private double investRoom() {
+        if (cfg.maxInvestedMillions <= 0) {
+            return Double.MAX_VALUE;
+        }
+        return cfg.maxInvestedMillions * 1_000_000.0
+                - BazaarLimits.invested(lastScannedBuyOrders, lastScannedSellOffers);
+    }
+
+    private void logLimit(String text) {
+        long now = System.currentTimeMillis();
+        if (now - lastLimitLogAt > 60_000L) {
+            lastLimitLogAt = now;
+            log(text);
+        }
+    }
+
     private void replaceWorstOrderIfWorthwhile(MarketData data, long purse) {
-        if (BazaarDailyLimit.reached()) {
+        if (BazaarDailyLimit.reached() || BazaarLimits.sessionCapReached(cfg)) {
             return;
         }
         int open = lastScannedOrderCount;
@@ -1422,6 +1463,13 @@ public class Trader {
             }
         }
         existing.addAll(scannedOrderProductIds);
+        existing.addAll(BazaarLimits.excludedByItemMode(cfg, data));
+        // the worst order is cancelled, its coins are free again for the new one
+        double worstValue = Math.max(0, worst.unitPrice) * Math.max(0, worst.amount - worst.filled);
+        bankroll = Math.min(bankroll, investRoom() + worstValue);
+        if (bankroll <= 0) {
+            return;
+        }
         List<FlipAnalyzer.FlipPlan> plans = FlipAnalyzer.compute(data, cfg, bankroll, existing, 1, this::isStopRequested, 3000L);
         cachePlans(plans);
         if (plans.isEmpty()) {
@@ -1527,9 +1575,12 @@ public class Trader {
             orderLimitReached = false;
         }
         lastScannedBuyOrders.clear();
+        lastScannedSellOffers.clear();
         for (ScreenUtil.GuiOrder order : orders) {
             if (!order.sellSide) {
                 lastScannedBuyOrders.add(order);
+            } else {
+                lastScannedSellOffers.add(order);
             }
         }
         productByName.clear();

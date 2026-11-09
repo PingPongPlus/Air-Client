@@ -1,0 +1,61 @@
+// Baritone (LGPL-3.0, https://github.com/cabaletta/baritone), Air Client fork for
+// Minecraft 26.2 ("baritone-highjump"). Built with the same fabric-loom as the mod
+// and shipped inside it as its own nested mod "baritone", unobfuscated, so the
+// pathfinder can be changed directly. See LICENSE in this folder.
+apply plugin: 'net.fabricmc.fabric-loom'
+
+version = '1.19.0+air.1'
+group = 'baritone'
+
+base {
+    archivesName = 'baritone-air'
+}
+
+repositories {
+    exclusiveContent {
+        forRepository {
+            flatDir {
+                name = 'bundledNetherPathfinder'
+                dirs rootProject.file('libs')
+            }
+        }
+        filter { includeModule('local.babbaj', 'nether-pathfinder') }
+    }
+}
+
+sourceSets {
+    // Compile-only stubs for the optional Schematica integration (not shipped).
+    schematica_api {
+        java { srcDirs = ['src/schematica_api/java'] }
+    }
+    main {
+        java { srcDirs = ['src/api/java', 'src/main/java', 'src/launch/java'] }
+        resources { srcDirs = ['src/launch/resources', 'src/fabric/resources'] }
+        compileClasspath += schematica_api.output
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    schematica_apiCompileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    // Native nether pathfinder, nested into this jar like the upstream build does.
+    implementation include('local.babbaj:nether-pathfinder:1.6')
+}
+
+// The stubs reference Minecraft classes. Only the configuration (Minecraft +
+// loader), not main's full classpath: that one contains the stubs (cycle).
+sourceSets.schematica_api.compileClasspath += configurations.compileClasspath
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = 25
+}

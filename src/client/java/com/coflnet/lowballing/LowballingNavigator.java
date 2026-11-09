@@ -177,6 +177,8 @@ public final class LowballingNavigator {
         s.blockReachDistance.value = 3.0f;
         s.chunkCaching.value = true;
         s.pruneRegionsFromRAM.value = true;
+        // real player stats + Pathfinder tab; the lowballer never jumps
+        com.coflnet.pathing.PathfinderTuning.apply(s, true);
     }
 
     private static Vec3 pathAhead(IBaritone baritone, Player player) {

@@ -15,7 +15,11 @@ public abstract class KillAuraFrameMixin {
     @Inject(method = "render", at = @At("HEAD"))
     private void voicechat$smoothAim(CallbackInfo ci) {
         Minecraft client = Minecraft.getInstance();
+        if (com.coflnet.pathing.AotvAssist.isBusy()) {
+            return; // AOTV aims exactly; no smoothing may move the camera meanwhile
+        }
         KillAuraFeature.frame(client);
+        pingplus.voicechat.client.FollowFeature.frame(client);
         LowballingRotation.frame(client.player);
         AhMobPathfinder.frame(client);
     }

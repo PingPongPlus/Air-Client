@@ -46,6 +46,9 @@ upstream project for the full license text.
 - RenderChest 1.0.3 - Apache-2.0 - https://github.com/AzureAaron/RenderChest
 - Yet Another Config Lib (YACL) 3.9.4 - LGPL-3.0 - https://github.com/isXander/YetAnotherConfigLib
 - Baritone 1.19.0 - LGPL-3.0 - https://github.com/cabaletta/baritone
+  Modified source is included in `baritone/` (Minecraft 26.2 port, high-jump
+  movement, learned cost penalties) and shipped as the nested mod `baritone`.
+  Licence text: `baritone/LICENSE`.
 
 ## Minecraft
 

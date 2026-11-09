@@ -110,6 +110,14 @@ public abstract class TitleScreenRestMixin extends Screen {
         this.addRenderableWidget(new PlainTextButton(copyrightX, this.height - 10, copyrightWidth, 10,
                 COPYRIGHT_TEXT, (var1) -> this.minecraft.gui.setScreen(new CreditsAndAttributionScreen(this)), this.font));
 
+        // Account status of the local player: Premium / Standard.
+        boolean premium = com.coflnet.ahflipper.PriorityAccess.isLocalPriority();
+        Component status = Component.literal("Air Client  ").withColor(0xD0D0D0)
+                .append(Component.literal(premium ? "Premium" : "Standard")
+                        .withColor(premium ? 0xA4F0C1 : 0x9A9A9A));
+        this.addRenderableWidget(new StringWidget(4, 4, this.font.width(status), 10,
+                status, this.font));
+
         if (this.realmsNotificationsScreen == null) {
             this.realmsNotificationsScreen = new RealmsNotificationsScreen();
         }
