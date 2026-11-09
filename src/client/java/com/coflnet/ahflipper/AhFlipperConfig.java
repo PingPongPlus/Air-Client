@@ -176,8 +176,8 @@ public class AhFlipperConfig {
     public List<String> blacklist = new ArrayList<>();
     /** Bid macro never outbids these players and never bids where they are highest. */
     public List<String> dontOutbidPlayers = new ArrayList<>();
-    /** Non-premium clients wait this long before each flip action (AH buy/bid, Bazaar order). */
-    public long nonPremiumDelayMs = 1000L;
+    /** Standard clients wait this long before each flip action (AH buy/bid, Bazaar order). */
+    public long standardDelayMs = 1000L;
     public Map<String, String> blacklistTags = new ConcurrentHashMap<>();
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();

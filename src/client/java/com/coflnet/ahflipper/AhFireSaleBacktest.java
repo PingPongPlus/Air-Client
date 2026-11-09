@@ -135,7 +135,7 @@ public final class AhFireSaleBacktest {
             SNAPSHOT.recommended = recommendation;
             SNAPSHOT.signalCount = recommendation == null ? 0 : recommendation.signals;
             SNAPSHOT.outOfSample = outOfSample(calibration, recommendation);
-            SNAPSHOT.note = "Walk-forward auf Cofl-Tageshistorie (2 Jahre) · "
+            SNAPSHOT.note = "Walk-forward auf Markt-Tageshistorie (2 Jahre) · "
                     + skins + " Skins · 1 Signal/Woche/Skin · Ziel-Fill "
                     + Math.round(config.fireSaleBacktestFillProbability * 100) + "%";
             SNAPSHOT.updatedAt = System.currentTimeMillis();

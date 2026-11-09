@@ -1814,7 +1814,7 @@ public class Trader {
     }
 
     private boolean processSellEntry(ScreenUtil.GuiOrder order, MarketData data) {
-        com.coflnet.ahflipper.Premium.applyDelay();
+        com.coflnet.ahflipper.PriorityAccess.applyDelay();
         if (!openOrdersGui()) {
             return false;
         }
@@ -1927,7 +1927,7 @@ public class Trader {
     }
 
     private boolean processBuyEntry(ScreenUtil.GuiOrder order, MarketData data) {
-        com.coflnet.ahflipper.Premium.applyDelay();
+        com.coflnet.ahflipper.PriorityAccess.applyDelay();
         if (!openOrdersGui()) {
             return false;
         }

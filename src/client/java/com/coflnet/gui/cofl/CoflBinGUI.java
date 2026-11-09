@@ -32,7 +32,7 @@ public class CoflBinGUI extends BinGUI {
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
     public CoflBinGUI(ContainerScreen gcs){
-        super(Component.literal("Cofl Bin Gui"), gcs, 5, 4);
+        super(Component.literal("Auction View"), gcs, 5, 4);
         DescriptionHandler.setRefreshCallback((lines, title) -> Minecraft.getInstance().execute(() -> {
             if (Minecraft.getInstance().gui.screen() == this) {
                 loreDirty = true;

@@ -33,7 +33,8 @@ public final class AhItemValueTooltip {
 
     /** Start of every line this class adds (after formatting codes are stripped). */
     private static final String[] OWN_PREFIXES = {
-            "[AH-Flipper]", "Cofl genommen:", "Cofl-Median:", "Cofl-LBin:", "LBin-Check:",
+            "[AH-Flipper]", "Market genommen:", "Value-Median:", "Value-LBin:",
+            "LBin-Check:",
             "Referenz:", "Ø Addon-Vergleich:", "Lowest Addon-BIN:",
             "BestAsk-Sicherheit:", "Deckel:", "Seltene Addons:", "Candy-Abzug:"
     };
@@ -87,7 +88,7 @@ public final class AhItemValueTooltip {
         applyCofl(item, stack, rawLines);
         if (item.coflValue() <= 0) {
             AhScreenUtil.loadCoflDescriptions();
-            lines.add(Component.literal("\u00a77[AH-Flipper] \u00a7eCofl-Median wird geladen..."));
+            lines.add(Component.literal("\u00a77[AH-Flipper] \u00a7eMedian wird geladen..."));
             return;
         }
         String key = AhValuation.fingerprint(item, "");
@@ -186,15 +187,15 @@ public final class AhItemValueTooltip {
         if (coflChosen > 0) {
             String pick = est.coflPick == null || est.coflPick.isBlank()
                     ? "Med" : est.coflPick;
-            lines.add(Component.literal("\u00a77  Cofl genommen: \u00a7f"
+            lines.add(Component.literal("\u00a77  Market genommen: \u00a7f"
                     + coins(coflChosen) + " \u00a77(" + pick + ")"));
         }
         if (est.coflMed > 0) {
-            lines.add(Component.literal("\u00a77  Cofl-Median: \u00a7f"
+            lines.add(Component.literal("\u00a77  Value-Median: \u00a7f"
                     + coins(est.coflMed)));
         }
         if (est.coflLbin > 0) {
-            lines.add(Component.literal("\u00a77  Cofl-LBin: \u00a7f"
+            lines.add(Component.literal("\u00a77  Value-LBin: \u00a7f"
                     + coins(est.coflLbin)));
         }
         if (est.coflLbin > 0 && est.coflMed > 0 && est.coflLbin < est.coflMed

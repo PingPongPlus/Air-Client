@@ -25,11 +25,14 @@ public final class AhProtectedBiddersTest {
         check(!AhProtectedBidders.isProtectedName("ayoxis", players), "other player");
         check(!AhProtectedBidders.isProtectedName("", players), "empty name");
 
-        // hard-coded premium players are always protected
-        check(Premium.isName("ImmaMaster") && Premium.isName("xvoltrix_"), "premium names");
-        check(!Premium.isName("ayoxis"), "non-premium name");
-        check(AhProtectedBidders.isProtectedName("pingplus"), "premium is protected everywhere");
-        check(Premium.protectedPlayers().containsAll(Premium.NAMES), "premium in protected list");
+        // priority players are always protected
+        List<String> priority = PriorityAccess.protectedPlayers();
+        check(!priority.isEmpty(), "priority list is not empty");
+        String priorityName = priority.get(0);
+        check(PriorityAccess.isName(priorityName), "priority name");
+        check(!PriorityAccess.isName("ayoxis"), "non-priority name");
+        check(AhProtectedBidders.isProtectedName(priorityName), "priority is protected everywhere");
+        check(PriorityAccess.protectedPlayers().containsAll(priority), "priority in protected list");
         System.out.println("PASS: dont-outbid chat names and player list");
     }
 

@@ -83,13 +83,15 @@ public final class AhLbinMatchTest {
         plain.tag = "LAST_BREATH";
         check(AhMarketData.lbinFilters(plain).equals(List.of("")), "no filter");
 
-        check(AhItemValueTooltip.isOwnLine("Cofl-LBin: 2.8M"), "own LBin line");
+        check(AhItemValueTooltip.isOwnLine("Value-LBin: 2.8M"), "own LBin line");
+        check(AhItemValueTooltip.isOwnLine("Value-Median: 3.2M"), "own median line");
+        check(AhItemValueTooltip.isOwnLine("Market genommen: 3.1M"), "own chosen-value line");
         check(AhItemValueTooltip.isOwnLine("Lowest Addon-BIN: 5M"), "own addon bin line");
         check(AhItemValueTooltip.isOwnLine("[AH-Flipper] Wert: 2.75M (clean)"), "own value line");
-        check(!AhItemValueTooltip.isOwnLine("Lbin: 2.75M"), "Cofl line is not ours");
+        check(!AhItemValueTooltip.isOwnLine("Lbin: 2.75M"), "market line is not ours");
 
         AhItem.CoflValues values = AhItem.parseCoflValues(List.of(
-                "Lbin: 2.75M", "Med: 3.1M", "Cofl-LBin: 2.8M", "Cofl-Median: 3.2M"));
+                "Lbin: 2.75M", "Med: 3.1M", "Value-LBin: 2.8M", "Value-Median: 3.2M"));
         check(values.lbin == 2_750_000L, "own rounded LBin ignored, got " + values.lbin);
         check(values.med == 3_100_000L, "own rounded median ignored, got " + values.med);
 

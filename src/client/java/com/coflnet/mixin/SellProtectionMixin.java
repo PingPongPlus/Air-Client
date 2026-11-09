@@ -86,7 +86,7 @@ public abstract class SellProtectionMixin {
                 Minecraft client = Minecraft.getInstance();
                 if (client.player != null) {
                     String formattedAmount = formatCoins(sellAmount);
-                    String message = "§c[SkyCofl Sell Protection] §fBlocked click on §e" + protection + "§f (§6" + formattedAmount + " coins§f)! Hold §bCtrl§f to override.";
+                    String message = "§c[Air Sell Protection] §fBlocked click on §e" + protection + "§f (§6" + formattedAmount + " coins§f)! Hold §bCtrl§f to override.";
                     client.player.sendSystemMessage(Component.literal(message));
                 }
 

@@ -384,7 +384,7 @@ public final class AhFireSaleSkinScreen extends Screen {
     private void drawFooter(GuiGraphicsExtractor context) {
         int footerY = panelY + panelHeight - 76;
         String footer = switch (mode) {
-            case BACKTEST -> "\u00a78Walk-forward on Cofl daily history \u00b7 Fee "
+            case BACKTEST -> "\u00a78Walk-forward on market daily history \u00b7 Fee "
                     + String.format(Locale.US, "%.1f%%", AhFlipperMod.CONFIG.ahFeePercent)
                     + " \u00b7 Apply copies the recommendation into the filters";
             case COMPS -> "\u00a78Comps = same-age returns of recent skins "

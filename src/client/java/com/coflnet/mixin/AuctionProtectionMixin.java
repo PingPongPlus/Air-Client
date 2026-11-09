@@ -171,12 +171,12 @@ public abstract class AuctionProtectionMixin {
         String reason = mode == AuctionScreenMode.SELLER
                 ? "auctions listed by co-op members"
                 : "bids placed by co-op members";
-        return "§c[SkyCofl Angry Coop] §fBlocked Claim All because " + reason + " were detected. Hold §bCtrl§f to override.";
+        return "§c[Air Protection] §fBlocked Claim All because " + reason + " were detected. Hold §bCtrl§f to override.";
     }
 
     private String getBlockedClickMessage(AuctionScreenMode mode, String foreignName) {
         String action = mode == AuctionScreenMode.SELLER ? "listed by" : "bid on by";
-        return "§c[SkyCofl Angry Coop] §fBlocked claiming auction " + action + " §e" + foreignName + "§f. Hold §bCtrl§f to override.";
+        return "§c[Air Protection] §fBlocked claiming auction " + action + " §e" + foreignName + "§f. Hold §bCtrl§f to override.";
     }
 
     private String stripFormatting(String text) {

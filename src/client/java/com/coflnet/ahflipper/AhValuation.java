@@ -254,7 +254,7 @@ public class AhValuation {
             comparableSales = 1;
             est.addonValueUnbacked = false;
             est.coflFallback = true;
-            est.comparableNote = "Cofl-" + item.coflPick + " statt Addon-Vergleich";
+            est.comparableNote = "Market-" + item.coflPick + " statt Addon-Vergleich";
         }
         est.addonValue = addonValue;
         est.addonValueAsk = addonValueAsk;
@@ -396,7 +396,7 @@ public class AhValuation {
             return ourValue;
         }
         if (ourValue <= 0) {
-            est.source = est.source + "+cofl";
+            est.source = est.source + "+market";
             return cofl;
         }
         double difference = (cofl - ourValue) / (double) ourValue;
@@ -408,7 +408,7 @@ public class AhValuation {
         weight = Math.max(0.05, Math.min(0.95, weight));
         long blended = Math.round(ourValue * (1.0 - weight)
                 + cofl * weight);
-        est.source = est.source + "+cofl-" + Math.round(weight * 100) + "/"
+            est.source = est.source + "+market-" + Math.round(weight * 100) + "/"
                 + Math.round((1.0 - weight) * 100);
         return Math.max(1, blended);
     }

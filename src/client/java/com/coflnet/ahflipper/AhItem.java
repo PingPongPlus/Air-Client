@@ -376,8 +376,8 @@ public class AhItem {
                 continue;
             }
             String clean = ScreenUtil.cleanName(line);
-            // Our own value lines ("Cofl-LBin: 2.8M", "Lowest Addon-BIN: ...") show
-            // ROUNDED numbers. They used to be parsed as Cofl values here and,
+            // Our own value lines ("Value-LBin: 2.8M", "Lowest Addon-BIN: ...") show
+            // ROUNDED numbers. They used to be parsed as market values here and,
             // via Math.max in merge(), replaced e.g. the real 2.75M LBin by 2.8M,
             // so the LBin check found no auction and fell back to the median.
             if (AhItemValueTooltip.isOwnLine(clean)) {

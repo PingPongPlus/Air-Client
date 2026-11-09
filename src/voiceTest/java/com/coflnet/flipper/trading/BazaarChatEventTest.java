@@ -40,7 +40,7 @@ public final class BazaarChatEventTest {
         check("expired auction", BazaarChatEvent.parse(
                 "You claimed Calcified Thunder Boots back from your expired auction!") == null);
         check("co-op auction cancel", BazaarChatEvent.parse(
-                "xVoltrix_ cancelled an auction for Titanium Necklace!") == null);
+                "TestPlayer cancelled an auction for Titanium Necklace!") == null);
         check("player chat", BazaarChatEvent.parse(
                 "[289] [MVP+] qbreese: 5x hype claimed and cancelled") == null);
         check("progress line", BazaarChatEvent.parse("[Bazaar] Submitting buy order...") == null);

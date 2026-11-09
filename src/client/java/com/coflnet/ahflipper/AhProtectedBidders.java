@@ -49,7 +49,7 @@ public final class AhProtectedBidders {
 
     /** True if {@code name} is in the don't-outbid list (case ignored). */
     public static boolean isProtectedName(String name) {
-        return Premium.isName(name) || isProtectedName(name, Premium.protectedPlayers());
+        return PriorityAccess.isName(name) || isProtectedName(name, PriorityAccess.protectedPlayers());
     }
 
     static boolean isProtectedName(String name, List<String> players) {
@@ -69,7 +69,7 @@ public final class AhProtectedBidders {
         if (bidderUuid == null || bidderUuid.isBlank()) {
             return false;
         }
-        List<String> players = Premium.protectedPlayers();
+        List<String> players = PriorityAccess.protectedPlayers();
         String wanted = bidderUuid.replace("-", "").toLowerCase(Locale.ROOT);
         for (String player : players) {
             String uuid = uuidOf(player);
@@ -115,7 +115,7 @@ public final class AhProtectedBidders {
 
     /** Resolve all names in the background so the bid thread never waits. */
     public static void warmUp() {
-        List<String> copy = List.copyOf(Premium.protectedPlayers());
+        List<String> copy = List.copyOf(PriorityAccess.protectedPlayers());
         Thread.startVirtualThread(() -> copy.forEach(AhProtectedBidders::uuidOf));
     }
 }

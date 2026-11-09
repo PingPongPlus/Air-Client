@@ -163,6 +163,7 @@ public class AhFlipperMod {
                 + ", keys=F10/F8)");
         debugAnalyze = false;
         CONFIG.debugAnalyze = false;
+        PriorityAccess.init();
         registerKeybinding();
         registerSoldChatClaim();
         com.coflnet.gui.panel.FlipperPanels.init();
@@ -645,7 +646,7 @@ public class AhFlipperMod {
     private static int statusCommand(CommandContext<FabricClientCommandSource> context) {
         message("§6[Flipper] §7AH-Status: " + (running ? "§aAKTIV" : "§cGESTOPPT")
                 + (recon ? " §7(Recon an)" : ""));
-        message("§7Exit: §fmin(Craft-Cost, Cofl-LBIN) §7· Fee: §f"
+                message("§7Exit: §fmin(Craft-Cost, LBin) §7· Fee: §f"
                 + String.format(java.util.Locale.US, "%.1f%%", CONFIG.ahFeePercent)
                 + " §7· Min. Profit: §f" + String.format(java.util.Locale.US, "%.0f%%", CONFIG.minProfitPercent)
                 + " §7· Min. Item: §f" + ScreenUtil.formatCoins(CONFIG.minItemCoins));
@@ -680,7 +681,7 @@ public class AhFlipperMod {
                 + " §7· Queue §f" + queued);
         String conn = CoflCore.CoflCore.Wrapper != null
                 ? CoflCore.CoflCore.Wrapper.GetStatus() : "null";
-        message("§7Cofl: §f" + conn);
+            message("§7Market: §f" + conn);
         message("§7Live: " + AhLiveScanner.status());
         message("§7Scanner: " + AhScanner.status());
         message("§7Investment: " + (CONFIG.investmentGui ? "§aan" : "§caus")
@@ -2775,8 +2776,8 @@ public class AhFlipperMod {
                 return;
             }
             if (item.coflValue() <= 0) {
-                System.out.println("[AH-Flipper] Cofl-Median/LBin nicht geladen: " + item.tag);
-                message("\u00a7cCofl tooltip value not loaded - no purchase.");
+                System.out.println("[AH-Flipper] Market-Median/LBin nicht geladen: " + item.tag);
+                message("\u00a7cMarket tooltip value not loaded - no purchase.");
                 ScreenUtil.closeCurrentScreen();
                 return;
             }
@@ -2817,7 +2818,7 @@ public class AhFlipperMod {
             recoveryName = item.displayName;
             recoveryValue = resale;
             recoveryPrice = price;
-            Premium.applyDelay();
+            PriorityAccess.applyDelay();
             if (!spamBuyButton()) {
                 // The buy button never got through, so nothing can have been
                 // bought: no claim/recovery run afterwards.

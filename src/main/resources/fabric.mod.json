@@ -2,10 +2,16 @@
   "schemaVersion": 1,
   "id": "voicechat",
   "version": "${version}",
-  "name": "Laby Voice Chat",
-  "description": "LabyMod-compatible proximity voice chat with push-to-talk and volume controls for Minecraft 26.2.",
-  "authors": [],
-  "contact": {},
+  "name": "Air Client",
+  "description": "A Minecraft client with voice chat, Spotify, and a customizable liquid glass interface, plus Hypixel SkyBlock auction, bazaar and lowballing tools.",
+  "authors": [
+    "immadie111-oss",
+    "PingPongPlus"
+  ],
+  "contact": {
+    "homepage": "https://github.com/AeroAlpine/Air-Client",
+    "sources": "https://github.com/AeroAlpine/Air-Client"
+  },
   "license": "AGPL-3.0-only",
   "environment": "client",
   "entrypoints": {

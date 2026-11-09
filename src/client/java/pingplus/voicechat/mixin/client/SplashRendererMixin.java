@@ -21,7 +21,7 @@ import pingplus.voicechat.client.gui.glass.MenuThemeSettings;
 @Mixin(SplashRenderer.class)
 public abstract class SplashRendererMixin {
 
-    Component customSplash = Component.literal("by pingplus & Immamaster");    @Inject(
+    Component customSplash = Component.literal("by immadie111-oss & PingPongPlus");    @Inject(
             method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;ILnet/minecraft/client/gui/Font;F)V",
             at = @At("HEAD"),
             cancellable = true

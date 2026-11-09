@@ -223,6 +223,8 @@ tasks.named('check') { dependsOn 'profileTest' }
 
 jar {
     from("LICENSE")
+    from("NOTICE")
+    from("THIRD_PARTY_NOTICES.md")
 }
 
 // configure the maven publication

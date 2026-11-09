@@ -54,7 +54,7 @@ public class ChatScreenMixin {
 
     /**
      * Returns true when text_Tunnels is installed and the currently selected
-     * tunnel has "/cofl chat " as its send-prefix (i.e. the SkyCofl tunnel).
+     * tunnel has the client chat send-prefix.
      *
      * Uses reflection so that a text_Tunnels API change only silently disables
      * the feature rather than crashing the mod.
@@ -74,7 +74,8 @@ public class ChatScreenMixin {
                     (java.util.List<String>) prefixesField.get(null);
             return prefixes != null
                     && index < prefixes.size()
-                    && "/cofl chat ".equals(prefixes.get(index));
+                    && ("/air chat ".equals(prefixes.get(index))
+                    || "/cofl chat ".equals(prefixes.get(index)));
         } catch (Exception ignored) {
             return false;
         }

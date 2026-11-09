@@ -345,7 +345,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
-            registerDefaultCommands(dispatcher, "cofl");
+            registerDefaultCommands(dispatcher, "air");
             registerDefaultCommands(dispatcher, "cl");
 
 
@@ -555,17 +555,14 @@ public class CoflModClient implements ClientModInitializer {
                 Screen currentScreen = Minecraft.getInstance().gui.screen();
                 Minecraft.getInstance().gui.setScreen(
                         new PopupScreen.Builder(currentScreen, Component.literal("Warning"))
-                                .addButton(Component.literal("Modrinth"), popupScreen -> {
-                                    Util.getPlatform().openUri("https://modrinth.com/mod/skycofl/versions");
-                                })
-                                .addButton(Component.literal("Curseforge"), popupScreen -> {
-                                    Util.getPlatform().openUri("https://www.curseforge.com/minecraft/mc-mods/skycofl/files/all?page=1&pageSize=20");
+                                .addButton(Component.literal("Downloads"), popupScreen -> {
+                                    Util.getPlatform().openUri("https://github.com/AeroAlpine/Air-Client/releases");
                                 })
                                 .addButton(Component.literal("dismiss"), popupScreen -> popupScreen.onClose())
                                 .addMessage(Component.literal(
-                                        "This version of the SkyCofl mod is meant for use in Minecraft "+
+                                        "This version of Air Client is meant for use in Minecraft "+
                                                 targetVersion+" and likely won't work on this version."+
-                                                "\nYou can find other versions of SkyCofl here:"
+                                                "\nYou can find other versions here:"
                                 ))
                                 .build()
                 );
@@ -686,10 +683,9 @@ public class CoflModClient implements ClientModInitializer {
                     Minecraft client = Minecraft.getInstance();
                     if (!coflInfoShown) {
                         coflInfoShown = true;
-                        sendChatMessage("§6§l=== SkyCofl Mod ===");
-                        sendChatMessage("§7Powered by §bsky.coflnet.com §7- real-time AH data,");
-                        sendChatMessage("§7price checking, flip finding, and more.");
-                        sendChatMessage("§eUse §a/cofl help §efor a list of available commands.");
+                        sendChatMessage("§6§l=== Air Client ===");
+                        sendChatMessage("§7Real-time market data, price checking, flip finding, and more.");
+                        sendChatMessage("§eUse §a/air help §efor a list of available commands.");
                         sendChatMessage("§7Commands have §aautocompletion§7 - start typing to see suggestions.");
                         sendChatMessage("§7Hover over suggestions for §amore information§7.");
                     }
@@ -699,7 +695,7 @@ public class CoflModClient implements ClientModInitializer {
                             CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
                             client.gui.setScreen(CoflSettingsScreen.create(client.gui.screen()));
                         } catch (Throwable t) {
-                            sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
+                            sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/air§7.");
                         }
                     });
                     return 1;
@@ -759,7 +755,7 @@ public class CoflModClient implements ClientModInitializer {
                         }
                         for (String suggestion : CoflCore.config.knownCommands.keySet()) {
                             if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
-                                    || inputArgs.length == 1 // just /cofl should show all
+                                    || inputArgs.length == 1 // just typing the command should show all
                             ){
                                 String messageText = CoflCore.config.knownCommands.get(suggestion);
                                 if(messageText == null)
@@ -790,7 +786,7 @@ public class CoflModClient implements ClientModInitializer {
                                 sendChatMessage("§aSell Protection " + (enabled ? "enabled" : "disabled"));
                                 return 1;
                             } else {
-                                sendChatMessage("§cUsage: /cofl set sellProtectionEnabled <true/false>");
+                                sendChatMessage("§cUsage: /air set sellProtectionEnabled <true/false>");
                                 return 1;
                             }
                         } else if (args[1].equals("sellProtectionThreshold")) {
@@ -805,7 +801,7 @@ public class CoflModClient implements ClientModInitializer {
                                     return 1;
                                 }
                             } else {
-                                sendChatMessage("§cUsage: /cofl set sellProtectionThreshold <amount>");
+                                sendChatMessage("§cUsage: /air set sellProtectionThreshold <amount>");
                                 sendChatMessage("§7Examples: 1000, 2k, 3m, 1.5b");
                                 return 1;
                             }
@@ -816,7 +812,7 @@ public class CoflModClient implements ClientModInitializer {
                                 sendChatMessage("§aAngry Co-op Protection " + (enabled ? "enabled" : "disabled"));
                                 return 1;
                             } else {
-                                sendChatMessage("§cUsage: /cofl set angryCoopProtectionEnabled <true/false>");
+                                sendChatMessage("§cUsage: /air set angryCoopProtectionEnabled <true/false>");
                                 return 1;
                             }
                         }
@@ -827,8 +823,8 @@ public class CoflModClient implements ClientModInitializer {
                             sendChatMessage("§6=== Sell Protection Settings ===");
                             sendChatMessage("§7Enabled: " + (config.sellProtectionEnabled ? "§aYes" : "§cNo"));
                             sendChatMessage("§7Max Amount: §6" + formatCoins(config.sellProtectionThreshold) + " coins");
-                            sendChatMessage("§7Usage: §e/cofl set sellProtectionEnabled <true/false>");
-                            sendChatMessage("§7Usage: §e/cofl set sellProtectionThreshold <amount>");
+                            sendChatMessage("§7Usage: §e/air set sellProtectionEnabled <true/false>");
+                            sendChatMessage("§7Usage: §e/air set sellProtectionThreshold <amount>");
                             sendChatMessage("§7Examples: §e1000§7, §e2k§7, §e3m§7, §e1.5b");
                             return 1;
                         }
@@ -837,7 +833,7 @@ public class CoflModClient implements ClientModInitializer {
                             com.coflnet.config.CoflModConfig config = com.coflnet.config.AngryCoopProtectionManager.getConfig();
                             sendChatMessage("§6=== Angry Co-op Protection Settings ===");
                             sendChatMessage("§7Enabled: " + (config.angryCoopProtectionEnabled ? "§aYes" : "§cNo"));
-                            sendChatMessage("§7Usage: §e/cofl set angryCoopProtectionEnabled <true/false>");
+                            sendChatMessage("§7Usage: §e/air set angryCoopProtectionEnabled <true/false>");
                             return 1;
                         }
                     }
@@ -852,7 +848,7 @@ public class CoflModClient implements ClientModInitializer {
                             searchInBazaarSmart(searchTerm);
                             return 1;
                         } else {
-                            sendChatMessage("§cUsage: /cofl bazaarsearch <item>");
+                            sendChatMessage("§cUsage: /air bazaarsearch <item>");
                             return 1;
                         }
                     }
@@ -1850,7 +1846,7 @@ public class CoflModClient implements ClientModInitializer {
                     lines.add(Component.literal("§c⚠ §lSell Protection §c⚠"));
                     lines.add(Component.literal("§7Left clicks blocked if > §6" + formattedThreshold + " coins"));
                     lines.add(Component.literal("§bHold Ctrl§7 to override."));
-                    lines.add(Component.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                    lines.add(Component.literal("§8/air set sellProtectionThreshold <amount>"));
                 }
             } else if (itemName.contains("Sell Sacks Now") || itemName.contains("Sell Inventory Now")) {
                 sellAmount = com.coflnet.utils.SellAmountParser.extractInventorySackAmountFromTooltip(lines);
@@ -1863,7 +1859,7 @@ public class CoflModClient implements ClientModInitializer {
                     lines.add(Component.literal("§c⚠ §lSell Protection §c⚠"));
                     lines.add(Component.literal("§7All clicks blocked if > §6" + formattedThreshold + " coins"));
                     lines.add(Component.literal("§bHold Ctrl§7 to override."));
-                    lines.add(Component.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                    lines.add(Component.literal("§8/air set sellProtectionThreshold <amount>"));
                 }
             }
         } catch (Exception e) {
@@ -1951,12 +1947,15 @@ public class CoflModClient implements ClientModInitializer {
     public static void displayModMessage(Component message) {
         Minecraft client = Minecraft.getInstance();
         if (client == null) return;
+        message = Rebrand.clean(message);
+        if (message == null) return;
+        final Component display = message;
         client.execute(() -> {
             if (!isTextTunnelsInstalled()) {
-                client.gui.chatListener().handleSystemMessage(message, false);
+                client.gui.chatListener().handleSystemMessage(display, false);
                 return;
             }
-            Component prefixed = prefixCompatMessage(message);
+            Component prefixed = prefixCompatMessage(display);
             // Manually fire ALLOW_GAME so text_Tunnels can record this message's
             // gui-tick in the matching tunnel set. Return value is ignored because
             // our own messages must always be displayed.
@@ -2012,20 +2011,20 @@ public class CoflModClient implements ClientModInitializer {
             JsonArray serversConfigs = root.getAsJsonArray("serversConfigs");
             boolean modified = false;
             for (String ip : new String[]{"mc.hypixel.net", "hypixel.net", "alpha.hypixel.net"}) {
-                modified |= ensureServerHasSkyCoflTunnel(serversConfigs, ip);
+                modified |= ensureServerHasTunnel(serversConfigs, ip);
             }
             if (modified) {
                 Files.writeString(configFile, new GsonBuilder().setPrettyPrinting().create().toJson(root));
-                System.out.println("[CoflMod] Added SkyCofl tunnel to text_Tunnels config");
+                System.out.println("[Client] Added tunnel to text_Tunnels config");
                 triggerTextTunnelsConfigReload();
             }
         } catch (Exception e) {
-            System.out.println("[CoflMod] Failed to update text_Tunnels config: " + e.getMessage());
+            System.out.println("[Client] Failed to update text_Tunnels config: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    private static boolean ensureServerHasSkyCoflTunnel(JsonArray serversConfigs, String ip) {
+    private static boolean ensureServerHasTunnel(JsonArray serversConfigs, String ip) {
         JsonObject serverEntry = null;
         for (JsonElement el : serversConfigs) {
             if (el.isJsonObject()) {
@@ -2049,17 +2048,20 @@ public class CoflModClient implements ClientModInitializer {
                 : new JsonArray();
         String expectedReceivePrefix = java.util.regex.Pattern.quote(TEXT_TUNNELS_MESSAGE_PREFIX);
         for (JsonElement el : tunnelConfigs) {
-            if (el.isJsonObject() && "SkyCofl".equals(
-                    el.getAsJsonObject().has("name")
-                            ? el.getAsJsonObject().get("name").getAsString() : null)) {
+            if (el.isJsonObject() && isTunnelName(el.getAsJsonObject().has("name")
+                    ? el.getAsJsonObject().get("name").getAsString() : null)) {
                 JsonObject existing = el.getAsJsonObject();
                 boolean modified = false;
+                if (!"Air Client".equals(existing.has("name") ? existing.get("name").getAsString() : null)) {
+                    existing.addProperty("name", "Air Client");
+                    modified = true;
+                }
                 if (!existing.has("receivePrefix") || !expectedReceivePrefix.equals(existing.get("receivePrefix").getAsString())) {
                     existing.addProperty("receivePrefix", expectedReceivePrefix);
                     modified = true;
                 }
-                if (!existing.has("sendPrefix") || !"/cofl chat ".equals(existing.get("sendPrefix").getAsString())) {
-                    existing.addProperty("sendPrefix", "/cofl chat ");
+                if (!existing.has("sendPrefix") || !"/air chat ".equals(existing.get("sendPrefix").getAsString())) {
+                    existing.addProperty("sendPrefix", "/air chat ");
                     modified = true;
                 }
                 if (!existing.has("enabled") || !existing.get("enabled").getAsBoolean()) {
@@ -2071,14 +2073,18 @@ public class CoflModClient implements ClientModInitializer {
         }
         JsonObject tunnel = new JsonObject();
         tunnel.addProperty("enabled", true);
-        tunnel.addProperty("name", "SkyCofl");
+        tunnel.addProperty("name", "Air Client");
         // Regex that matches messages prefixed with our invisible marker.
         tunnel.addProperty("receivePrefix", expectedReceivePrefix);
         // Marker: ChatScreenMixin intercepts this prefix before it reaches the network
-        tunnel.addProperty("sendPrefix", "/cofl chat ");
+        tunnel.addProperty("sendPrefix", "/air chat ");
         tunnelConfigs.add(tunnel);
         serverEntry.add("tunnelConfigs", tunnelConfigs);
         return true;
+    }
+
+    private static boolean isTunnelName(String name) {
+        return "Air Client".equals(name) || "SkyCofl".equals(name);
     }
 
     /**
@@ -2104,7 +2110,7 @@ public class CoflModClient implements ClientModInitializer {
         }
 
         if (args.length != 2) {
-            sendChatMessage("§cUsage: /cofl confirmconnect <token>");
+            sendChatMessage("§cUsage: /air confirmconnect <token>");
             return true;
         }
 
@@ -2115,12 +2121,12 @@ public class CoflModClient implements ClientModInitializer {
 
         if (isPendingUntrustedConnectExpired()) {
             clearPendingUntrustedConnect();
-            sendChatMessage("§cThe untrusted connection confirmation expired. Run /cofl connect again if you still want to continue.");
+            sendChatMessage("§cThe untrusted connection confirmation expired. Run /air connect again if you still want to continue.");
             return true;
         }
 
         if (!pendingUntrustedConnectToken.equals(args[1])) {
-            sendChatMessage("§cInvalid confirmation token. Run /cofl connect again to get a new confirmation button.");
+            sendChatMessage("§cInvalid confirmation token. Run /air connect again to get a new confirmation button.");
             return true;
         }
 
@@ -2151,16 +2157,16 @@ public class CoflModClient implements ClientModInitializer {
         pendingUntrustedConnectExpiresAtMs = System.currentTimeMillis() + UNTRUSTED_CONNECT_CONFIRMATION_TIMEOUT_MS;
 
         String displayedTarget = getDisplayedConnectTarget(destination, host);
-        sendChatMessage("§c⚠ Warning: §e" + displayedTarget + " §cis not a §bcoflnet.com §cserver.");
-        sendChatMessage("§cThat server can reuse your authentication against the main SkyCofl instance.");
-        sendChatMessage("§cYou can lose all CoflCoins and get banned, only continue if you trust this server.");
+        sendChatMessage("§c⚠ Warning: §e" + displayedTarget + " §cis not an official market server.");
+        sendChatMessage("§cThat server can reuse your authentication against the official service.");
+        sendChatMessage("§cYou can lose all coins and get banned, only continue if you trust this server.");
         sendChatMessage("§eThe connection was blocked. Click the confirmation button below within 30 seconds if you want to continue.");
         sendChatComponent(Component.literal("[Confirm untrusted connection]")
                 .withStyle(style -> style
                         .withColor(ChatFormatting.RED)
                         .withBold(true)
                         .withUnderlined(true)
-                        .withClickEvent(new ClickEvent.RunCommand("/cofl confirmconnect " + confirmationToken))
+                        .withClickEvent(new ClickEvent.RunCommand("/air confirmconnect " + confirmationToken))
                         .withHoverEvent(new HoverEvent.ShowText(Component.literal(
                                 "Connect to " + displayedTarget + " anyway\n"
                                         + "This confirmation expires in 30 seconds.")))));

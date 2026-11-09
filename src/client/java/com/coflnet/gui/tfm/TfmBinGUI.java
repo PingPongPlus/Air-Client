@@ -39,7 +39,7 @@ public class TfmBinGUI extends BinGUI {
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8,
                 width - 12, 10,
-                Component.literal("Cofl - Auction View"),
+                Component.literal("Auction View"),
                 Minecraft.getInstance().font
         );
 

@@ -144,7 +144,7 @@ public final class  ClickGuiScreen extends Screen {
                 AhFlipperMod.CONFIG.save();
                 AhInvestmentTracker.requestRefresh();
             }),26);
-            add(investment,new CombatSlider(panelWidth-20,"Max buy premium %",5,100,5,
+            add(investment,new CombatSlider(panelWidth-20,"Max buy overpay %",5,100,5,
                     ()->AhFlipperMod.CONFIG.investmentMaxBuyPremiumPercent,v-> {
                 AhFlipperMod.CONFIG.investmentMaxBuyPremiumPercent=v;
                 AhFlipperMod.CONFIG.save();

@@ -67,7 +67,7 @@ public class CoflSettingsScreen {
         BINMASTER(256, false, "Binmaster finder source"),
         LEIKO(512, false, "Leiko finder source"),
         CRAFT_COST(1024, true, "Reports auctions that are at least 5% cheaper than the summed craft cost (clean+modifier). Adjust weights with the CraftCostWeight filter. Does not guarantee sale price, use with caution!"),
-        RUST(2048, false, "High-speed Rust-based finder hosted on high-performance infrastructure near Hypixel. This is a third-party, paid finder; use /cofl rust in the mod to learn more."),
+        RUST(2048, false, "High-speed Rust-based finder hosted on high-performance infrastructure near Hypixel. This is a third-party, paid finder; use /air rust in the mod to learn more."),
         BAZAAR(4096, true, "Reports items when they are high buy order -> sell order difference."),
         MEDIAN_BASED(SNIPER_MEDIAN.mask | FLIPPER.mask, false, "Median-based preset"),
         ALL_EXCEPT_USER(FLIPPER_AND_SNIPERS.mask | AI.mask | TFM.mask | STONKS.mask | EXTERNAL.mask, false, "Preset that excludes USER finder");
@@ -109,7 +109,7 @@ public class CoflSettingsScreen {
         }
 
         YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
-                .title(Component.literal("SkyCofl Settings"));
+                .title(Component.literal("Air Client Settings"));
 
         List<Runnable> saveActions = new ArrayList<>();
 
@@ -283,7 +283,7 @@ public class CoflSettingsScreen {
                         .option(Option.<Boolean>createBuilder()
                                 .name(Component.literal("Fire Sale skins enabled"))
                                 .description(OptionDescription.of(Component.literal(
-                                        "Scans Fire Sale skins with Cofl monthly/weekly history, volume and current BIN book.")))
+                                        "Scans Fire Sale skins with market monthly/weekly history, volume and current BIN book.")))
                                 .controller(TickBoxControllerBuilder::create)
                                 .binding(false, () -> AhFlipperMod.CONFIG.fireSaleSkins, value -> {
                                     AhFlipperMod.CONFIG.fireSaleSkins = value;
@@ -350,7 +350,7 @@ public class CoflSettingsScreen {
                         .option(Option.<Double>createBuilder()
                                 .name(Component.literal("Slippage %"))
                                 .description(OptionDescription.of(Component.literal(
-                                        "Maximum premium at which BINs are considered safe to buy.")))
+                                        "Maximum overpay at which BINs are considered safe to buy.")))
                                 .controller(DoubleFieldControllerBuilder::create)
                                 .binding(5.0, () -> AhFlipperMod.CONFIG.investmentSlippagePercent,
                                         value -> {
@@ -558,7 +558,7 @@ public class CoflSettingsScreen {
         client.execute(() -> {
             Screen current = client.gui.screen();
             if (current != null && current.getTitle() != null
-                    && "SkyCofl Settings".equals(current.getTitle().getString())) {
+                    && "Air Client Settings".equals(current.getTitle().getString())) {
                 client.gui.setScreen(create(lastParent));
             }
         });
@@ -567,7 +567,7 @@ public class CoflSettingsScreen {
     private static ButtonOption buildWikiButton() {
         return ButtonOption.createBuilder()
                 .name(Component.literal("Wiki / Documentation"))
-                .description(OptionDescription.of(Component.literal("Open the SkyCofl wiki for detailed documentation on all settings, finders, and filters.")))
+                .description(OptionDescription.of(Component.literal("Open the documentation for all settings, finders, and filters.")))
                 .text(Component.literal("Open"))
                 .action(screen -> Util.getPlatform().openUri("https://sky.coflnet.com/wiki"))
                 .build();

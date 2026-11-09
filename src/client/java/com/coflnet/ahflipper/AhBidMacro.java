@@ -1092,7 +1092,7 @@ public final class AhBidMacro {
                 remember(details.uuid);
                 return false;
             }
-            Premium.applyDelay();
+            PriorityAccess.applyDelay();
             if (!submitAndConfirmBid(slot)) {
                 System.out.println("[AH-Flipper] Bid-Macro: Submit/Confirm fehlgeschlagen: "
                         + item.displayName);

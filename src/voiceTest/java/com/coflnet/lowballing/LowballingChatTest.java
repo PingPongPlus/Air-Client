@@ -15,8 +15,8 @@ public final class LowballingChatTest {
         check(tamil != null && tamil[0].equals("iTibo"), "other emblem");
         String[] plain = LowballingChat.splitPlayerChat("[289] [✌] [MVP+] qbreese: my best offer rn is 190");
         check(plain != null && plain[0].equals("qbreese"), "old format still works");
-        String[] noRank = LowballingChat.splitPlayerChat("[50] xVoltrix_: My best offer is 15.5m");
-        check(noRank != null && noRank[0].equals("xVoltrix_"), "no rank");
+        String[] noRank = LowballingChat.splitPlayerChat("[50] TestPlayer: My best offer is 15.5m");
+        check(noRank != null && noRank[0].equals("TestPlayer"), "no rank");
         check(LowballingChat.splitPlayerChat("You have sent a trade request to atqz.") == null,
                 "system line is no player line");
 
