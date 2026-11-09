@@ -5,7 +5,6 @@
   "client": [
     "ChatScreenMixin",
     "ClientPlayerEntityMixin",
-    "LocalPlayerJumpMixin",
     "FlipperSignFillMixin",
     "HandledScreenMixin",
     "InventoryScreenMixin",

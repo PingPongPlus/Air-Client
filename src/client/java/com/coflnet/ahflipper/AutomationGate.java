@@ -21,7 +21,25 @@ final class AutomationGate {
     private AutomationGate() {
     }
 
+    /** Commands the player starts by hand; they may run while the lowballer trades. */
+    private static final java.util.Set<String> MANUAL_OWNERS =
+            java.util.Set.of("buy-current", "buy-player", "sell", "analyze");
+
+    /**
+     * Automatic AH work (auto-buy, bids, claims, listings) must not open a menu
+     * while the lowballer is in a trade: it closed the trade window before.
+     */
+    static boolean blockedByLowballing(String owner) {
+        if (owner == null || owner.startsWith("lowball") || MANUAL_OWNERS.contains(owner)) {
+            return false;
+        }
+        return com.coflnet.lowballing.LowballingMod.holdsGui();
+    }
+
     static Lease tryAcquire(String owner, boolean bid) {
+        if (blockedByLowballing(owner)) {
+            return null;
+        }
         // Releases an orphaned lease first; otherwise a hung flow blocked all
         // AH automation until someone happened to call isBusy().
         currentLease();

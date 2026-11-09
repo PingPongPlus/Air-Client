@@ -253,9 +253,21 @@ public final class LowballingMod {
         });
     }
 
-    /** The lowballer never jumps; in water jumping is swimming, so that stays. */
-    public static boolean blocksJump(net.minecraft.client.player.LocalPlayer player) {
-        return running && player != null && !player.isInWater();
+    /**
+     * True while the lowballer is in a step where its own menus matter (hub
+     * selector, player and trade menus, negotiation). The AH flipper, the bid
+     * macro and the Bazaar flipper do not open or close GUIs meanwhile.
+     */
+    public static boolean holdsGui() {
+        if (!running) {
+            return false;
+        }
+        return switch (state) {
+            case OPEN_SELECTOR, HUB_MENU, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU, OPEN_OFFER,
+                 VALUING, OFFER_READY, SET_COINS, WAIT_TRADE, CHAT_OFFER, KICK_WAIT,
+                 NEXT_PLAYER -> true;
+            default -> false;
+        };
     }
 
     public static boolean isRunning() {
@@ -1053,13 +1065,7 @@ public final class LowballingMod {
      * a menu of this bot matters, the Bazaar flipper waits.
      */
     private static void holdBazaarFlipper(long now) {
-        boolean guiNeeded = switch (state) {
-            case OPEN_SELECTOR, HUB_MENU, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU, OPEN_OFFER,
-                 VALUING, OFFER_READY, SET_COINS, WAIT_TRADE, CHAT_OFFER, KICK_WAIT,
-                 NEXT_PLAYER -> true;
-            default -> false;
-        };
-        if (!guiNeeded || now - lastBazaarHoldAt < 2_000L) {
+        if (!holdsGui() || now - lastBazaarHoldAt < 2_000L) {
             return;
         }
         lastBazaarHoldAt = now;

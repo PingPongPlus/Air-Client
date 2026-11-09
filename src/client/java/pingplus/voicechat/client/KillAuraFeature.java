@@ -32,13 +32,24 @@ public final class KillAuraFeature {
     private static long lastFrame;
     // Extra fully charged ticks to wait, sampled once after each attack.
     private static int extraCooldownTicks;
+    // Set by Follow ("attack target"): only this entity is attacked, also while
+    // the KillAura toggle itself is off. Null = normal KillAura behaviour.
+    private static volatile java.util.function.Predicate<LivingEntity> forcedTarget;
+
+    /** Restrict KillAura to one target (Follow), or null to go back to normal. */
+    public static void setForcedTarget(java.util.function.Predicate<LivingEntity> filter) {
+        if (filter == null && forcedTarget != null) {
+            clear();
+        }
+        forcedTarget = filter;
+    }
 
     /** Check the player and game state before accessing world data or taking control. */
     private static boolean active(Minecraft client) {
         var screen = client.gui.screen();
         // The toggle must be on, and the player, world and interaction controller must exist.
         // Those objects can be absent during startup, disconnects and world changes.
-        return PlayerSettings.killAura && client.player != null && client.level != null && client.gameMode != null
+        return (PlayerSettings.killAura || forcedTarget != null) && client.player != null && client.level != null && client.gameMode != null
             // Chat and the player inventory do not suspend gameplay for KillAura.
             && (screen == null || screen instanceof ChatScreen || screen instanceof InventoryScreen)
             && client.gui.overlay() == null && !client.isPaused()
@@ -79,7 +90,12 @@ public final class KillAuraFeature {
                 || entity.isRemoved() || !entity.isPickable() || !entity.attackable() || entity.isInvisible()
                 // Respect Minecraft's ally/team relationship and avoid entities sharing our vehicle.
                 || entity.isAlliedTo(client.player) || entity.isPassengerOfSameVehicle(client.player)) return false;
-        if (entity instanceof Player player) {
+        var forced = forcedTarget;
+        if (forced != null) {
+            // Follow target only; the player/mob toggles do not apply to it.
+            if (!forced.test(entity)) return false;
+            if (entity instanceof Player player && (player.isSpectator() || player.isCreative())) return false;
+        } else if (entity instanceof Player player) {
             // Players have their own toggle; spectators and creative players are excluded.
             if (!PlayerSettings.killAuraPlayers || player.isSpectator() || player.isCreative()) return false;
         // Only Mob subclasses qualify for the mob toggle. This includes passive animals,

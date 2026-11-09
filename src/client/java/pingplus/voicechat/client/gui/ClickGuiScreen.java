@@ -558,13 +558,55 @@ public final class  ClickGuiScreen extends Screen {
             add(automation,new CombatSlider(panelWidth-20,"Turn speed",45,540,15,()->PlayerSettings.killAuraTurnSpeed,v->PlayerSettings.killAuraTurnSpeed=(float)v),26);
         });
         nameBox(automation,"Follow",()->PlayerSettings.followTarget,v->PlayerSettings.followTarget=v);
+        options(automation,"Follow options",()-> {
+            optionLabel(automation,"Player name, mob name or type (zombie)");
+            toggle(automation,"Attack target",()->PlayerSettings.followAttack,
+                ()->PlayerSettings.followAttack=!PlayerSettings.followAttack);
+            add(automation,new CombatSlider(panelWidth-20,"Follow distance",1,16,1,
+                ()->PlayerSettings.followDistance,v->PlayerSettings.followDistance=(int)Math.round(v)),26);
+        });
         toggle(automation,"Look at nearby players",()->PlayerSettings.followLookAtNearbyPlayers,
             ()->PlayerSettings.followLookAtNearbyPlayers=!PlayerSettings.followLookAtNearbyPlayers);
         toggle(automation,"Hand swap",()->PlayerSettings.handSwap,()->PlayerSettings.handSwap=!PlayerSettings.handSwap);
         options(automation,"Swap interval",()-> {
             add(automation,new SpeedSlider(panelWidth-20),26);
         });
+        Category pathfinder = category("PATHFINDER", "Baritone tuning and fault learning");
+        {
+            com.coflnet.pathing.PathfinderConfig pf = com.coflnet.pathing.PathfinderConfig.get();
+            statusLabel(pathfinder, com.coflnet.pathing.PathfinderTuning.stats().summary(), GlassStyle.STATUS);
+            toggle(pathfinder,"Allow jumps",()->pf.allowJumps,()->{pf.allowJumps=!pf.allowJumps;pf.save();});
+            toggle(pathfinder,"Allow parkour",()->pf.allowParkour,()->{pf.allowParkour=!pf.allowParkour;pf.save();});
+            toggle(pathfinder,"Allow sprint",()->pf.allowSprint,()->{pf.allowSprint=!pf.allowSprint;pf.save();});
+            options(pathfinder,"Tuning",()-> {
+                add(pathfinder,new CombatSlider(panelWidth-20,"Jump penalty",0,10,.5,
+                        ()->pf.jumpPenalty,v->{pf.jumpPenalty=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Search speed (heuristic)",1,5,.1,
+                        ()->pf.costHeuristic,v->{pf.costHeuristic=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Movement timeout (ticks)",5,60,1,
+                        ()->pf.movementTimeoutTicks,v->{pf.movementTimeoutTicks=(int)Math.round(v);pf.save();}),26);
+            });
+            toggle(pathfinder,"Learn from faults",()->pf.learnFromFaults,()->{pf.learnFromFaults=!pf.learnFromFaults;pf.save();});
+            options(pathfinder,"Fault learning",()-> {
+                add(pathfinder,new CombatSlider(panelWidth-20,"Avoid strength",.5,10,.5,
+                        ()->pf.faultPenaltyStrength,v->{pf.faultPenaltyStrength=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Forget after (h, half-life)",1,240,1,
+                        ()->pf.faultHalfLifeHours,v->{pf.faultHalfLifeHours=v;pf.save();}),26);
+                toggle(pathfinder,"Show faults in chat",()->pf.showFaultsInChat,()->{pf.showFaultsInChat=!pf.showFaultsInChat;pf.save();});
+                optionLabel(pathfinder,"Learned: "+com.coflnet.pathing.FaultMemory.activeSize()+" here, "
+                        +com.coflnet.pathing.FaultMemory.size()+" total, "
+                        +com.coflnet.pathing.PathfinderSystem.sessionFaults()+" this session");
+                String last=com.coflnet.pathing.PathfinderSystem.lastFault();
+                if(!last.isEmpty()) optionLabel(pathfinder,"Last: "+last);
+                actionButton(pathfinder,"Clear learned faults",()->{com.coflnet.pathing.FaultMemory.clear();rebuildWidgets();});
+            });
+        }
         Category skyblock = category("SKYBLOCK", "Hypixel skyblock helpers");
+        boolean premium = com.coflnet.ahflipper.PriorityAccess.isLocalPriority();
+        statusLabel(skyblock, premium
+                ? "Premium  -  full speed"
+                : "Standard  -  " + AhFlipperMod.CONFIG.standardDelayMs + " ms delay",
+                premium ? GlassStyle.STATUS : GlassStyle.MUTED);
         toggle(skyblock,"Auction Flipper",AhFlipperMod::isRunning,AhFlipperMod::toggle);
         options(skyblock,"Auction Flipper Settings",()-> {
             toggle(skyblock,"AH Flip GUI",()->AhFlipperMod.CONFIG.ahPanelEnabled,()-> {
@@ -1187,6 +1229,14 @@ public final class  ClickGuiScreen extends Screen {
         },18);
     }
 
+    private void statusLabel(Category c,String label,int color) {
+        add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
+            { active=false; }
+            @Override protected void extractContents(GuiGraphicsExtractor g,int mx,int my,float dt) {
+                text(g,label,getX()+4,getY()+4,color);
+            }
+        },18);
+    }
     private void optionLabel(Category c,String label) {
         add(c,new Button(0,0,panelWidth-20,18,Component.literal(label),b->{},supplier->supplier.get()) {
             { active=false; }

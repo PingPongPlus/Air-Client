@@ -2043,7 +2043,8 @@ public class AhFlipperMod {
     }
 
     static void closeGuiForBidPriority() {
-        if (isBusy()) {
+        if (isBusy() || LowballingMod.holdsGui()) {
+            // never close the lowballer's player/trade menu for a rebid
             return;
         }
         Trader trader = Trader.get();

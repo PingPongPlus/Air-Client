@@ -70,10 +70,21 @@ public final class PriorityAccess {
         return false;
     }
 
-    /** Name of the local player, "" if unknown. */
+    /** Name of the local player (also on the title screen), "" if unknown. */
     public static String localName() {
         Minecraft mc = Minecraft.getInstance();
-        return mc != null && mc.player != null ? mc.player.getName().getString() : "";
+        if (mc == null) {
+            return "";
+        }
+        if (mc.player != null) {
+            return mc.player.getName().getString();
+        }
+        return mc.getUser() != null && mc.getUser().getName() != null ? mc.getUser().getName() : "";
+    }
+
+    /** Short status for the UI: "Premium" or "Standard". */
+    public static String statusText() {
+        return isLocalPriority() ? "Premium" : "Standard";
     }
 
     public static boolean isLocalPriority() {
