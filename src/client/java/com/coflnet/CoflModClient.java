@@ -748,6 +748,12 @@ public class CoflModClient implements ClientModInitializer {
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
                     else {
+                        if (inputArgs.length <= 2 && "access".startsWith(currentWord.toLowerCase())) {
+                            builder.suggest("access");
+                        }
+                        if (inputArgs.length <= 2 && "status".startsWith(currentWord.toLowerCase())) {
+                            builder.suggest("status");
+                        }
                         if(CoflCore.config.knownCommands == null)
                         {
                             System.out.println("No known commands loaded yet, cannot suggest");
@@ -836,6 +842,23 @@ public class CoflModClient implements ClientModInitializer {
                             sendChatMessage("§7Usage: §e/air set angryCoopProtectionEnabled <true/false>");
                             return 1;
                         }
+                    }
+
+                    // Local access check (no names are printed)
+                    if (args.length >= 1
+                            && (args[0].equalsIgnoreCase("access") || args[0].equalsIgnoreCase("status"))) {
+                        boolean active = com.coflnet.ahflipper.PriorityAccess.isLocalPriority();
+                        sendChatMessage("§6=== Air Client Access ===");
+                        sendChatMessage(active ? "§aYou have priority access." : "§7You have standard access.");
+                        sendChatMessage("§7Action delay: §f"
+                                + (active ? "0" : com.coflnet.ahflipper.AhFlipperMod.CONFIG.standardDelayMs) + " ms");
+                        sendChatMessage("§7List: §f" + com.coflnet.ahflipper.PriorityAccess.source()
+                                + " §7(" + com.coflnet.ahflipper.PriorityAccess.size() + " entries)");
+                        long age = com.coflnet.ahflipper.PriorityAccess.lastRefreshAgeSeconds();
+                        if (age >= 0) {
+                            sendChatMessage("§7Updated: §f" + age + "s ago");
+                        }
+                        return 1;
                     }
 
                     // Special internal-only commands

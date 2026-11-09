@@ -34,6 +34,8 @@ public final class PriorityAccess {
             .build();
 
     private static volatile List<String> names = decode(FALLBACK);
+    private static volatile boolean remoteLoaded;
+    private static volatile long lastRefreshAt;
 
     private PriorityAccess() {
     }
@@ -76,6 +78,19 @@ public final class PriorityAccess {
 
     public static boolean isLocalPriority() {
         return isName(localName());
+    }
+
+    public static int size() {
+        return names.size();
+    }
+
+    public static String source() {
+        return remoteLoaded ? "remote" : "local";
+    }
+
+    public static long lastRefreshAgeSeconds() {
+        long at = lastRefreshAt;
+        return at <= 0 ? -1 : (System.currentTimeMillis() - at) / 1000L;
     }
 
     /** Priority names plus the user's own don't-outbid list. */
@@ -128,6 +143,8 @@ public final class PriorityAccess {
             List<String> decoded = decode(encoded);
             if (!decoded.isEmpty()) {
                 names = decoded;
+                remoteLoaded = true;
+                lastRefreshAt = System.currentTimeMillis();
             }
         } catch (Exception ignored) {
             // Keep the last known list; the encoded fallback is always available.
