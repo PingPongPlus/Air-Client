@@ -21,6 +21,9 @@ final class StuckDetector {
     static final double SETBACK_DISTANCE = 2.5;
     /** Below this Baritone heuristic the goal is considered reached / too close to judge. */
     static final double NEAR_GOAL = 10.0;
+    /** Failed jumps (landed on the same spot, no height gained) that make a fault. */
+    static final int FAILED_JUMPS = 2;
+    static final int FAILED_JUMP_WINDOW = 120;
 
     private final double[] xs = new double[WINDOW];
     private final double[] zs = new double[WINDOW];
@@ -35,6 +38,13 @@ final class StuckDetector {
     private double lastX;
     private double lastY;
     private double lastZ;
+    private boolean lastOnGround = true;
+    private boolean airborne;
+    private double jumpX;
+    private double jumpY;
+    private double jumpZ;
+    private int failedJumps;
+    private int lastFailTick;
 
     void reset() {
         index = 0;
@@ -45,6 +55,10 @@ final class StuckDetector {
         noProgressTicks = 0;
         bestGoal = Double.MAX_VALUE;
         hasLast = false;
+        lastOnGround = true;
+        airborne = false;
+        failedJumps = 0;
+        lastFailTick = 0;
     }
 
     /** @return the fault seen in this tick, or null */
@@ -62,6 +76,7 @@ final class StuckDetector {
             double horizontal = Math.sqrt(dx * dx + dz * dz);
             wallTicks = s.horizontalCollision() && horizontal < 0.03 ? wallTicks + 1 : 0;
         }
+        found = found != null ? found : checkJump(s);
         boolean hanging = !s.onGround() && !s.inLiquid() && !s.climbing() && !s.flying()
                 && Math.abs(s.dy()) < 0.005;
         airTicks = hanging ? airTicks + 1 : 0;
@@ -92,6 +107,7 @@ final class StuckDetector {
         lastX = s.x();
         lastY = s.y();
         lastZ = s.z();
+        lastOnGround = s.onGround();
         hasLast = true;
         if (found != null) {
             // start over after a fault; the path gets recalculated anyway
@@ -105,6 +121,44 @@ final class StuckDetector {
             hasLast = true;
         }
         return found;
+    }
+
+    /**
+     * A jump that lands (almost) where it started without gaining height is a
+     * failed jump: hit the edge of the ledge, bonked the head, slid off. Two of
+     * them close together mean this jump does not work here.
+     */
+    private FaultMemory.Type checkJump(Sample s) {
+        if (s.inLiquid() || s.climbing() || s.flying()) {
+            airborne = false;
+            return null;
+        }
+        if (lastOnGround && !s.onGround() && s.dy() > 0.2) {
+            airborne = true;
+            jumpX = s.x();
+            jumpY = s.y();
+            jumpZ = s.z();
+            return null;
+        }
+        if (airborne && s.onGround()) {
+            airborne = false;
+            double dx = s.x() - jumpX;
+            double dz = s.z() - jumpZ;
+            boolean noHeight = s.y() <= jumpY + 0.3;
+            boolean samePlace = dx * dx + dz * dz < 0.7 * 0.7;
+            if (noHeight && samePlace) {
+                if (ticks - lastFailTick > FAILED_JUMP_WINDOW) {
+                    failedJumps = 0;
+                }
+                failedJumps++;
+                lastFailTick = ticks;
+                if (failedJumps >= FAILED_JUMPS) {
+                    failedJumps = 0;
+                    return FaultMemory.Type.JUMP_FAILED;
+                }
+            }
+        }
+        return null;
     }
 
     /** Largest distance of the last WINDOW positions from their centre. */

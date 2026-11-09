@@ -29,6 +29,13 @@ public final class PathfinderConfig {
     /** Write every detected fault to the chat. */
     public boolean showFaultsInChat = false;
 
+    /** Aspect of the Void while pathing: OFF, TELEPORT, ETHERWARP or BOTH. */
+    public String aotvMode = "OFF";
+    /** Blocks a normal right-click teleport goes (8 + tuned transmission). */
+    public int aotvTeleportBlocks = 12;
+    /** Only warp when it skips at least this many path steps. */
+    public int aotvMinGain = 8;
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile PathfinderConfig instance;
 
@@ -71,6 +78,11 @@ public final class PathfinderConfig {
         movementTimeoutTicks = (int) clamp(movementTimeoutTicks, 5, 100);
         faultPenaltyStrength = clamp(faultPenaltyStrength, 0.5, 20.0);
         faultHalfLifeHours = clamp(faultHalfLifeHours, 1.0, 24.0 * 30);
+        aotvTeleportBlocks = (int) clamp(aotvTeleportBlocks, 4, 20);
+        aotvMinGain = (int) clamp(aotvMinGain, 3, 40);
+        if (aotvMode == null || aotvMode.isBlank()) {
+            aotvMode = "OFF";
+        }
     }
 
     private static double clamp(double value, double min, double max) {

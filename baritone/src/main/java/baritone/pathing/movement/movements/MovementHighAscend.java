@@ -136,8 +136,14 @@ public class MovementHighAscend extends Movement {
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
-        if (ctx.playerFeet().equals(dest) && ctx.player().onGround()) {
-            return state.setStatus(MovementStatus.SUCCESS);
+        if (ctx.playerFeet().equals(dest)) {
+            // Air Client: like MovementAscend, finish only after the landing.
+            if (ctx.player().onGround()) {
+                return state.setStatus(MovementStatus.SUCCESS);
+            }
+            MovementHelper.moveTowards(ctx, state, dest);
+            state.setInput(Input.SPRINT, false);
+            return state;
         }
 
         MovementHelper.moveTowards(ctx, state, dest);

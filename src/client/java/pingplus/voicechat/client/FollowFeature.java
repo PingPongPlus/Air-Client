@@ -34,7 +34,13 @@ public final class FollowFeature {
     private static boolean active;
     private static int searchCooldown;
     private static UUID idleLookTargetId;
-    private static long lastLookAt;
+    /** Where the camera should look (set per tick, applied smoothly per frame). */
+    private static boolean hasLook;
+    private static float lookYaw;
+    private static float lookPitch;
+    private static long lastFrameNanos;
+    /** Degrees per second for the walking look. */
+    private static final float LOOK_SPEED = 260.0f;
 
     private FollowFeature() {
     }
@@ -72,10 +78,82 @@ public final class FollowFeature {
         active = true;
 
         LivingEntity attack = PlayerSettings.followAttack ? attackable(current) : null;
-        KillAuraFeature.setForcedTarget(attack == null ? null : entity -> entity == attack);
-        if (attack == null && PlayerSettings.followLookAtNearbyPlayers) {
-            lookAtNearbyPlayer(client, player, current);
+        KillAuraFeature.setForcedTarget(attack == null ? null : entity -> entity == attack,
+                PlayerSettings.followCpsMin, PlayerSettings.followCpsMax);
+        updateLook(client, player, baritone, current, attack != null);
+    }
+
+    /**
+     * Walking: look where we go (a point a bit ahead on the path). Standing at
+     * the target: look at it (or at nearby players). While KillAura has the
+     * target in range it aims itself and this stays out of the way.
+     */
+    private static void updateLook(Minecraft client, LocalPlayer player, IBaritone baritone,
+                                   Entity target, boolean attacking) {
+        if (attacking && KillAuraFeature.hasTarget()) {
+            hasLook = false;
+            return;
         }
+        net.minecraft.world.phys.Vec3 ahead = baritone.getPathingBehavior().isPathing()
+                ? pathAhead(baritone, player) : null;
+        if (ahead != null) {
+            setLook(player, ahead);
+            return;
+        }
+        if (!attacking && PlayerSettings.followLookAtNearbyPlayers && lookAtNearbyPlayer(client, player, target)) {
+            return;
+        }
+        setLook(player, new net.minecraft.world.phys.Vec3(target.getX(),
+                target instanceof LivingEntity living ? living.getEyeY() : target.getY(), target.getZ()));
+    }
+
+    private static void setLook(LocalPlayer player, net.minecraft.world.phys.Vec3 point) {
+        double dx = point.x - player.getX();
+        double dy = point.y - player.getEyeY();
+        double dz = point.z - player.getZ();
+        double flat = Math.sqrt(dx * dx + dz * dz);
+        if (flat < 0.3 && Math.abs(dy) < 0.3) {
+            return;
+        }
+        lookYaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
+        lookPitch = Math.clamp((float) Math.toDegrees(-Math.atan2(dy, flat)), -60.0f, 60.0f);
+        hasLook = true;
+    }
+
+    /** First path point at least ~1.5 blocks away, at eye height (natural, level look). */
+    private static net.minecraft.world.phys.Vec3 pathAhead(IBaritone baritone, LocalPlayer player) {
+        try {
+            baritone.api.pathing.path.IPathExecutor executor = baritone.getPathingBehavior().getCurrent();
+            if (executor == null || executor.getPath() == null) {
+                return null;
+            }
+            List<baritone.api.utils.BetterBlockPos> positions = executor.getPath().positions();
+            for (int i = Math.max(0, executor.getPosition() + 1); i < positions.size(); i++) {
+                baritone.api.utils.BetterBlockPos pos = positions.get(i);
+                double dx = pos.getX() + 0.5 - player.getX();
+                double dz = pos.getZ() + 0.5 - player.getZ();
+                if (dx * dx + dz * dz > 2.25) {
+                    return new net.minecraft.world.phys.Vec3(pos.getX() + 0.5,
+                            Math.max(player.getEyeY() - 0.4, pos.getY() + 1.4), pos.getZ() + 0.5);
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return null;
+    }
+
+    /** Every rendered frame: ease the camera towards the wanted look. */
+    public static void frame(Minecraft client) {
+        long now = System.nanoTime();
+        double dt = lastFrameNanos == 0 ? 0 : Math.min(0.1, (now - lastFrameNanos) / 1e9);
+        lastFrameNanos = now;
+        LocalPlayer player = client.player;
+        if (!active || !hasLook || player == null || client.gui.screen() != null) {
+            return;
+        }
+        player.setYRot(AimSmoothing.step(player.getYRot(), lookYaw, LOOK_SPEED, dt));
+        player.setXRot(Math.clamp(AimSmoothing.step(player.getXRot(), lookPitch, LOOK_SPEED, dt), -90.0f, 90.0f));
+        player.setYHeadRot(player.getYRot());
     }
 
     /** Player name first, then entity name / nametag / type, nearest one. */
@@ -168,16 +246,16 @@ public final class FollowFeature {
         s.antiCheatCompatibility.value = true;
         s.followRadius.value = Math.clamp(PlayerSettings.followDistance, 1, 16);
         s.followOffsetDistance.value = 0.0;
-        // While attacking KillAura aims the camera, Baritone must not fight it.
-        s.freeLook.value = PlayerSettings.followAttack;
+        // The camera is steered here (walking direction) or by KillAura, never by Baritone.
+        s.freeLook.value = true;
         com.coflnet.pathing.PathfinderTuning.apply(s, false);
     }
 
-    /** Old "look at nearby players" while the followed player stands next to us. */
-    private static void lookAtNearbyPlayer(Minecraft client, LocalPlayer player, Entity target) {
+    /** "Look at nearby players" while the followed player stands next to us. */
+    private static boolean lookAtNearbyPlayer(Minecraft client, LocalPlayer player, Entity target) {
         if (!(target instanceof Player) || player.distanceToSqr(target) > Math.pow(PlayerSettings.followDistance + 1.5, 2)) {
             idleLookTargetId = null;
-            return;
+            return false;
         }
         List<Player> nearby = client.level.players().stream()
                 .filter(p -> p != player && p != target && !p.isSpectator() && p.distanceToSqr(player) <= 49.0)
@@ -185,22 +263,13 @@ public final class FollowFeature {
                 .toList();
         if (nearby.isEmpty()) {
             idleLookTargetId = null;
-            return;
+            return false;
         }
         Player look = nearby.stream().filter(p -> p.getUUID().equals(idleLookTargetId)).findFirst()
                 .orElseGet(() -> nearby.get(ThreadLocalRandom.current().nextInt(nearby.size())));
         idleLookTargetId = look.getUUID();
-        double dx = look.getX() - player.getX();
-        double dy = look.getEyeY() - player.getEyeY();
-        double dz = look.getZ() - player.getZ();
-        float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-        float pitch = (float) Math.toDegrees(-Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-        long now = System.currentTimeMillis();
-        double dt = lastLookAt == 0 ? 0.05 : Math.min(0.05, (now - lastLookAt) / 1000.0);
-        lastLookAt = now;
-        player.setYRot(AimSmoothing.step(player.getYRot(), yaw, 240.0f, dt));
-        player.setXRot(Math.clamp(AimSmoothing.step(player.getXRot(), pitch, 240.0f, dt), -90.0f, 90.0f));
-        player.setYHeadRot(player.getYRot());
+        setLook(player, new net.minecraft.world.phys.Vec3(look.getX(), look.getEyeY(), look.getZ()));
+        return true;
     }
 
     private static IBaritone primary() {
@@ -221,6 +290,7 @@ public final class FollowFeature {
         }
         issued = null;
         active = false;
+        hasLook = false;
         KillAuraFeature.setForcedTarget(null);
     }
 
@@ -229,6 +299,6 @@ public final class FollowFeature {
         followed = null;
         searchCooldown = 0;
         idleLookTargetId = null;
-        lastLookAt = 0;
+        lastFrameNanos = 0;
     }
 }

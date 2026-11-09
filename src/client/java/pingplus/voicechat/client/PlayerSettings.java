@@ -78,6 +78,9 @@ public final class PlayerSettings {
     public static boolean followAttack = false;
     /** Follow: distance in blocks Baritone keeps to the target. */
     public static int followDistance = 3;
+    /** Follow attack speed (clicks per second, random between min and max). */
+    public static double followCpsMin = 8;
+    public static double followCpsMax = 12;
 
     static {
         load();

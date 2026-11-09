@@ -53,7 +53,12 @@ public final class GlassStyle {
     }
     public static void line(GuiGraphicsExtractor g, String text, int x, int y, int maxWidth, int color) {
         var font = net.minecraft.client.Minecraft.getInstance().font;
-        g.text(font, label(font.plainSubstrByWidth(text, Math.max(1, maxWidth))), x, y, color, false);
+        String shown = text == null ? "" : text;
+        if (font.width(shown) > maxWidth) {
+            // too long for the panel: cut and mark with an ellipsis
+            shown = font.plainSubstrByWidth(shown, Math.max(1, maxWidth - font.width("…"))).stripTrailing() + "…";
+        }
+        g.text(font, label(shown), x, y, color, false);
     }
     private GlassStyle() {}
 }

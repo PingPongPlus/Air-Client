@@ -33,7 +33,9 @@ public final class FaultMemory {
         /** No progress towards the goal for a long time. */
         NO_PROGRESS,
         /** The server teleported the player back (anticheat setback). */
-        SETBACK
+        SETBACK,
+        /** Jumped and landed again on the same spot without getting up (bonk / edge). */
+        JUMP_FAILED
     }
 
     public static final class Fault {

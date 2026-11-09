@@ -57,6 +57,13 @@ public class FlipperConfig {
     public double kellyLossVolatilityPercent = 2.0;
     public double stakeMultiplier = 2.0;
     public List<String> blacklist = new ArrayList<>();
+    /** Sell offers worth this much per session (millions, 0 = off), then only selling. */
+    public double maxCoinsPerSessionMillions = 0;
+    /** Buy orders + sell offers on the Bazaar together at most (millions, 0 = off). */
+    public double maxInvestedMillions = 0;
+    /** Item mode: flip only the items in {@link #onlyItems}. */
+    public boolean onlyItemsMode = false;
+    public List<String> onlyItems = new ArrayList<>();
     public Map<String, String> searchNameOverrides = new HashMap<>();
     public boolean bazaarPanelEnabled = false;
     public boolean bazaarPanelGlass = true;
@@ -107,6 +114,32 @@ public class FlipperConfig {
         }
         blacklist.add(display);
         return true;
+    }
+
+    public boolean addOnlyItem(String value) {
+        String display = value == null ? "" : value.trim();
+        if (display.isEmpty()) {
+            return false;
+        }
+        if (onlyItems == null) {
+            onlyItems = new ArrayList<>();
+        }
+        String normalized = normalize(display);
+        for (String entry : onlyItems) {
+            if (normalize(entry).equals(normalized)) {
+                return false;
+            }
+        }
+        onlyItems.add(display);
+        return true;
+    }
+
+    public boolean removeOnlyItem(String value) {
+        if (onlyItems == null || value == null) {
+            return false;
+        }
+        String normalized = normalize(value);
+        return onlyItems.removeIf(entry -> normalize(entry).equals(normalized));
     }
 
     public boolean removeBlocked(String value) {

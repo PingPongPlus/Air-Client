@@ -36,12 +36,30 @@ public final class KillAuraFeature {
     // the KillAura toggle itself is off. Null = normal KillAura behaviour.
     private static volatile java.util.function.Predicate<LivingEntity> forcedTarget;
 
+    // Follow's own click speed for the forced target; 0 = normal attack cooldown.
+    private static volatile double forcedCpsMin;
+    private static volatile double forcedCpsMax;
+    private static long nextForcedAttackAt;
+
     /** Restrict KillAura to one target (Follow), or null to go back to normal. */
     public static void setForcedTarget(java.util.function.Predicate<LivingEntity> filter) {
+        setForcedTarget(filter, 0, 0);
+    }
+
+    /** Same with a click speed (attacks per second, random between min and max). */
+    public static void setForcedTarget(java.util.function.Predicate<LivingEntity> filter,
+                                       double cpsMin, double cpsMax) {
         if (filter == null && forcedTarget != null) {
             clear();
         }
+        forcedCpsMin = cpsMin;
+        forcedCpsMax = Math.max(cpsMin, cpsMax);
         forcedTarget = filter;
+    }
+
+    /** True while KillAura has an entity it aims at (Follow then leaves the camera alone). */
+    public static boolean hasTarget() {
+        return target != null;
     }
 
     /** Check the player and game state before accessing world data or taking control. */
@@ -127,9 +145,15 @@ public final class KillAuraFeature {
         }
         // A strength of 1 means fully recharged. Passing 0 samples the current tick without
         // adding a partial-tick prediction. Waiting avoids repeated low-strength attacks.
-        if (client.player.getAttackStrengthScale(0) < 1f) return;
-        // Add 50–100 ms at 20 TPS after the normal cooldown, even when switching targets.
-        if (extraCooldownTicks > 0) { extraCooldownTicks--; return; }
+        boolean cpsMode = forcedTarget != null && forcedCpsMin > 0;
+        if (cpsMode) {
+            // Follow's configured click speed instead of the vanilla cooldown.
+            if (System.currentTimeMillis() < nextForcedAttackAt) return;
+        } else {
+            if (client.player.getAttackStrengthScale(0) < 1f) return;
+            // Add 50–100 ms at 20 TPS after the normal cooldown, even when switching targets.
+            if (extraCooldownTicks > 0) { extraCooldownTicks--; return; }
+        }
         if (target == null) return;
         Vec3 eye = client.player.getEyePosition();
         // Build a finite ray from the eyes along the CURRENT camera direction, not directly
@@ -160,6 +184,11 @@ public final class KillAuraFeature {
         // Play the normal main-hand swing as well; the attack request and swing are separate calls.
         client.player.swing(InteractionHand.MAIN_HAND);
         extraCooldownTicks = ThreadLocalRandom.current().nextInt(1, 3);
+        if (cpsMode) {
+            double cps = forcedCpsMin + ThreadLocalRandom.current().nextDouble()
+                    * Math.max(0, forcedCpsMax - forcedCpsMin);
+            nextForcedAttackAt = System.currentTimeMillis() + Math.round(1000.0 / Math.max(0.5, cps));
+        }
     }
 
     /** Called by KillAuraFrameMixin every rendered frame to smoothly update visible aiming. */

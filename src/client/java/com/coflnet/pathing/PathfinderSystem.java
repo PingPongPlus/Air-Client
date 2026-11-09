@@ -65,14 +65,19 @@ public final class PathfinderSystem {
                 FaultMemory.saveIfDirty();
             }
         }
-        if (!PathfinderConfig.get().learnFromFaults) {
-            DETECTOR.reset();
-            return;
-        }
         IBaritone baritone;
         try {
             baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
         } catch (RuntimeException e) {
+            return;
+        }
+        AotvAssist.tick(client, baritone);
+        if (AotvAssist.isBusy()) {
+            DETECTOR.reset(); // the warp itself looks like a setback
+            return;
+        }
+        if (!PathfinderConfig.get().learnFromFaults) {
+            DETECTOR.reset();
             return;
         }
         if (baritone == null || !baritone.getPathingBehavior().isPathing()) {

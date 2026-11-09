@@ -51,6 +51,7 @@ public class BazaarChatListener {
                     }
                 }
                 if (event != null) {
+                    BazaarLimits.onEvent(event);
                     Trader trader = Trader.get();
                     if (trader != null) {
                         trader.onChatEvent(event);

@@ -156,6 +156,15 @@ public class MovementAscend extends Movement {
         return totalCost;
     }
 
+    /** On the ground, or at the very end of the fall onto the ledge. */
+    private boolean landed() {
+        if (ctx.player().onGround()) {
+            return true;
+        }
+        double above = ctx.player().position().y - dest.getY();
+        return ctx.player().getDeltaMovement().y <= 0 && above >= 0 && above < 0.05;
+    }
+
     @Override
     public MovementState updateState(MovementState state) {
         if (ctx.playerFeet().y < src.y) {
@@ -170,7 +179,13 @@ public class MovementAscend extends Movement {
         }
 
         if (ctx.playerFeet().equals(dest) || ctx.playerFeet().equals(dest.offset(getDirection().below()))) {
-            return state.setStatus(MovementStatus.SUCCESS);
+            // Air Client: only done once we landed. Finishing mid-jump let the next
+            // movement steer while still in the air, which bugged right at landing.
+            if (landed()) {
+                return state.setStatus(MovementStatus.SUCCESS);
+            }
+            MovementHelper.moveTowards(ctx, state, dest);
+            return state;
         }
 
         BlockState jumpingOnto = BlockStateInterface.get(ctx, positionToPlace);

@@ -13,7 +13,8 @@ public final class PathfinderLogicTest {
         wall();
         oscillation();
         setback();
-        System.out.println("PASS: jump physics, fault decay/penalty, stuck detection");
+        failedJumps();
+        System.out.println("PASS: jump physics, fault decay/penalty, stuck detection, failed jumps");
     }
 
     private static void jumpPhysics() {
@@ -93,6 +94,54 @@ public final class PathfinderLogicTest {
         detector.update(walk(0, 0, 300));
         FaultMemory.Type found = detector.update(walk(6, 0, 300));
         check(found == FaultMemory.Type.SETBACK, "setback, got " + found);
+    }
+
+    /** Two jumps against a ledge that land on the same spot = JUMP_FAILED; a good one is fine. */
+    private static void failedJumps() {
+        StuckDetector detector = new StuckDetector();
+        FaultMemory.Type found = null;
+        for (int jump = 0; jump < 2 && found == null; jump++) {
+            found = bounce(detector, 64.0);
+        }
+        check(found == FaultMemory.Type.JUMP_FAILED, "two failed jumps, got " + found);
+
+        StuckDetector good = new StuckDetector();
+        check(climb(good) == null, "successful jump onto a ledge is no fault");
+    }
+
+    /** Jump straight up and land on the same block again. */
+    private static FaultMemory.Type bounce(StuckDetector d, double y) {
+        FaultMemory.Type found = d.update(new StuckDetector.Sample(0, y, 0, 0, true, false, false, false, true, 300));
+        double[] dys = {0.42, 0.33, 0.25, 0.16, 0.08, -0.08, -0.16, -0.25, -0.33, -0.42};
+        double cy = y;
+        for (int i = 0; i < dys.length && found == null; i++) {
+            cy = Math.max(y, cy + dys[i]);
+            boolean ground = i == dys.length - 1;
+            found = d.update(new StuckDetector.Sample(0.05, ground ? y : cy, 0, ground ? 0 : dys[i], ground,
+                    false, false, false, true, 300));
+        }
+        return found;
+    }
+
+    /** Jump forward and land one block higher. */
+    private static FaultMemory.Type climb(StuckDetector d) {
+        FaultMemory.Type found = null;
+        for (int step = 0; step < 3 && found == null; step++) {
+            double y = 64.0 + step;
+            found = d.update(new StuckDetector.Sample(step, y, 0, 0, true, false, false, false, false, 300 - step * 5));
+            double[] dys = {0.42, 0.33, 0.25, 0.16, 0.08, -0.05};
+            double cy = y;
+            for (int i = 0; i < dys.length && found == null; i++) {
+                cy += dys[i];
+                found = d.update(new StuckDetector.Sample(step + 0.15 * (i + 1), cy, 0, dys[i], false,
+                        false, false, false, false, 300 - step * 5 - i));
+            }
+            if (found == null) {
+                found = d.update(new StuckDetector.Sample(step + 1, y + 1, 0, 0, true, false, false, false,
+                        false, 290 - step * 5));
+            }
+        }
+        return found;
     }
 
     private static StuckDetector.Sample walk(double x, double z, double goal) {

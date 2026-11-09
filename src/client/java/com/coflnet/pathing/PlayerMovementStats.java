@@ -61,7 +61,7 @@ public record PlayerMovementStats(double jumpVelocity, double gravity, double ju
     }
 
     public String summary() {
-        return String.format(Locale.ROOT, "Jump %.2f  Step %.2f  Speed %.0f%%",
+        return String.format(Locale.ROOT, "Jump %.2f Step %.1f %.0f%%",
                 jumpHeight, stepHeight, speedPercent());
     }
 }
