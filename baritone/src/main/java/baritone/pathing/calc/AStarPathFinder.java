@@ -76,6 +76,8 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         int numMovementsConsidered = 0;
         int numEmptyChunk = 0;
         boolean isFavoring = !favoring.isEmpty();
+        EdgeSafety edgeSafety = new EdgeSafety(calcContext);
+        boolean safety = edgeSafety.enabled();
         int timeCheckInterval = 1 << 6;
         int pathingMaxChunkBorderFetch = Baritone.settings().pathingMaxChunkBorderFetch.value; // grab all settings beforehand so that changing settings during pathing doesn't cause a crash or unpredictable behavior
         double minimumImprovement = Baritone.settings().minimumImprovementRepropagation.value ? MIN_IMPROVEMENT : 0;
@@ -161,6 +163,10 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                 if (isFavoring) {
                     // see issue #18
                     actionCost *= favoring.calculate(hashCode);
+                }
+                if (safety) {
+                    // Air Client: keep a gap to edges / walls when there is room
+                    actionCost += edgeSafety.extraCost(res.x, res.y, res.z, hashCode);
                 }
                 PathNode neighbor = getNodeAtPosition(res.x, res.y, res.z, hashCode);
                 double tentativeCost = currentNode.cost + actionCost;

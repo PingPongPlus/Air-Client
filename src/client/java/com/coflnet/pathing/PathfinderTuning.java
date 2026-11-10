@@ -39,12 +39,30 @@ public final class PathfinderTuning {
         s.allowSprint.value = s.allowSprint.value && config.allowSprint;
         s.costHeuristic.value = config.costHeuristic;
         s.movementTimeoutTicks.value = config.movementTimeoutTicks;
+        s.failureTimeoutMS.value = config.failureTimeoutMs;
+        s.planAheadFailureTimeoutMS.value = Math.max(config.failureTimeoutMs, 4000L);
+        // Keep a gap to edges / walls when there is room (patched Baritone, EdgeSafety).
+        s.edgeSafetyCost.value = config.edgeSafetyCost;
+        s.wallSafetyCost.value = config.wallSafetyCost;
+        // Mob avoidance puts a cost sphere around every mob on each path calculation:
+        // slow in mob-heavy SkyBlock areas and it even made the target mob expensive.
+        s.avoidance.value = false;
+        // Baritone caches chunks per server address + dimension, so all Hypixel
+        // islands would share one cache and plan through blocks of another island.
+        // Plan with the loaded chunks only.
+        s.chunkCaching.value = false;
 
         boolean jumps = config.allowJumps && !forbidJumps;
         if (jumps) {
             s.jumpPenalty.value = config.jumpPenalty;
             s.allowParkour.value = s.allowParkour.value && config.allowParkour;
             s.allowParkourAscend.value = s.allowParkourAscend.value && config.allowParkour;
+            if (config.setbackGuard && SetbackGuard.active()) {
+                // Watchdog set us back recently / here: no risky jumps for a while.
+                s.allowParkour.value = false;
+                s.allowParkourAscend.value = false;
+                s.sprintAscends.value = false;
+            }
         } else {
             s.jumpPenalty.value = NO_JUMP;
             s.allowParkour.value = false;

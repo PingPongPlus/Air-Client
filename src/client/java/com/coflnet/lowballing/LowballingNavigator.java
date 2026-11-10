@@ -3,6 +3,9 @@ package com.coflnet.lowballing;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.GoalNear;
+import com.coflnet.pathing.EntityObstacles;
+import com.coflnet.pathing.RepathGate;
+import com.coflnet.pathing.VisibleGoal;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -43,6 +46,7 @@ public final class LowballingNavigator {
             return;
         }
         configureBaritone();
+        EntityObstacles.setTarget(target);
 
         double distance = player.distanceTo(target);
         if (distance <= LowballingMod.CONFIG.interactReach) {
@@ -56,10 +60,14 @@ public final class LowballingNavigator {
         BlockPos goal = target.blockPosition();
         long now = System.currentTimeMillis();
         boolean pathing = baritone.getPathingBehavior().isPathing();
-        boolean goalMoved = lastGoal != null && goal.distSqr(lastGoal) > 36;
-        boolean repathAllowed = now - lastPathAt > 1000;
-        if (lastGoal == null || goalMoved || (!pathing && repathAllowed)) {
-            baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(goal, 2));
+        boolean settled = RepathGate.playerSettled(player);
+        // New goal only when the target moved 3+ blocks and we are not mid-jump.
+        boolean firstPath = lastGoal == null && (!pathing || settled);
+        boolean goalMoved = lastGoal != null
+                && RepathGate.mayRepath(player, lastGoal, goal, lastPathAt, now);
+        boolean idleRetry = !pathing && now - lastPathAt > 1000 && settled;
+        if (firstPath || goalMoved || idleRetry) {
+            baritone.getCustomGoalProcess().setGoalAndPath(VisibleGoal.of(client.level, target, 2));
             lastGoal = goal;
             lastPathAt = now;
         }
@@ -69,8 +77,8 @@ public final class LowballingNavigator {
             if (pathing && movedDistance < 0.35
                     && distance > LowballingMod.CONFIG.interactReach + 1.0) {
                 stuckRepaths++;
-                if (stuckRepaths >= 2) {
-                    baritone.getPathingBehavior().cancelEverything();
+                if (stuckRepaths >= 2 && settled) {
+                    baritone.getPathingBehavior().forceCancel();
                     BlockPos detour = detourGoal(player, goal);
                     BlockPos next = detour != null ? detour : goal;
                     baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(next, 1));
@@ -105,6 +113,7 @@ public final class LowballingNavigator {
             BaritoneAPI.getSettings().freeLook.value = false;
         } catch (Exception ignored) {
         }
+        EntityObstacles.setTarget(null);
         currentTarget = null;
         lastGoal = null;
         lastPathAt = 0;
@@ -151,7 +160,6 @@ public final class LowballingNavigator {
         s.randomLooking.value = 0.01;
         s.antiCheatCompatibility.value = true;
         s.considerPotionEffects.value = true;
-        s.avoidance.value = true;
         s.rightClickContainerOnArrival.value = false;
         s.enterPortal.value = false;
         s.renderPath.value = false;
@@ -169,13 +177,9 @@ public final class LowballingNavigator {
         s.pathingMaxChunkBorderFetch.value = 64;
         s.planningTickLookahead.value = 150;
         s.primaryTimeoutMS.value = 500L;
-        s.failureTimeoutMS.value = 2000L;
         s.planAheadPrimaryTimeoutMS.value = 2000L;
-        s.planAheadFailureTimeoutMS.value = 3000L;
-        s.movementTimeoutTicks.value = 20;
         s.maxFallHeightNoWater.value = 3;
         s.blockReachDistance.value = 3.0f;
-        s.chunkCaching.value = true;
         s.pruneRegionsFromRAM.value = true;
         // real player stats + Pathfinder tab; the lowballer never jumps
         com.coflnet.pathing.PathfinderTuning.apply(s, true);

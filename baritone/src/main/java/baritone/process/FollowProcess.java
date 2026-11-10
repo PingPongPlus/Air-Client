@@ -33,7 +33,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -47,6 +49,13 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     private Predicate<Entity> filter;
     private List<Entity> cache;
     private boolean into; // walk straight into the target, regardless of settings
+    /**
+     * Air Client: goal position per followed entity. Only moved when the target
+     * went 3+ blocks away from it and the player stands (not mid-jump), so a
+     * walking target does not cancel and recalculate the path every tick.
+     */
+    private final Map<Entity, BlockPos> anchors = new HashMap<>();
+    private static final double REANCHOR_DIST_SQ = 9.0;
 
     public FollowProcess(Baritone baritone) {
         super(baritone);
@@ -70,9 +79,23 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
         if (into) {
             return new GoalBlock(pos);
         }
-        return new GoalNear(pos, Baritone.settings().followRadius.value);
+        BlockPos anchor = anchors.get(following);
+        if (anchor == null || (anchor.distSqr(pos) >= REANCHOR_DIST_SQ && canReplanNow())) {
+            anchor = pos.immutable();
+            anchors.put(following, anchor);
+        }
+        return new GoalNear(anchor, Baritone.settings().followRadius.value);
     }
 
+
+    /** Not while jumping or falling: a new path from mid-air often makes the jump fail. */
+    private boolean canReplanNow() {
+        if (ctx.player() == null) {
+            return true;
+        }
+        return ctx.player().onGround() || ctx.player().isInWater() || ctx.player().isInLava()
+                || ctx.player().onClimbable() || ctx.player().getAbilities().flying;
+    }
 
     private boolean followable(Entity entity) {
         if (entity == null) {
@@ -97,6 +120,7 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
                 .filter(this.filter)
                 .distinct()
                 .collect(Collectors.toList());
+        anchors.keySet().retainAll(cache);
     }
 
     @Override
@@ -112,6 +136,7 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     public void onLostControl() {
         filter = null;
         cache = null;
+        anchors.clear();
     }
 
     @Override
@@ -123,12 +148,14 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     public void follow(Predicate<Entity> filter) {
         this.filter = filter;
         this.into = false;
+        anchors.clear();
     }
 
     @Override
     public void pickup(Predicate<ItemStack> filter) {
         this.filter = e -> e instanceof ItemEntity && filter.test(((ItemEntity) e).getItem());
         this.into = true;
+        anchors.clear();
     }
 
     @Override

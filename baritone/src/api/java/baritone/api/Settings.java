@@ -210,6 +210,18 @@ public final class Settings {
     public final Setting<Double> jumpHeight = new Setting<>(1.25D);
 
     /**
+     * Air Client: extra cost (ticks) for every side of a standing position that borders a
+     * drop of 2 or more blocks, so paths keep a gap to edges when there is room. 0 = off.
+     */
+    public final Setting<Double> edgeSafetyCost = new Setting<>(0.0D);
+
+    /**
+     * Air Client: extra cost (ticks) for every side of a standing position that touches a
+     * wall at body height (corners and narrow gaps). 0 = off.
+     */
+    public final Setting<Double> wallSafetyCost = new Setting<>(0.0D);
+
+    /**
      * Allow descending diagonally
      * <p>
      * Safer than allowParkour yet still slightly unsafe, can make contact with unchecked adjacent blocks, so it's unsafe in the nether.

@@ -591,9 +591,17 @@ public final class  ClickGuiScreen extends Screen {
                         ()->pf.jumpPenalty,v->{pf.jumpPenalty=v;pf.save();}),26);
                 add(pathfinder,new CombatSlider(panelWidth-20,"Search speed",1,5,.1,
                         ()->pf.costHeuristic,v->{pf.costHeuristic=v;pf.save();}),26);
-                add(pathfinder,new CombatSlider(panelWidth-20,"Move timeout",5,60,1,
+                add(pathfinder,new CombatSlider(panelWidth-20,"Move timeout",10,200,5,
                         ()->pf.movementTimeoutTicks,v->{pf.movementTimeoutTicks=(int)Math.round(v);pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Search limit (s)",1,10,.5,
+                        ()->pf.failureTimeoutMs/1000.0,v->{pf.failureTimeoutMs=Math.round(v*1000);pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Edge distance",0,10,.5,
+                        ()->pf.edgeSafetyCost,v->{pf.edgeSafetyCost=v;pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Wall distance",0,5,.25,
+                        ()->pf.wallSafetyCost,v->{pf.wallSafetyCost=v;pf.save();}),26);
             });
+            toggle(pathfinder,"Avoid standing NPCs",()->pf.avoidStandingEntities,()->{pf.avoidStandingEntities=!pf.avoidStandingEntities;pf.save();});
+            toggle(pathfinder,"Setback guard",()->pf.setbackGuard,()->{pf.setbackGuard=!pf.setbackGuard;pf.save();});
             actionButton(pathfinder,"AOTV: "+com.coflnet.pathing.AotvAssist.mode().name().toLowerCase(Locale.ROOT),()->{
                 com.coflnet.pathing.AotvAssist.Mode[] modes=com.coflnet.pathing.AotvAssist.Mode.values();
                 pf.aotvMode=modes[(com.coflnet.pathing.AotvAssist.mode().ordinal()+1)%modes.length].name();
@@ -616,7 +624,12 @@ public final class  ClickGuiScreen extends Screen {
                 toggle(pathfinder,"Faults in chat",()->pf.showFaultsInChat,()->{pf.showFaultsInChat=!pf.showFaultsInChat;pf.save();});
                 optionLabel(pathfinder,"Faults: "+com.coflnet.pathing.FaultMemory.activeSize()+" here / "
                         +com.coflnet.pathing.FaultMemory.size()+" all");
-                optionLabel(pathfinder,"This session: "+com.coflnet.pathing.PathfinderSystem.sessionFaults());
+                add(pathfinder,new CombatSlider(panelWidth-20,"Faults to avoid",1,5,1,
+                        ()->pf.faultMinCount,v->{pf.faultMinCount=Math.round(v);pf.save();}),26);
+                add(pathfinder,new CombatSlider(panelWidth-20,"Max avoid x",2,60,1,
+                        ()->pf.faultMaxMultiplier,v->{pf.faultMaxMultiplier=Math.round(v);pf.save();}),26);
+                optionLabel(pathfinder,"This session: "+com.coflnet.pathing.PathfinderSystem.sessionFaults()
+                        +" learned / "+com.coflnet.pathing.PathfinderSystem.skippedFaults()+" ignored (lag/entity)");
                 String last=com.coflnet.pathing.PathfinderSystem.lastFault();
                 if(!last.isEmpty()) optionLabel(pathfinder,"Last: "+last);
                 actionButton(pathfinder,"Clear faults",()->{com.coflnet.pathing.FaultMemory.clear();rebuildWidgets();});

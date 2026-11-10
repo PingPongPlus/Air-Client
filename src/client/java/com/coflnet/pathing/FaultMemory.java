@@ -47,11 +47,18 @@ public final class FaultMemory {
         /** Number of faults, already including the decay up to {@link #lastAt}. */
         public double count;
         public long lastAt;
+        /**
+         * Set once the block failed often enough (see faultMinCount). A single
+         * fault (lag, a player in the way) only counts once it happens again.
+         */
+        public boolean confirmed;
     }
 
     private static final int MAX_FAULTS = 3000;
     private static final double MIN_EFFECTIVE = 0.15;
     private static final double MAX_MULTIPLIER = 60.0;
+    /** A repeat within about one half-life confirms a block (2 faults -> 1.5+ after decay). */
+    private static final double CONFIRM_SLACK = 0.5;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     /** world key -> (block hash -> fault) */
@@ -59,13 +66,17 @@ public final class FaultMemory {
     private static volatile String activeWorld = "";
     private static volatile boolean dirty;
     private static volatile boolean loaded;
+    private static final java.util.concurrent.atomic.AtomicBoolean SAVING = new java.util.concurrent.atomic.AtomicBoolean();
 
     private FaultMemory() {
     }
 
-    /** Hands the learned penalties of the current world to Baritone. */
+    /** Hands the learned penalties of the current world (and standing entities) to Baritone. */
     static void install() {
-        CostPenalties.set(FaultMemory::forEachActive);
+        CostPenalties.set(sink -> {
+            forEachActive(sink);
+            EntityObstacles.forEach(sink);
+        });
     }
 
     static void setActiveWorld(String key) {
@@ -99,10 +110,19 @@ public final class FaultMemory {
 
     /** Cost factor for a block with this many (decayed) faults. */
     static double multiplier(double effectiveCount, double strength) {
+        return multiplier(effectiveCount, strength, MAX_MULTIPLIER);
+    }
+
+    static double multiplier(double effectiveCount, double strength, double max) {
         if (effectiveCount < MIN_EFFECTIVE) {
             return 1.0;
         }
-        return Math.min(MAX_MULTIPLIER, 1.0 + Math.max(0, strength) * effectiveCount);
+        return Math.min(Math.min(MAX_MULTIPLIER, max), 1.0 + Math.max(0, strength) * effectiveCount);
+    }
+
+    /** True once a block failed {@code minCount} times close together. */
+    static boolean confirms(double count, double minCount) {
+        return count >= minCount - CONFIRM_SLACK;
     }
 
     /** Stores a fault and returns the new cost factor for that block. */
@@ -121,10 +141,15 @@ public final class FaultMemory {
             fault.lastAt = now;
             fault.type = type.name();
             fault.movement = movement == null ? "" : movement;
+            if (confirms(fault.count, config.faultMinCount)) {
+                fault.confirmed = true;
+            }
         }
         dirty = true;
         trim();
-        return multiplier(fault.count, config.faultPenaltyStrength);
+        return fault.confirmed
+                ? multiplier(fault.count, config.faultPenaltyStrength, config.faultMaxMultiplier)
+                : 1.0;
     }
 
     /** Baritone's calculation thread: penalties of the current world only. */
@@ -139,8 +164,11 @@ public final class FaultMemory {
         }
         long now = System.currentTimeMillis();
         for (Fault fault : faults.values()) {
+            if (!fault.confirmed && !confirms(fault.count, config.faultMinCount)) {
+                continue;
+            }
             double effective = decay(fault.count, now - fault.lastAt, config.faultHalfLifeHours);
-            double factor = multiplier(effective, config.faultPenaltyStrength);
+            double factor = multiplier(effective, config.faultPenaltyStrength, config.faultMaxMultiplier);
             if (factor > 1.0) {
                 sink.put(fault.x, fault.y, fault.z, factor);
             }
@@ -163,7 +191,7 @@ public final class FaultMemory {
     public static void clear() {
         WORLDS.clear();
         dirty = true;
-        save();
+        saveIfDirty();
     }
 
     /** Drops faded faults and, above the limit, the oldest ones. */
@@ -222,8 +250,25 @@ public final class FaultMemory {
         }
     }
 
+    /** Writes on a background thread so the game never waits for the disk. */
     static void saveIfDirty() {
+        if (!dirty || !SAVING.compareAndSet(false, true)) {
+            return;
+        }
+        dirty = false;
+        Thread.startVirtualThread(() -> {
+            try {
+                save();
+            } finally {
+                SAVING.set(false);
+            }
+        });
+    }
+
+    /** Synchronous save for shutdown. */
+    static void saveNow() {
         if (dirty) {
+            dirty = false;
             save();
         }
     }
@@ -238,9 +283,11 @@ public final class FaultMemory {
             }
             Path path = file();
             Files.createDirectories(path.getParent());
-            Files.writeString(path, GSON.toJson(stored));
-            dirty = false;
+            Path temp = path.resolveSibling(path.getFileName() + ".tmp");
+            Files.writeString(temp, GSON.toJson(stored));
+            Files.move(temp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (Exception e) {
+            dirty = true;
             System.out.println("[Pathfinder] Fehler-Speicher nicht speicherbar: " + e.getMessage());
         }
     }

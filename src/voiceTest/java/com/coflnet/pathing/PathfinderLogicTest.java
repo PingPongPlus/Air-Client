@@ -14,7 +14,14 @@ public final class PathfinderLogicTest {
         oscillation();
         setback();
         failedJumps();
-        System.out.println("PASS: jump physics, fault decay/penalty, stuck detection, failed jumps");
+        setbackPositionAndWarp();
+        faultConfirmation();
+        lagDetection();
+        setbackGuard();
+        targetSwitch();
+        nametagHealth();
+        System.out.println("PASS: jump physics, fault decay/penalty, stuck detection, failed jumps,"
+                + " setback position, fault confirmation, lag, setback guard, target switch, nametag health");
     }
 
     private static void jumpPhysics() {
@@ -142,6 +149,64 @@ public final class PathfinderLogicTest {
             }
         }
         return found;
+    }
+
+    /** A setback is stored where we were sent back from; a long jump (warp) is no setback. */
+    private static void setbackPositionAndWarp() {
+        StuckDetector detector = new StuckDetector();
+        detector.update(walk(10, 0, 300));
+        FaultMemory.Type found = detector.update(walk(5, 0, 300));
+        check(found == FaultMemory.Type.SETBACK, "setback, got " + found);
+        check(detector.faultX() == 10, "setback stored at the spot before the teleport, got " + detector.faultX());
+
+        StuckDetector warp = new StuckDetector();
+        warp.update(walk(0, 0, 300));
+        check(warp.update(walk(40, 0, 300)) == null, "a 40 block warp is no setback");
+    }
+
+    private static void faultConfirmation() {
+        check(!FaultMemory.confirms(1.0, 2.0), "a single fault is not avoided yet");
+        check(FaultMemory.confirms(1.0 + FaultMemory.decay(1.0, 24L * 3_600_000L, 24), 2.0),
+                "a repeat within one half-life confirms");
+        check(!FaultMemory.confirms(1.0 + FaultMemory.decay(1.0, 72L * 3_600_000L, 24), 2.0),
+                "a repeat days later does not");
+        check(FaultMemory.multiplier(1000, 3.0, 10.0) == 10.0, "capped at the configured max");
+    }
+
+    private static void lagDetection() {
+        check(!LagMonitor.isLagGap(1000, 20), "normal second is no lag");
+        check(LagMonitor.isLagGap(2500, 20), "2.5 s between time packets is lag");
+        check(LagMonitor.isLagGap(1000, 10), "10 TPS is lag");
+        check(!LagMonitor.isLagGap(100, 1), "a burst of packets is no lag");
+    }
+
+    private static void setbackGuard() {
+        SetbackGuard.clear();
+        long now = 1_000_000_000L;
+        SetbackGuard.record(0, 64, 0, now);
+        check(!SetbackGuard.nearBadSpot(0, 64, 0, now), "one setback is no bad spot");
+        SetbackGuard.record(3, 64, 2, now + 1000);
+        check(SetbackGuard.nearBadSpot(5, 64, 5, now + 2000), "two setbacks close together = bad spot");
+        check(!SetbackGuard.nearBadSpot(100, 64, 100, now + 2000), "far away is fine");
+        check(!SetbackGuard.nearBadSpot(0, 64, 0, now + SetbackGuard.MEMORY_MS + 5000), "forgotten later");
+        SetbackGuard.clear();
+    }
+
+    private static void targetSwitch() {
+        check(!TargetSwitch.shouldSwitch(10, 9, 10_000), "1 block closer: stay");
+        check(TargetSwitch.shouldSwitch(20, 8, 10_000), "12 blocks closer: switch");
+        check(!TargetSwitch.shouldSwitch(20, 8, 500), "not right after a switch");
+        check(!TargetSwitch.shouldSwitch(30, 25, 10_000), "5 of 30 blocks is less than 30 %");
+        check(TargetSwitch.effectiveDistance(5, false) > TargetSwitch.effectiveDistance(10, true),
+                "a mob behind a wall counts as further away");
+    }
+
+    private static void nametagHealth() {
+        check(SkyblockTargets.parseHealth("[Lv10] Zombie 0/100❤") == 0.0, "dead nametag");
+        check(SkyblockTargets.parseHealth("§c[Lv10] §aZealot §e1.2k§f/§a13k§c❤") == 1200.0,
+                "formatted k health");
+        check(SkyblockTargets.parseHealth("Zombie 55❤") == 55.0, "health without max");
+        check(SkyblockTargets.parseHealth("Bob") == null, "no health");
     }
 
     private static StuckDetector.Sample walk(double x, double z, double goal) {

@@ -19,6 +19,8 @@ final class StuckDetector {
     static final int NO_PROGRESS_TICKS = 160;
     static final double OSCILLATION_RADIUS = 1.0;
     static final double SETBACK_DISTANCE = 2.5;
+    /** Larger jumps are warps / teleport items, not anticheat setbacks. */
+    static final double WARP_DISTANCE = 12.0;
     /** Below this Baritone heuristic the goal is considered reached / too close to judge. */
     static final double NEAR_GOAL = 10.0;
     /** Failed jumps (landed on the same spot, no height gained) that make a fault. */
@@ -45,6 +47,10 @@ final class StuckDetector {
     private double jumpZ;
     private int failedJumps;
     private int lastFailTick;
+    /** Where the last returned fault happened (for a setback: where we were sent back from). */
+    private double faultX;
+    private double faultY;
+    private double faultZ;
 
     void reset() {
         index = 0;
@@ -70,13 +76,21 @@ final class StuckDetector {
             double dy = s.y() - lastY;
             double dz = s.z() - lastZ;
             double jump = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (jump > SETBACK_DISTANCE) {
+            if (jump > SETBACK_DISTANCE && jump <= WARP_DISTANCE) {
                 found = FaultMemory.Type.SETBACK;
+                faultX = lastX;
+                faultY = lastY;
+                faultZ = lastZ;
             }
             double horizontal = Math.sqrt(dx * dx + dz * dz);
             wallTicks = s.horizontalCollision() && horizontal < 0.03 ? wallTicks + 1 : 0;
         }
-        found = found != null ? found : checkJump(s);
+        if (found == null) {
+            faultX = s.x();
+            faultY = s.y();
+            faultZ = s.z();
+            found = checkJump(s);
+        }
         boolean hanging = !s.onGround() && !s.inLiquid() && !s.climbing() && !s.flying()
                 && Math.abs(s.dy()) < 0.005;
         airTicks = hanging ? airTicks + 1 : 0;
@@ -159,6 +173,18 @@ final class StuckDetector {
             }
         }
         return null;
+    }
+
+    double faultX() {
+        return faultX;
+    }
+
+    double faultY() {
+        return faultY;
+    }
+
+    double faultZ() {
+        return faultZ;
     }
 
     /** Largest distance of the last WINDOW positions from their centre. */
