@@ -3,6 +3,10 @@ build/
 .gradle/
 out/
 
+# IDE compiler output
+/bin/
+/baritone/bin/
+
 # IDE
 .idea/
 *.iml
