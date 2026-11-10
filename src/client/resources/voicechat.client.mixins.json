@@ -45,6 +45,7 @@
     "LogoRendererMixin",
     "SplashRendererMixin",
     "TitleScreenButtonsMixin",
+    "TitleScreenUpdateMixin",
     "TransparentButtonsMixin",
     "GlassGuiDrawAccessor",
     "GlassGuiRendererMixin",
