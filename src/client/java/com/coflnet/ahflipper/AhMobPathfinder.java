@@ -2,7 +2,11 @@ package com.coflnet.ahflipper;
 
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
-import baritone.api.pathing.goals.GoalNear;
+import com.coflnet.pathing.EntityObstacles;
+import com.coflnet.pathing.RepathGate;
+import com.coflnet.pathing.SkyblockTargets;
+import com.coflnet.pathing.TargetSwitch;
+import com.coflnet.pathing.VisibleGoal;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
@@ -30,6 +34,11 @@ public final class AhMobPathfinder {
     private static double lastX;
     private static double lastZ;
     private static int stuckRepaths;
+    private static long lastSwitchAt;
+    private static long lastScanAt;
+    /** Goal radius around the target (blocks); the goal also needs line of sight. */
+    private static final int GOAL_RADIUS = 2;
+    private static final long RESCAN_MS = 1_000L;
 
     private static final Map<UUID, Long> ONE_HIT_UNTIL = new HashMap<>();
     private static double desiredYaw;
@@ -84,12 +93,19 @@ public final class AhMobPathfinder {
         long now = System.currentTimeMillis();
         ONE_HIT_UNTIL.entrySet().removeIf(entry -> entry.getValue() <= now);
         Entity target = findTarget(client, config.targetName, now);
-        if (target == null || !target.isAlive() || target.isRemoved()) {
+        if (target == null) {
             currentTarget = null;
+            EntityObstacles.setTarget(null);
             cancelPathing();
             return;
         }
+        if (target != currentTarget) {
+            lastGoalPos = null;
+            lastSwitchAt = now;
+            stuckRepaths = 0;
+        }
         currentTarget = target;
+        EntityObstacles.setTarget(target);
         Player player = client.player;
         double distance = player.distanceTo(target);
         if (distance <= config.reach) {
@@ -105,11 +121,14 @@ public final class AhMobPathfinder {
 
         BlockPos goal = target.blockPosition();
         boolean pathing = baritone.getPathingBehavior().isPathing();
-        boolean goalMoved = lastGoalPos != null && goal.distSqr(lastGoalPos) > 4;
-        boolean repathAllowed = now - lastPathRequestAt > 500;
-        boolean needsPath = lastGoalPos == null || goalMoved || (!pathing && repathAllowed);
-        if (needsPath) {
-            baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(goal, 2));
+        boolean settled = RepathGate.playerSettled(player);
+        // New goal only when the target moved 3+ blocks and we are not mid-jump.
+        boolean firstPath = lastGoalPos == null && (!pathing || settled);
+        boolean targetMoved = lastGoalPos != null
+                && RepathGate.mayRepath(player, lastGoalPos, goal, lastPathRequestAt, now);
+        boolean idleRetry = !pathing && now - lastPathRequestAt > 500 && settled;
+        if (firstPath || targetMoved || idleRetry) {
+            baritone.getCustomGoalProcess().setGoalAndPath(VisibleGoal.of(client.level, target, GOAL_RADIUS));
             lastGoalPos = goal;
             lastPathRequestAt = now;
         }
@@ -118,9 +137,10 @@ public final class AhMobPathfinder {
             double moved = Math.hypot(player.getX() - lastX, player.getZ() - lastZ);
             if (pathing && moved < 0.5 && distance > config.reach + 1.0) {
                 stuckRepaths++;
-                if (stuckRepaths >= 2) {
-                    baritone.getPathingBehavior().cancelEverything();
-                    baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(goal, 2));
+                if (stuckRepaths >= 2 && settled) {
+                    // recalculate the path, keep the goal process (no full cancel)
+                    baritone.getPathingBehavior().forceCancel();
+                    baritone.getCustomGoalProcess().setGoalAndPath(VisibleGoal.of(client.level, target, GOAL_RADIUS));
                     lastGoalPos = goal;
                     lastPathRequestAt = now;
                     stuckRepaths = 0;
@@ -212,32 +232,56 @@ public final class AhMobPathfinder {
         return null;
     }
 
+    /**
+     * Nearest matching mob. A name match on a SkyBlock nametag stand resolves
+     * to the mob under it; a stand without a living mob is no target (that is
+     * what made the bot chase "a mob flying into the sky" after a kill).
+     * Keeps the current target unless another one is clearly closer.
+     */
     private static Entity findTarget(Minecraft client, String name, long now) {
         String wanted = name.toLowerCase(Locale.ROOT);
-        if (currentTarget != null && currentTarget.isAlive()
-                && !currentTarget.isRemoved() && currentTarget != client.player
+        Player player = client.player;
+        boolean keep = currentTarget != null && currentTarget != player
+                && !SkyblockTargets.isGone(client.level, currentTarget)
                 && !isOneHitDone(currentTarget, now)
-                && client.player.distanceToSqr(currentTarget) < 60 * 60) {
+                && player.distanceToSqr(currentTarget) < 60 * 60;
+        if (keep && now - lastScanAt < RESCAN_MS) {
             return currentTarget;
         }
+        lastScanAt = now;
         Entity best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Entity entity : client.level.entitiesForRendering()) {
-            if (entity == client.player || !entity.isAlive() || entity.isRemoved()
-                    || isOneHitDone(entity, now)) {
+            if (entity == player || !entity.isAlive() || entity.isRemoved()) {
                 continue;
             }
             String entityName = entity.getName().getString().toLowerCase(Locale.ROOT);
             if (!entityName.contains(wanted)) {
                 continue;
             }
-            double distance = client.player.distanceToSqr(entity);
+            Entity mob = SkyblockTargets.resolve(client.level, entity);
+            if (mob == null || mob == player || SkyblockTargets.isGone(client.level, mob)
+                    || isOneHitDone(mob, now) || player.distanceToSqr(mob) >= 60 * 60) {
+                continue;
+            }
+            double distance = effectiveDistance(player, mob);
             if (distance < bestDistance) {
                 bestDistance = distance;
-                best = entity;
+                best = mob;
             }
         }
-        return best;
+        if (!keep) {
+            return best;
+        }
+        if (best != null && best != currentTarget && TargetSwitch.shouldSwitch(
+                effectiveDistance(player, currentTarget), bestDistance, now - lastSwitchAt)) {
+            return best;
+        }
+        return currentTarget;
+    }
+
+    private static double effectiveDistance(Player player, Entity entity) {
+        return TargetSwitch.effectiveDistance(player.distanceTo(entity), player.hasLineOfSight(entity));
     }
 
     private static boolean isOneHitDone(Entity entity, long now) {
@@ -303,7 +347,6 @@ public final class AhMobPathfinder {
         settings.randomLooking.value = 0.01;
         settings.antiCheatCompatibility.value = true;
         settings.considerPotionEffects.value = true;
-        settings.avoidance.value = true;
         settings.rightClickContainerOnArrival.value = false;
         settings.enterPortal.value = false;
         settings.renderPath.value = false;
@@ -322,15 +365,12 @@ public final class AhMobPathfinder {
         settings.pathingMaxChunkBorderFetch.value = 64;
         settings.planningTickLookahead.value = 150;
         settings.primaryTimeoutMS.value = 500L;
-        settings.failureTimeoutMS.value = 2000L;
         settings.planAheadPrimaryTimeoutMS.value = 2000L;
-        settings.planAheadFailureTimeoutMS.value = 3000L;
-        settings.movementTimeoutTicks.value = 20;
         settings.maxFallHeightNoWater.value = 3;
         settings.blockReachDistance.value = 3.0f;
-        settings.chunkCaching.value = true;
         settings.pruneRegionsFromRAM.value = true;
-        // real player stats + Pathfinder tab settings
+        // real player stats + Pathfinder tab settings (timeouts, edge safety,
+        // no mob avoidance, no chunk cache: see PathfinderTuning)
         com.coflnet.pathing.PathfinderTuning.apply(settings, false);
     }
 
@@ -354,5 +394,6 @@ public final class AhMobPathfinder {
         lastGoalPos = null;
         hasDesiredAim = false;
         lastFrameNanos = 0;
+        EntityObstacles.setTarget(null);
     }
 }

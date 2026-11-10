@@ -85,6 +85,9 @@ public class CalculationContext {
     public final double walkOnWaterOnePenalty;
     public final boolean allowWalkOnMagmaBlocks;
     public final BetterWorldBorder worldBorder;
+    /** Air Client: see {@link baritone.api.Settings#edgeSafetyCost}. */
+    public final double edgeSafetyCost;
+    public final double wallSafetyCost;
 
     public final PrecomputedData precomputedData;
 
@@ -157,6 +160,8 @@ public class CalculationContext {
         this.maxHighJump = (int) Math.floor(Baritone.settings().jumpHeight.value - 0.2D);
         this.walkOnWaterOnePenalty = Baritone.settings().walkOnWaterOnePenalty.value;
         this.allowWalkOnMagmaBlocks = Baritone.settings().allowWalkOnMagmaBlocks.value;
+        this.edgeSafetyCost = Math.max(0, Baritone.settings().edgeSafetyCost.value);
+        this.wallSafetyCost = Math.max(0, Baritone.settings().wallSafetyCost.value);
         // why cache these things here, why not let the movements just get directly from settings?
         // because if some movements are calculated one way and others are calculated another way,
         // then you get a wildly inconsistent path that isn't optimal for either scenario.

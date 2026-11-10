@@ -5,10 +5,14 @@ import baritone.api.IBaritone;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.pathing.path.IPathExecutor;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.phys.AABB;
 
 import java.util.List;
 import java.util.Locale;
@@ -27,6 +31,8 @@ public final class PathfinderSystem {
     private static long lastSaveAt;
     private static int sessionFaults;
     private static String lastFault = "";
+    private static int skippedFaults;
+    private static String lastWorld = "";
 
     private PathfinderSystem() {
     }
@@ -40,6 +46,7 @@ public final class PathfinderSystem {
         FaultMemory.load();
         FaultMemory.install();
         ClientTickEvents.END_CLIENT_TICK.register(PathfinderSystem::tick);
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> FaultMemory.saveNow());
     }
 
     public static int sessionFaults() {
@@ -50,16 +57,30 @@ public final class PathfinderSystem {
         return lastFault;
     }
 
+    /** Faults seen but not learned (lag, an entity in the way). */
+    public static int skippedFaults() {
+        return skippedFaults;
+    }
+
     private static void tick(Minecraft client) {
         LocalPlayer player = client.player;
         if (player == null || client.level == null) {
             DETECTOR.reset();
+            LagMonitor.reset();
             return;
         }
         long now = System.currentTimeMillis();
+        LagMonitor.onClientTick(now);
+        EntityObstacles.tick(client, now);
         if (++tickCounter % 20 == 0) {
             PathfinderTuning.updateStats(PlayerMovementStats.read(player));
-            FaultMemory.setActiveWorld(worldKey(client));
+            String world = worldKey(client);
+            if (!world.equals(lastWorld)) {
+                lastWorld = world;
+                LagMonitor.reset(); // the time packet gap across a world change is no lag
+                SetbackGuard.clear();
+            }
+            FaultMemory.setActiveWorld(world);
             if (now - lastSaveAt > 60_000L) {
                 lastSaveAt = now;
                 FaultMemory.saveIfDirty();
@@ -96,14 +117,31 @@ public final class PathfinderSystem {
         }
         cooldownUntil = now + 2_000L;
         IMovement movement = currentMovement(baritone);
-        BlockPos at = movement != null ? movement.getDest() : player.blockPosition();
+        BlockPos at;
+        if (type == FaultMemory.Type.SETBACK) {
+            // where the server sent us back from, not where the movement was heading
+            at = BlockPos.containing(DETECTOR.faultX(), DETECTOR.faultY(), DETECTOR.faultZ());
+            SetbackGuard.record(DETECTOR.faultX(), DETECTOR.faultY(), DETECTOR.faultZ(), now);
+        } else {
+            at = movement != null ? movement.getDest() : player.blockPosition();
+        }
         String movementName = movement == null ? "" : movement.getClass().getSimpleName();
-        double factor = FaultMemory.record(FaultMemory.activeWorld(), at.getX(), at.getY(), at.getZ(),
-                type, movementName, now);
-        sessionFaults++;
-        lastFault = type.name() + " @ " + at.getX() + "," + at.getY() + "," + at.getZ()
+        String where = type.name() + " @ " + at.getX() + "," + at.getY() + "," + at.getZ()
                 + (movementName.isEmpty() ? "" : " (" + movementName + ")");
-        String text = String.format(Locale.ROOT, "[Pathfinder] %s -> Kosten x%.1f, plane neu", lastFault, factor);
+        String skipReason = skipReason(client, player, at, type);
+        String text;
+        if (skipReason != null) {
+            skippedFaults++;
+            text = "[Pathfinder] " + where + " -> nicht gelernt (" + skipReason + "), plane neu";
+        } else {
+            double factor = FaultMemory.record(FaultMemory.activeWorld(), at.getX(), at.getY(), at.getZ(),
+                    type, movementName, now);
+            sessionFaults++;
+            lastFault = where;
+            text = factor > 1.0
+                    ? String.format(Locale.ROOT, "[Pathfinder] %s -> Kosten x%.1f, plane neu", where, factor)
+                    : "[Pathfinder] " + where + " -> gemerkt (erst bei Wiederholung gemieden), plane neu";
+        }
         System.out.println(text);
         if (PathfinderConfig.get().showFaultsInChat) {
             com.coflnet.ahflipper.AhFlipperMod.message("§8" + text);
@@ -112,6 +150,28 @@ public final class PathfinderSystem {
             baritone.getPathingBehavior().forceCancel();
         } catch (RuntimeException ignored) {
         }
+    }
+
+    /**
+     * Reasons not to blame the block: the game lagged, or someone stands in
+     * the way (that is no property of the block). Setbacks are always learned.
+     */
+    private static String skipReason(Minecraft client, LocalPlayer player, BlockPos at, FaultMemory.Type type) {
+        if (type == FaultMemory.Type.SETBACK) {
+            return null;
+        }
+        if (LagMonitor.isLagging()) {
+            return String.format(Locale.ROOT, "Lag, %.0f TPS", LagMonitor.tps());
+        }
+        AABB around = player.getBoundingBox().inflate(1.2, 0.5, 1.2)
+                .minmax(new AABB(at).inflate(0.6, 0.0, 0.6));
+        for (Entity entity : client.level.getEntities(player, around)) {
+            if (entity instanceof net.minecraft.world.entity.LivingEntity && !(entity instanceof ArmorStand)
+                    && entity.isAlive() && entity.isPushable()) {
+                return "Entity im Weg: " + entity.getName().getString();
+            }
+        }
+        return null;
     }
 
     private static IMovement currentMovement(IBaritone baritone) {

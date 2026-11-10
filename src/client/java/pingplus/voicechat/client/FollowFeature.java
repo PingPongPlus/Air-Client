@@ -3,6 +3,9 @@ package pingplus.voicechat.client;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.process.IFollowProcess;
+import com.coflnet.pathing.EntityObstacles;
+import com.coflnet.pathing.SkyblockTargets;
+import com.coflnet.pathing.TargetSwitch;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -33,6 +36,8 @@ public final class FollowFeature {
     private static Entity issued;
     private static boolean active;
     private static int searchCooldown;
+    private static long lastSwitchAt;
+    private static int switchCheckCooldown;
     private static UUID idleLookTargetId;
     /** Where the camera should look (set per tick, applied smoothly per frame). */
     private static boolean hasLook;
@@ -55,6 +60,7 @@ public final class FollowFeature {
         if (!valid(followed, player)) {
             followed = null;
             if (searchCooldown-- > 0) {
+                stopBaritone(); // dead / gone target: never keep walking after it
                 return;
             }
             searchCooldown = 10;
@@ -62,6 +68,17 @@ public final class FollowFeature {
             if (followed == null) {
                 stopBaritone();
                 return;
+            }
+            lastSwitchAt = System.currentTimeMillis();
+        } else if (!(followed instanceof Player) && --switchCheckCooldown <= 0) {
+            // mobs: move on to another one that is clearly closer (with hysteresis)
+            switchCheckCooldown = 20;
+            Entity closer = findTarget(client, player, name);
+            long now = System.currentTimeMillis();
+            if (closer != null && closer != followed && TargetSwitch.shouldSwitch(
+                    effectiveDistance(player, followed), effectiveDistance(player, closer), now - lastSwitchAt)) {
+                followed = closer;
+                lastSwitchAt = now;
             }
         }
         IBaritone baritone = primary();
@@ -71,6 +88,7 @@ public final class FollowFeature {
         configure();
         IFollowProcess follow = baritone.getFollowProcess();
         Entity current = followed;
+        EntityObstacles.setTarget(current);
         if (issued != current || !follow.isActive()) {
             follow.follow(entity -> entity == current);
             issued = current;
@@ -156,7 +174,15 @@ public final class FollowFeature {
         player.setYHeadRot(player.getYRot());
     }
 
-    /** Player name first, then entity name / nametag / type, nearest one. */
+    private static double effectiveDistance(LocalPlayer player, Entity entity) {
+        return TargetSwitch.effectiveDistance(player.distanceTo(entity), player.hasLineOfSight(entity));
+    }
+
+    /**
+     * Player name first, then entity name / nametag / type, nearest one. A
+     * SkyBlock nametag stand resolves to the mob under it; a stand without a
+     * living mob (the mob just died) is skipped, not followed.
+     */
     static Entity findTarget(Minecraft client, LocalPlayer player, String name) {
         String wanted = name.toLowerCase(Locale.ROOT);
         for (Player other : client.level.players()) {
@@ -174,13 +200,17 @@ public final class FollowFeature {
             if (!nameMatches(entity, wanted)) {
                 continue;
             }
-            double distance = player.distanceToSqr(entity);
+            Entity target = SkyblockTargets.resolve(client.level, entity);
+            if (target == null || target == player || SkyblockTargets.isGone(client.level, target)) {
+                continue;
+            }
+            double distance = player.distanceToSqr(target);
             if (distance < bestDistance) {
                 bestDistance = distance;
-                best = entity;
+                best = target;
             }
         }
-        return best instanceof ArmorStand stand ? mobUnderNametag(client, stand) : best;
+        return best;
     }
 
     static boolean nameMatches(Entity entity, String wanted) {
@@ -192,41 +222,19 @@ public final class FollowFeature {
         return type.equals(wanted) || ("minecraft:" + type).equals(wanted);
     }
 
-    /**
-     * SkyBlock shows mob names on an invisible armor stand above the mob. Follow
-     * (and attack) the real mob under it; without one, the stand itself.
-     */
-    private static Entity mobUnderNametag(Minecraft client, ArmorStand stand) {
-        Entity best = stand;
-        double bestDistance = Double.MAX_VALUE;
-        for (Entity entity : client.level.entitiesForRendering()) {
-            if (!(entity instanceof LivingEntity living) || entity instanceof ArmorStand
-                    || entity instanceof Player || !living.isAlive()) {
-                continue;
-            }
-            double dx = entity.getX() - stand.getX();
-            double dz = entity.getZ() - stand.getZ();
-            double below = stand.getY() - entity.getY();
-            if (dx * dx + dz * dz > 2.25 || below < -0.5 || below > 3.5) {
-                continue;
-            }
-            double distance = dx * dx + dz * dz + below * below;
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = entity;
-            }
-        }
-        return best;
-    }
-
     private static LivingEntity attackable(Entity entity) {
         return entity instanceof LivingEntity living && !(entity instanceof ArmorStand) ? living : null;
     }
 
     private static boolean valid(Entity entity, LocalPlayer player) {
-        return entity != null && entity.isAlive() && !entity.isRemoved()
-                && entity.level() == player.level()
-                && player.distanceToSqr(entity) < MAX_DISTANCE * MAX_DISTANCE;
+        if (entity == null || player.distanceToSqr(entity) >= MAX_DISTANCE * MAX_DISTANCE) {
+            return false;
+        }
+        if (entity instanceof Player) {
+            return entity.isAlive() && !entity.isRemoved() && entity.level() == player.level();
+        }
+        // mobs: also gone when dying or their nametag shows 0 health
+        return !SkyblockTargets.isGone(player.level(), entity);
     }
 
     /** The lowballer and the mob pathfinder steer Baritone themselves. */
@@ -292,6 +300,7 @@ public final class FollowFeature {
         active = false;
         hasLook = false;
         KillAuraFeature.setForcedTarget(null);
+        EntityObstacles.setTarget(null);
     }
 
     private static void release() {

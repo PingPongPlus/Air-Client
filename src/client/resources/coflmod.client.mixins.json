@@ -13,6 +13,7 @@
     "NewItemInChestMixin",
     "ScreenMixin",
     "ScoreboardMixin",
+    "ServerTimeLagMixin",
     "ScrollableWidgetMixin",
     "AuctionProtectionMixin",
     "SellProtectionMixin",
