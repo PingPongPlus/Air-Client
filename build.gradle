@@ -261,6 +261,14 @@ tasks.register('lowballingChatTest', JavaExec) {
 }
 tasks.named('check') { dependsOn 'lowballingChatTest' }
 
+tasks.register('lowballingAiTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.lowballing.LowballingAiTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'lowballingAiTest' }
+
 tasks.register('ahProtectedBiddersTest', JavaExec) {
     dependsOn voiceTestClasses, clientClasses
     classpath = sourceSets.voiceTest.runtimeClasspath

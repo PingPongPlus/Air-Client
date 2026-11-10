@@ -76,6 +76,27 @@ public class LowballingConfig {
     public long chatOfferRoundCoins = 1_000_000L;
     public int maxCycles = 0;
 
+    /** Local rule/classifier based chat brain for island negotiations. */
+    public boolean aiChatEnabled = true;
+    public boolean aiReplyToOtherPlayers = true;
+    public boolean aiAllowKick = true;
+    public boolean aiLogDecisions = true;
+    /** Wait this long after the last line before the brain reads a message. */
+    public int aiDebounceMs = 1_200;
+    /** How long "wait" / "one sec" keeps the lowballer paused. */
+    public int aiWaitMs = 10_000;
+    /** Safety cap so a stuck AI can never pause the macro forever. */
+    public int aiMaxPauseMs = 25_000;
+    /** Human-like delay before an AI reply is written to chat. */
+    public int aiMinReplyDelayMs = 3_000;
+    public int aiMaxReplyDelayMs = 8_000;
+    /** Maximum we may go above the last chat offer to close a deal. */
+    public double aiMaxConcessionPercent = 1.0;
+    /** If the ask is inside this gap, start the final trade at our last offer. */
+    public double aiProactiveTradeGapPercent = 5.0;
+    public int aiMaxCounters = 1;
+    public int aiMaxComplaints = 1;
+
     public boolean panelEnabled = true;
     public boolean panelGlass = true;
     public boolean panelEdges = false;
@@ -175,6 +196,16 @@ public class LowballingConfig {
         chatOfferRoundCoins = Math.max(1, chatOfferRoundCoins);
         maxCycles = Math.max(0, maxCycles);
         panelRows = clamp(panelRows, 1, 5);
+
+        aiDebounceMs = clamp(aiDebounceMs, 300, 5000);
+        aiWaitMs = clamp(aiWaitMs, 3000, 60000);
+        aiMaxPauseMs = clamp(aiMaxPauseMs, 5000, 120000);
+        aiMinReplyDelayMs = clamp(aiMinReplyDelayMs, 1000, 15000);
+        aiMaxReplyDelayMs = clamp(aiMaxReplyDelayMs, aiMinReplyDelayMs, 20000);
+        aiMaxConcessionPercent = clamp(aiMaxConcessionPercent, 0, 10);
+        aiProactiveTradeGapPercent = clamp(aiProactiveTradeGapPercent, 0, 25);
+        aiMaxCounters = clamp(aiMaxCounters, 0, 5);
+        aiMaxComplaints = clamp(aiMaxComplaints, 0, 5);
 
         if (adMessages == null) {
             adMessages = defaultAdMessages();

@@ -83,7 +83,7 @@ public final class LowballingMod {
     private static long lastFinalCheckAt;
     /** Final check: total value may drop at most this much before we abort. */
     private static final double FINAL_VALUE_TOLERANCE = 0.08;
-    private record DelayedChat(long dueAt, String text) {
+    private record DelayedChat(long dueAt, String text, String target) {
     }
     private static final List<DelayedChat> DELAYED_CHAT = new ArrayList<>();
 
@@ -194,6 +194,10 @@ public final class LowballingMod {
     private static long nextChatAt;
     private static long chatOfferDelayMs;
     private static long secondOfferDelayMs;
+    /** A reply from the local chat brain already said our chat offer. */
+    private static long aiChatOfferSentAt;
+    /** When the local brain last wrote an answer into chat. */
+    private static volatile long lastAiReplyAt;
 
     private static volatile Offer valuationOffer;
     private static volatile String valuationError;
@@ -220,6 +224,7 @@ public final class LowballingMod {
 
     public static void init() {
         LowballingChat.init();
+        LowballingAiController.init();
         registerKeybinding();
         registerCommands();
         ClientTickEvents.END_CLIENT_TICK.register(LowballingMod::onClientTick);
@@ -351,6 +356,10 @@ public final class LowballingMod {
                 .then(ClientCommands.literal("status").executes(context -> statusCommand()))
                 .then(ClientCommands.literal("reload").executes(context -> reloadCommand()))
                 .then(ClientCommands.literal("debug").executes(context -> debugCommand()))
+                .then(ClientCommands.literal("ai")
+                        .executes(context -> aiToggleCommand())
+                        .then(ClientCommands.literal("status")
+                                .executes(context -> aiStatusCommand())))
                 .then(ClientCommands.literal("bankroll")
                         .then(ClientCommands.argument("millions", IntegerArgumentType.integer(0))
                                 .executes(LowballingMod::bankrollCommand))));
@@ -415,6 +424,18 @@ public final class LowballingMod {
         return 1;
     }
 
+    private static int aiToggleCommand() {
+        CONFIG.aiChatEnabled = !CONFIG.aiChatEnabled;
+        CONFIG.save();
+        message("§6[Lowballing] §7AI-Chat " + (CONFIG.aiChatEnabled ? "§aan" : "§caus"));
+        return 1;
+    }
+
+    private static int aiStatusCommand() {
+        message("§6[Lowballing] §7" + LowballingAiController.status());
+        return 1;
+    }
+
     private static int bankrollCommand(CommandContext<FabricClientCommandSource> context) {
         int millions = IntegerArgumentType.getInteger(context, "millions");
         CONFIG.bankrollOverrideMillions = millions;
@@ -451,6 +472,8 @@ public final class LowballingMod {
         currentTradeTag = "";
         currentTradeName = "";
         currentTradeValue = 0;
+        aiChatOfferSentAt = 0;
+        lastAiReplyAt = 0;
         pendingOffer = null;
         secondOffer = false;
         finalizingSecond = false;
@@ -462,6 +485,7 @@ public final class LowballingMod {
         PROCESSED.clear();
         ensureCooldowns();
         LowballingChat.reset();
+        LowballingAiController.onStart();
         message("§6[Lowballing] §aaktiv §7· Sequenz startet mit /hub.");
         enterGoHub();
     }
@@ -481,6 +505,7 @@ public final class LowballingMod {
 
     private static void shutDown() {
         running = false;
+        LowballingAiController.onStop();
         releaseSneak();
         releaseForward();
         LowballingRotation.clear();
@@ -506,6 +531,8 @@ public final class LowballingMod {
         partialStage = 0;
         visitorPending = false;
         visitorPendingName = "";
+        aiChatOfferSentAt = 0;
+        lastAiReplyAt = 0;
         valuationOffer = null;
         valuationError = null;
         currentTradeTag = "";
@@ -725,6 +752,22 @@ public final class LowballingMod {
         releaseSneak();
         LowballingNavigator.stop();
         LowballingChat.clearWarp();
+        // A new island visit: never let the chat brain see the previous trade's
+        // offer while this visitor's items have not been valued yet.
+        targetUuid = null;
+        targetName = "";
+        targetEntity = null;
+        pendingOffer = null;
+        valuationOffer = null;
+        valuationError = null;
+        partialStage = 0;
+        secondOffer = false;
+        finalizingSecond = false;
+        aiChatOfferSentAt = 0;
+        rejectedTradeNames = List.of();
+        synchronized (DELAYED_CHAT) {
+            DELAYED_CHAT.clear();
+        }
         setState(State.ISLAND_SCAN);
         islandArrivedAt = stateAt;
         TRACKED.clear();
@@ -839,12 +882,23 @@ public final class LowballingMod {
         SignInput.clear();
         setState(State.CHAT_OFFER);
         actionAt = stateAt;
-        phaseAt = stateAt;
-        chatSent = false;
+        long preSentAt = aiChatOfferSentAt;
+        aiChatOfferSentAt = 0;
+        if (preSentAt > 0) {
+            // The local brain already wrote the offer (or a counter) in chat.
+            chatSent = true;
+            phaseAt = preSentAt;
+            chatSentAt = preSentAt;
+            lastReplyHandledAt = Math.max(lastReplyHandledAt, preSentAt);
+        } else {
+            chatSent = false;
+            phaseAt = stateAt;
+        }
         nextChatAt = 0;
         chatOfferDelayMs = 5000L + ThreadLocalRandom.current().nextInt(2001);
         secondOfferDelayMs = 5000L + ThreadLocalRandom.current().nextInt(2001);
-        debug("Trade-GUI geschlossen - Chat-Angebot");
+        debug("Trade-GUI geschlossen - Chat-Angebot"
+                + (preSentAt > 0 ? " (bereits vom AI-Chat gesendet)" : ""));
     }
 
     private static void enterKickWait() {
@@ -861,6 +915,10 @@ public final class LowballingMod {
         currentTradeTag = "";
         currentTradeName = "";
         currentTradeValue = 0;
+        aiChatOfferSentAt = 0;
+        synchronized (DELAYED_CHAT) {
+            DELAYED_CHAT.clear();
+        }
         setState(State.NEXT_PLAYER);
         actionAt = stateAt;
     }
@@ -888,6 +946,9 @@ public final class LowballingMod {
             long now = System.currentTimeMillis();
             holdBazaarFlipper(now);
             if (pauseForForeignGui(client, now)) {
+                return;
+            }
+            if (LowballingAiController.tick(client, now)) {
                 return;
             }
             flushDelayedChat(now);
@@ -1031,30 +1092,42 @@ public final class LowballingMod {
         if (pausedAt > 0) {
             long paused = now - pausedAt;
             pausedAt = 0;
-            stateAt += paused;
-            if (actionAt > 0) {
-                actionAt += paused;
-            }
-            if (phaseAt > 0) {
-                phaseAt += paused;
-            }
-            // nextAdAt is NOT shifted: the ad timer keeps running while we
-            // wait, only the message itself is held back until we may write.
-            if (islandArrivedAt > 0) {
-                islandArrivedAt += paused;
-            }
-            if (reachSince > 0) {
-                reachSince += paused;
-            }
-            if (offerSearchStartedAt > 0) {
-                offerSearchStartedAt += paused;
-            }
-            if (kickRequestedAt > 0) {
-                kickRequestedAt += paused;
+            // While the AI pause is active, its own resume covers the whole
+            // elapsed time. Shifting here as well would count it twice.
+            if (!LowballingAiController.isPaused()) {
+                aiShiftTimers(paused);
             }
             debug("Weiter nach " + (paused / 1000) + "s Pause");
         }
         return false;
+    }
+
+    /** Shifts every duration-based timer so a pause really resumes the step. */
+    static void aiShiftTimers(long pausedMs) {
+        if (pausedMs <= 0) {
+            return;
+        }
+        stateAt += pausedMs;
+        if (actionAt > 0) {
+            actionAt += pausedMs;
+        }
+        if (phaseAt > 0) {
+            phaseAt += pausedMs;
+        }
+        // nextAdAt is NOT shifted: the ad timer keeps running while we
+        // wait, only the message itself is held back until we may write.
+        if (islandArrivedAt > 0) {
+            islandArrivedAt += pausedMs;
+        }
+        if (reachSince > 0) {
+            reachSince += pausedMs;
+        }
+        if (offerSearchStartedAt > 0) {
+            offerSearchStartedAt += pausedMs;
+        }
+        if (kickRequestedAt > 0) {
+            kickRequestedAt += pausedMs;
+        }
     }
 
     private static long lastBazaarHoldAt;
@@ -1414,7 +1487,7 @@ public final class LowballingMod {
         return null;
     }
 
-    private static boolean onIsland() {
+    static boolean onIsland() {
         return switch (state) {
             case ISLAND_SCAN, APPROACH_PLAYER, OPEN_MENU, PLAYER_MENU, OPEN_OFFER, VALUING,
                  OFFER_READY, SET_COINS, WAIT_TRADE, LISTING, CHAT_OFFER, KICK_WAIT,
@@ -1662,7 +1735,7 @@ public final class LowballingMod {
                 tradeGuiAt = stateAt;
             }
             enterChatOffer();
-            chatOfferDelayMs = 1000L + ThreadLocalRandom.current().nextInt(501);
+            chatOfferDelayMs = 3_000L + ThreadLocalRandom.current().nextInt(5_001);
             return;
         }
         if (!LowballingGui.isContainerOpen()) {
@@ -1878,6 +1951,19 @@ public final class LowballingMod {
     }
 
     private static void tickChatOffer(Minecraft client, long now) {
+        if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
+            message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+            startListingTradedItems();
+            return;
+        }
+        if (!targetStillHere()) {
+            // The visitor left before the delayed chat offer/second trade.
+            debug("Spieler ist weg - kein Chat-/zweites Angebot.");
+            SignInput.clear();
+            LowballingGui.close();
+            enterNextPlayer();
+            return;
+        }
         if (!chatSent) {
             if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
                 message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
@@ -1977,6 +2063,16 @@ public final class LowballingMod {
      * accepted, within 10 % we come up 1 % ("take it or leave it"), otherwise kick.
      */
     private static void onFinalTradeFailed(String reason) {
+        if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
+            message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+            startListingTradedItems();
+            return;
+        }
+        if (!targetStillHere()) {
+            debug("Spieler ist weg - kein weiteres Angebot nach " + reason + ".");
+            enterNextPlayer();
+            return;
+        }
         Offer offer = pendingOffer;
         if (finalRetryUsed || offer == null || offer.chatOffer() <= 0) {
             message("§e[Lowballing] §7" + reason + " - kicke Spieler.");
@@ -2017,7 +2113,11 @@ public final class LowballingMod {
         if (LowballingGui.isContainerOpen()) {
             LowballingGui.close();
         }
-        sendChatDelayed(text);
+        if (line == null || line.at() > lastAiReplyAt) {
+            sendChatDelayed(text);
+        } else {
+            debug("AI hat diese Chatzeile schon beantwortet - kein zweiter Text.");
+        }
         goSecondOffer();
     }
 
@@ -2040,6 +2140,11 @@ public final class LowballingMod {
     }
 
     private static void goSecondOffer() {
+        if (!targetStillHere()) {
+            debug("Spieler ist weg - zweites Angebot abgebrochen.");
+            enterNextPlayer();
+            return;
+        }
         secondOffer = true;
         finalizingSecond = true;
         secondCoinsPlaced = false;
@@ -2267,7 +2372,8 @@ public final class LowballingMod {
         startNextPlayer(client);
     }
 
-    private static final long SECOND_OFFER_FIND_MS = 15_000L;
+    /** Short lag grace for the second offer; the chat itself is never sent if the visitor left. */
+    private static final long SECOND_OFFER_FIND_MS = 2_000L;
     /** Two trade requests (each expires after ~10 s) for the second offer. */
     private static final long SECOND_OFFER_REQUEST_MS = 21_000L;
 
@@ -2419,6 +2525,17 @@ public final class LowballingMod {
      * lower second offer. Otherwise kick the visitor.
      */
     private static void onFirstTradeClosed(String reason) {
+        if (LowballingChat.consumeTradeSuccess(tradeGuiAt)) {
+            message("§a[Lowballing] §7Trade erfolgreich - liste Item(s) im AH.");
+            startListingTradedItems();
+            return;
+        }
+        if (!targetStillHere()) {
+            debug("Spieler ist weg - kein Chat-Angebot fuer " + reason + ".");
+            SignInput.clear();
+            enterNextPlayer();
+            return;
+        }
         Offer offer = pendingOffer;
         boolean wanted = offer != null && offer.buyable() && offer.chatOffer() > 0;
         if (wanted && CONFIG.enforceBankroll) {
@@ -2656,6 +2773,12 @@ public final class LowballingMod {
             partialStage = 0;
             secondCoinsPlaced = false;
             reachSince = 0;
+            tradeGuiAt = 0;
+            tradeGuiSeen = false;
+            tradeClosedAt = 0;
+            chatSentAt = 0;
+            lastReplyHandledAt = 0;
+            lastAiReplyAt = 0;
             rejectedTradeNames = List.of();
             enterApproach();
             return;
@@ -2780,6 +2903,27 @@ public final class LowballingMod {
             return findPlayerByName(targetName);
         }
         return null;
+    }
+
+    /** The visitor is still on our island (not merely out of render range). */
+    private static boolean targetStillHere() {
+        if (targetUuid != null && findPlayerById(targetUuid) != null) {
+            return true;
+        }
+        if (targetName == null || targetName.isBlank()) {
+            return false;
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (client.level == null || client.player == null) {
+            return false;
+        }
+        for (Player player : client.level.players()) {
+            if (player != client.player
+                    && player.getName().getString().equalsIgnoreCase(targetName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Player findPlayerById(UUID id) {
@@ -3011,6 +3155,185 @@ public final class LowballingMod {
         return -1;
     }
 
+    static LowballingAiRules aiBuildRules() {
+        return new LowballingAiRules(
+                CONFIG.aiAllowKick,
+                CONFIG.aiReplyToOtherPlayers,
+                CONFIG.enforceBankroll,
+                CONFIG.aiMaxCounters,
+                CONFIG.aiMaxComplaints,
+                CONFIG.aiMaxConcessionPercent,
+                CONFIG.aiProactiveTradeGapPercent,
+                CONFIG.aiWaitMs);
+    }
+
+    static String aiTargetName() {
+        return targetName == null ? "" : targetName;
+    }
+
+    static boolean aiTradeSucceeded() {
+        long since = tradeGuiAt > 0 ? tradeGuiAt : stateAt;
+        return LowballingChat.tradeSucceededSince(Math.max(1L, since));
+    }
+
+    static boolean aiCanMarkChatOfferSent() {
+        return state != State.CHAT_OFFER && state != State.LISTING
+                && state != State.IDLE && state != State.RECONNECTING;
+    }
+
+    /** True when the open GUI is the trade/player menu of this bot, not e.g. an inventory. */
+    static boolean isOwnTradeGuiOpen() {
+        if (LowballingGui.isSignOpen()) {
+            return true;
+        }
+        if (!LowballingGui.isContainerOpen()) {
+            return false;
+        }
+        if (LowballingGui.isOpenTradeWith(targetName)) {
+            return true;
+        }
+        String title = LowballingGui.currentTitle().toLowerCase(Locale.ROOT);
+        return title.contains("player menu") || title.contains("trade")
+                || title.contains("deal")
+                || (LowballingGui.findTradeSlot() >= 0 && LowballingGui.findCoinsSlot() >= 0);
+    }
+
+    static LowballingAiStage aiStage() {
+        if (state == State.LISTING) {
+            return LowballingAiStage.LISTING;
+        }
+        if (finalRetryUsed) {
+            return LowballingAiStage.FINAL_RETRY;
+        }
+        if (secondOffer) {
+            return LowballingAiStage.SECOND_TRADE;
+        }
+        if (partialStage >= 1) {
+            return LowballingAiStage.PARTIAL_OFFER;
+        }
+        if (state == State.CHAT_OFFER) {
+            return LowballingAiStage.CHAT_OFFER;
+        }
+        if (state == State.IDLE || state == State.RECONNECTING) {
+            return LowballingAiStage.IDLE;
+        }
+        return LowballingAiStage.FIRST_TRADE;
+    }
+
+    static LowballingAiContext aiContext(String speaker, List<String> messages, long now,
+                                         int counterCount, int refusalCount,
+                                         int complaintCount, boolean ahAsked,
+                                         List<String> history) {
+        Offer offer = pendingOffer;
+        String item = offer == null ? "" : shortItemName(offer.displayName());
+        return new LowballingAiContext(
+                state.name(),
+                aiStage(),
+                targetName == null ? "" : targetName,
+                speaker,
+                targetName != null && targetName.equalsIgnoreCase(speaker),
+                item,
+                offer == null ? 0 : offer.expectedValue(),
+                offer == null ? 0 : offer.firstOffer(),
+                offer == null ? 0 : offer.chatOffer(),
+                offer == null ? 0 : statedSecondPrice(offer),
+                bankrollCoins(),
+                partialStage,
+                secondOffer,
+                finalizingSecond,
+                finalRetryUsed,
+                aiTradeSucceeded(),
+                now,
+                String.join(" ", messages),
+                List.copyOf(messages),
+                counterCount,
+                refusalCount,
+                complaintCount,
+                ahAsked,
+                history == null ? List.of() : List.copyOf(history));
+    }
+
+    /**
+     * Starts (or retries) the second trade with a price the policy already
+     * validated. The price is clamped again right here, never trusted blindly.
+     */
+    static boolean aiStartSecondTrade(long price) {
+        Offer offer = pendingOffer;
+        if (offer == null || !offer.buyable() || state == State.LISTING || aiTradeSucceeded()) {
+            return false;
+        }
+        long max = offer.chatOffer() > 0 ? offer.chatOffer() : offer.firstOffer();
+        if (max <= 0) {
+            return false;
+        }
+        long allowed = max;
+        if (CONFIG.aiMaxConcessionPercent > 0) {
+            allowed = LowballingSmartChat.chatRound(
+                    max * (1.0 + CONFIG.aiMaxConcessionPercent / 100.0));
+        }
+        long bankroll = bankrollCoins();
+        if (CONFIG.enforceBankroll && bankroll >= 0) {
+            allowed = Math.min(allowed, bankroll);
+        }
+        price = Math.min(price, allowed);
+        if (price <= 0) {
+            return false;
+        }
+        if (secondOffer) {
+            finalPriceOverride = price;
+            finalRetryUsed = true;
+        } else {
+            agreedSecondPrice = price;
+            finalPriceOverride = 0;
+        }
+        secondCoinsPlaced = false;
+        reachSince = 0;
+        goSecondOffer();
+        debug("AI: zweites Angebot mit " + formatOffer(price));
+        return true;
+    }
+
+    static void aiKick() {
+        requestKick();
+    }
+
+    static void aiReleaseMovement() {
+        releaseSneak();
+        releaseForward();
+        LowballingRotation.clear();
+        LowballingNavigator.stop();
+    }
+
+    static void aiMarkChatOfferSent(long at) {
+        aiChatOfferSentAt = at;
+    }
+
+    static void aiMarkReplyHandled(long at) {
+        lastReplyHandledAt = Math.max(lastReplyHandledAt, at);
+    }
+
+    static void aiMarkReplySent(long at) {
+        lastAiReplyAt = at;
+    }
+
+    /** Drops stale built-in chat replies when the local chat brain takes over. */
+    static void aiClearChatQueues() {
+        // PENDING_CHAT may also contain a command (e.g. a deferred /is), so it
+        // is only flushed in order, never dropped. Delayed replies are answers
+        // and are stale once the brain writes its own line.
+        synchronized (DELAYED_CHAT) {
+            DELAYED_CHAT.clear();
+        }
+    }
+
+    static void aiResetChatPhase(long now) {
+        if (state != State.CHAT_OFFER) {
+            return;
+        }
+        phaseAt = now;
+        chatSentAt = Math.max(chatSentAt, now);
+    }
+
     /** Same formatting as the smart chat: never rounds up (coins == chat number). */
     private static String formatOffer(long coins) {
         return LowballingSmartChat.format(coins);
@@ -3089,8 +3412,8 @@ public final class LowballingMod {
     }
 
     /**
-     * Replies to the visitor are sent with a short human delay (1-1.5 s)
-     * instead of instantly after their message.
+     * Replies to the visitor are sent with a human delay (3-8 s) instead of
+     * instantly after their message.
      */
     private static void sendChatDelayed(String text) {
         if (text == null || text.isBlank()) {
@@ -3099,7 +3422,7 @@ public final class LowballingMod {
         long due = System.currentTimeMillis() + LowballingSmartChat.typingDelayMs(text,
                 ThreadLocalRandom.current().nextDouble());
         synchronized (DELAYED_CHAT) {
-            DELAYED_CHAT.add(new DelayedChat(due, text));
+            DELAYED_CHAT.add(new DelayedChat(due, text, targetName == null ? "" : targetName));
         }
     }
 
@@ -3107,15 +3430,22 @@ public final class LowballingMod {
         synchronized (DELAYED_CHAT) {
             for (java.util.Iterator<DelayedChat> it = DELAYED_CHAT.iterator(); it.hasNext(); ) {
                 DelayedChat chat = it.next();
-                if (chat.dueAt() <= now) {
-                    it.remove();
+                if (chat.dueAt() > now) {
+                    continue;
+                }
+                it.remove();
+                boolean sameTarget = chat.target().isBlank()
+                        || chat.target().equalsIgnoreCase(targetName);
+                if (sameTarget && targetStillHere()) {
                     sendChat(chat.text());
+                } else {
+                    debug("Chat-Antwort fuer " + chat.target() + " verworfen - Spieler weg.");
                 }
             }
         }
     }
 
-    private static void sendChat(String text) {
+    static void sendChat(String text) {
         Minecraft client = Minecraft.getInstance();
         if (client.getConnection() == null) {
             return;
@@ -3124,6 +3454,26 @@ public final class LowballingMod {
             // Never write while a GUI is open; send it right after it closed.
             PENDING_CHAT.addLast(text);
             return;
+        }
+        client.getConnection().sendChat(text);
+    }
+
+    /**
+     * Writes an AI reply directly (the caller already waited the human delay
+     * and verified that no GUI is open). Older queued lines go first so the
+     * order in chat stays correct.
+     */
+    static void sendAiChat(String text) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.getConnection() == null || text == null || text.isBlank()) {
+            return;
+        }
+        if (client.gui.screen() != null) {
+            PENDING_CHAT.addLast(text);
+            return;
+        }
+        while (!PENDING_CHAT.isEmpty()) {
+            client.getConnection().sendChat(PENDING_CHAT.poll());
         }
         client.getConnection().sendChat(text);
     }
@@ -3158,7 +3508,7 @@ public final class LowballingMod {
         CoflModClient.displayModMessage(Component.literal(text));
     }
 
-    private static void debug(String text) {
+    static void debug(String text) {
         System.out.println("[Lowballing] " + text);
         if (!CONFIG.debug) {
             return;

@@ -306,6 +306,28 @@ public final class LowballingChat {
         }
     }
 
+    /** Every player line newer than {@code sinceExclusive}, oldest first. */
+    public static java.util.List<PlayerLine> linesSince(long sinceExclusive) {
+        java.util.List<PlayerLine> result = new java.util.ArrayList<>();
+        synchronized (PLAYER_LINES) {
+            for (Deque<PlayerLine> history : PLAYER_HISTORY.values()) {
+                for (PlayerLine line : history) {
+                    if (line.at() > sinceExclusive) {
+                        result.add(line);
+                    }
+                }
+            }
+        }
+        result.sort((left, right) -> Long.compare(left.at(), right.at()));
+        return result;
+    }
+
+    /** True if a successful trade was reported since {@code since} (peek only). */
+    public static boolean tradeSucceededSince(long since) {
+        long at = tradeSuccessAt;
+        return at > 0 && at >= since;
+    }
+
     /** True while an own /trade request is still pending (they expire after ~10 s). */
     public static boolean tradeRequestPending(long now) {
         long at = tradeRequestSentAt;
