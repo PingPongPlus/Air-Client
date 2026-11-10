@@ -58,6 +58,13 @@ public final class GlassPipelines {
     }
     public static RenderPipeline blurHorizontal() { return BLUR_X[GlassEffectSettings.blurStep()]; }
     public static RenderPipeline blurVertical() { return BLUR_Y[GlassEffectSettings.blurStep()]; }
+    public static final RenderPipeline HUD_FRAME = RenderPipelines.register(
+            RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
+                    .withLocation(id("pipeline/glass_frame"))
+                    .withVertexShader(id("core/glass_button"))
+                    .withFragmentShader(id("core/glass_frame"))
+                    .withBindGroupLayout(BindGroupLayouts.SAMPLER1)
+                    .withCull(false).build());
     public static final RenderPipeline CONTROL = RenderPipelines.register(
             RenderPipeline.builder(RenderPipelines.GUI_TEXTURED_SNIPPET)
                     .withLocation(id("pipeline/glass_control"))

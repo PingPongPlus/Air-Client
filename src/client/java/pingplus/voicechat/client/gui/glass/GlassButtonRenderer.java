@@ -39,6 +39,12 @@ public final class GlassButtonRenderer {
         drawShape(graphics, x, y, width, height, data, GlassPipelines.hud(edges), square);
     }
 
+    /** Hollow liquid-glass rim; the center never covers the item or scenery. */
+    public static void drawHudFrame(GuiGraphicsExtractor graphics, int x, int y, int width, int height, float opacity) {
+        int data = Math.round(Math.clamp(opacity, 0, 1) * 255) << 24;
+        drawShape(graphics, x, y, width, height, data, GlassPipelines.HUD_FRAME);
+    }
+
     public static void control(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {
         drawShape(graphics, x, y, width, height, color, GlassPipelines.CONTROL);
     }
@@ -64,12 +70,24 @@ public final class GlassButtonRenderer {
                                   RenderPipeline pipeline, boolean square) {
         if (width <= 0 || height <= 0) return;
         float opacity = (data >>> 24) / 255f;
+        boolean frame = pipeline == GlassPipelines.HUD_FRAME;
         if (net.minecraft.client.Minecraft.getInstance().gui.overlay() instanceof net.minecraft.client.gui.screens.LoadingOverlay) {
+            if (frame) {
+                int rim = GlassStyle.alpha(0xCCECF5FF, opacity);
+                graphics.fill(x, y, x + width, y + 2, rim);
+                graphics.fill(x, y + height - 2, x + width, y + height, rim);
+                graphics.fill(x, y + 2, x + 2, y + height - 2, rim);
+                graphics.fill(x + width - 2, y + 2, x + width, y + height - 2, rim);
+                return;
+            }
             GlassStyle.round(graphics, x, y, width, height, square ? 0 : 12, GlassStyle.alpha(0xFF263D54, (data >>> 24) / 255f));
             drawTint(graphics,x,y,width,height,opacity,pipeline,square);
             return;
         }
-        if (GlassPipelines.isButton(pipeline)) {
+        if (frame) {
+            // The rim uses green for corner scale and blue for logical height.
+            data = (data & 0xFF000000) | (GlassCornerSettings.controlQuant() << 8) | Math.min(height, 255);
+        } else if (GlassPipelines.isButton(pipeline)) {
             // Green channel packs the enabled bit (bit 7) plus the global corner-radius scale (bits 0-6).
             boolean enabled = (data & 0x00FF00) != 0;
             data = (data & 0xFFFF00FF) | (((enabled ? 128 : 0) + (square ? 0 : GlassCornerSettings.buttonQuant())) << 8);
@@ -88,6 +106,7 @@ public final class GlassButtonRenderer {
         if (scissor != null) bounds = bounds.intersection(scissor);
         if (bounds == null) return;
         graphics.guiRenderState.addGuiElement(new GlassState(pipeline, backdrop, pose, x, y, width, height, data, padding, scissor, bounds));
+        if (frame) return; // Solid tint/weather overlays would fill the transparent center.
         drawTint(graphics,x,y,width,height,opacity,pipeline,square);
         WeatherGlass.draw(graphics, x, y, width, height, opacity, square,
                 GlassPipelines.isButton(pipeline) ? 0 : pipeline == GlassPipelines.CONTROL ? 1 : pipeline == GlassPipelines.BOSS_BAR ? 3 : 2);

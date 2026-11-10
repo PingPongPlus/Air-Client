@@ -56,6 +56,7 @@ public final class PlayerSettings {
     public static float dockRadius = 1.5f;
     public static boolean dockShelf = true;
     public static boolean dockFrames = true;
+    public static boolean dockGlassFrame = false;
     public static float dockSize = 0.7f;
     public static boolean dockAutoHide = false;
     public static int dockAutoHideSeconds = 20;

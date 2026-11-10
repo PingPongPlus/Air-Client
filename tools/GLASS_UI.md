@@ -128,6 +128,14 @@ Spotify playback and takes priority over album colors while enabled. Disabling
 it returns panels to their Spotify tint when active. Custom tint also colors the
 shared switch, slider, and bar materials. It uses the same saved effect preferences.
 
+## Dock hotbar
+
+In **HUD > Dock options**, enable **Liquid glass frame** with **Hotbar frame** on
+to replace the selected-slot and offhand borders with a rounded, refractive glass
+rim. Its center stays transparent, and the border follows dock magnification,
+size and auto-hide. This style starts off; disabling it restores the vanilla
+borders. The preference is saved with player settings and included in profiles.
+
 ## Server scoreboard widget
 
 **HUD > Scoreboard** shows or hides the server sidebar. Click its gear to open

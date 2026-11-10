@@ -163,25 +163,40 @@ public final class HotbarDock {
         if (i < 9) {
             applyScale(g, pos[i], height - 3, s);
             if (i == selected && PlayerSettings.dockFrames) {
-                g.blitSprite(RenderPipelines.GUI_TEXTURED, HOTBAR_FRAME, 182, 22, 1 + i * SLOT, 0,
-                        Math.round(pos[i] - 10), height - 22, 20, 22);
-                g.blitSprite(RenderPipelines.GUI_TEXTURED, SELECTION, Math.round(pos[i] - 12), height - 23, 24, 23);
+                if (PlayerSettings.dockGlassFrame) {
+                    drawGlassFrame(g, Math.round(pos[i] - 12), height - 23);
+                } else {
+                    g.blitSprite(RenderPipelines.GUI_TEXTURED, HOTBAR_FRAME, 182, 22, 1 + i * SLOT, 0,
+                            Math.round(pos[i] - 10), height - 22, 20, 22);
+                    g.blitSprite(RenderPipelines.GUI_TEXTURED, SELECTION, Math.round(pos[i] - 12), height - 23, 24, 23);
+                }
             }
             drawItem(g, client, dt, inventory.getItem(i), Math.round(pos[i] - 8), itemY, i + 1, player);
             g.pose().popMatrix();
         } else if (!offhand.isEmpty()) {
-            float spriteCenter = pos[i] + (arm == HumanoidArm.LEFT ? 3.5f : -3.5f);
-            applyScale(g, spriteCenter, height + 1, s);
-            if (arm == HumanoidArm.LEFT) {
-                g.blitSprite(RenderPipelines.GUI_TEXTURED, OFFHAND_LEFT, Math.round(spriteCenter - 14.5f), height - 23, 29, 24);
-            } else {
-                g.blitSprite(RenderPipelines.GUI_TEXTURED, OFFHAND_RIGHT, Math.round(spriteCenter - 14.5f), height - 23, 29, 24);
+            if (!PlayerSettings.dockGlassFrame) {
+                float spriteCenter = pos[i] + (arm == HumanoidArm.LEFT ? 3.5f : -3.5f);
+                applyScale(g, spriteCenter, height + 1, s);
+                if (arm == HumanoidArm.LEFT) {
+                    g.blitSprite(RenderPipelines.GUI_TEXTURED, OFFHAND_LEFT, Math.round(spriteCenter - 14.5f), height - 23, 29, 24);
+                } else {
+                    g.blitSprite(RenderPipelines.GUI_TEXTURED, OFFHAND_RIGHT, Math.round(spriteCenter - 14.5f), height - 23, 29, 24);
+                }
+                g.pose().popMatrix();
             }
-            g.pose().popMatrix();
             applyScale(g, pos[i], height - 3, s);
+            if (PlayerSettings.dockGlassFrame && PlayerSettings.dockFrames) {
+                drawGlassFrame(g, Math.round(pos[i] - 12), height - 23);
+            }
             drawItem(g, client, dt, offhand, Math.round(pos[i] - 8), itemY, 10, player);
             g.pose().popMatrix();
         }
+    }
+
+    private static void drawGlassFrame(GuiGraphicsExtractor g, int x, int y) {
+        g.nextStratum();
+        GlassButtonRenderer.drawHudFrame(g, x, y, 24, 23, 0.96f);
+        g.nextStratum();
     }
 
     private static void applyScale(GuiGraphicsExtractor g, float cx, float cy, float s) {
