@@ -3,7 +3,11 @@ plugins {
     id 'maven-publish'
 }
 
-version = project.mod_version
+// Release builds pass the tag explicitly; ordinary/offline builds use mod_version.
+version = providers.gradleProperty('release_version').orElse(project.mod_version).get().replaceFirst(/^[vV]\.?/, '')
+if (!(version.toString() ==~ /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?/)) {
+    throw new GradleException("Expected a semantic release version, got '${version}'")
+}
 group = project.maven_group
 
 base {
@@ -91,12 +95,14 @@ processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
+    inputs.property "update_repository", project.update_repository
     filteringCharset "UTF-8"
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
                 "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
+                "loader_version": project.loader_version,
+                "update_repository": project.update_repository
     }
 }
 
@@ -118,11 +124,29 @@ java {
 }
 
 sourceSets {
+    updater
     voiceTest {
-        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
-        runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.updater.output
+        runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath + sourceSets.updater.output
     }
 }
+
+def updaterJar = tasks.register('updaterJar', Jar) {
+    archiveFileName = 'air-client-updater.jar'
+    destinationDirectory = layout.buildDirectory.dir('updater')
+    from sourceSets.updater.output
+    manifest { attributes 'Main-Class': 'pingplus.voicechat.updater.UpdateInstaller' }
+}
+tasks.named('processResources') {
+    from(updaterJar) { into 'airclient' }
+}
+tasks.register('updaterTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses, updaterClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'pingplus.voicechat.client.updater.UpdaterTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'updaterTest' }
 tasks.register('voiceSmokeTest', JavaExec) {
     dependsOn voiceTestClasses, clientClasses
     classpath = sourceSets.voiceTest.runtimeClasspath

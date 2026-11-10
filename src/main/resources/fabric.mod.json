@@ -14,6 +14,9 @@
   },
   "license": "AGPL-3.0-only",
   "environment": "client",
+  "custom": {
+    "airclient:updateRepository": "${update_repository}"
+  },
   "entrypoints": {
     "fabric-datagen": [
       "pingplus.voicechat.client.VoicechatDataGenerator"

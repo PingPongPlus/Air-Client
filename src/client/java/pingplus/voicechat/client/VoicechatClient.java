@@ -100,6 +100,7 @@ public class VoicechatClient implements ClientModInitializer {
         initializeClientFeatures();
         initializeVoiceChat();
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> profiles.restoreActive());
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> pingplus.voicechat.client.updater.ClientUpdater.get().check());
     }
 
     public static void syncSlayerCfg() {

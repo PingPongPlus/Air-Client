@@ -8,4 +8,5 @@ pluginManagement {
     }
 }
 
+rootProject.name = 'Air-Client'
 include 'baritone'
