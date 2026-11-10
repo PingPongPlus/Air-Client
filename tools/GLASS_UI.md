@@ -16,6 +16,7 @@ The interface renders at 60% of its logical size, including text and hit targets
 leaving room for more categories. `ClickGuiScreen.UI_SCALE` controls this independently
 of Minecraft GUI scale. Mouse clicks, releases and dragging use the inverse transform.
 
+Click category headers to expand or collapse panels; right-click also toggles them.
 Drag category headers to move panels. Gear buttons beside features open their
 additional settings in a floating glass window. Drag its title to move it; scroll
 inside it for longer option lists. The close button, clicking outside, or Escape
