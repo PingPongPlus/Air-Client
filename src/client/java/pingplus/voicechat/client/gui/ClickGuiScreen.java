@@ -68,6 +68,7 @@ public final class  ClickGuiScreen extends Screen {
     private long opened = System.nanoTime(), closing;
     private float opacity = 1;
     private Category dragging;
+    private boolean categoryDragged;
     private double dragX, dragY;
     private KeyMapping pendingKey;
 
@@ -1415,7 +1416,7 @@ public final class  ClickGuiScreen extends Screen {
             for(Entry e:entries)if(e.category==c){e.widget.setAlpha(contentAlpha);e.widget.extractRenderState(g,openOptions==null?mx:-100,openOptions==null?my:-100,dt);}
         }
         g.disableScissor();
-        text(g,"LMB DRAG  /  RMB COLLAPSE  /  GEARS OPTIONS",16,canvasHeight-13,GlassStyle.MUTED);
+        text(g,"CLICK EXPAND  /  DRAG MOVE  /  GEARS OPTIONS",16,canvasHeight-13,GlassStyle.MUTED);
         if(maxScroll>0)text(g,"SCROLL",canvasWidth-48,canvasHeight-13,GlassStyle.ACCENT);
         drawOptions(g,mx,my,dt);
         g.pose().popMatrix();
@@ -1433,6 +1434,14 @@ public final class  ClickGuiScreen extends Screen {
     }
     private MouseButtonEvent logicalMouse(MouseButtonEvent event) {
         return new MouseButtonEvent(event.x() / UI_SCALE, event.y() / UI_SCALE, event.buttonInfo());
+    }
+    private boolean categoryHeaderContains(Category c,double x,double y) {
+        int top=c.y-scroll;
+        return x>=c.x&&x<c.x+panelWidth&&y>=top&&y<top+20;
+    }
+    private void toggleCategory(Category c) {
+        c.collapsed=!c.collapsed;
+        if(c.collapsed)expandedCategories.remove(c.title);else expandedCategories.add(c.title);
     }
     @Override public void mouseMoved(double x, double y) { super.mouseMoved(x / UI_SCALE, y / UI_SCALE); }
     @Override public boolean mouseClicked(MouseButtonEvent event,boolean twice){
@@ -1473,13 +1482,12 @@ public final class  ClickGuiScreen extends Screen {
         }
         if(e.y()>canvasHeight-16)return true;
         for(int i=categories.size()-1;i>=0;i--){Category c=categories.get(i);int y=c.y-scroll;
-            boolean header=e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+20;
+            boolean header=categoryHeaderContains(c,e.x(),e.y());
             if(e.button()==1&&header){
-                c.collapsed=!c.collapsed;
-                if(c.collapsed)expandedCategories.remove(c.title);else expandedCategories.add(c.title);
+                toggleCategory(c);
                 return true;
             }
-            if(e.button()==0&&header){dragging=c;dragX=e.x()-c.x;dragY=e.y()-y;return true;}
+            if(e.button()==0&&header){dragging=c;categoryDragged=false;dragX=e.x()-c.x;dragY=e.y()-y;return true;}
             if(e.x()>=c.x&&e.x()<c.x+panelWidth&&e.y()>=y&&e.y()<y+c.height()){
                 if(c.collapsed||c.open<.9f)return true;
                 for(Entry entry:entries)if(entry.category==c&&entry.widget.mouseClicked(e,twice)){if(children().contains(entry.widget)){setFocused(entry.widget);setDragging(true);}return true;}
@@ -1496,10 +1504,26 @@ public final class  ClickGuiScreen extends Screen {
             optionsY=Math.clamp((int)(e.y()-dragY),28,canvasHeight-optionsHeight-18);
             layoutOptions();return true;
         }
-        if(dragging!=null){dragging.x=Math.clamp((int)(e.x()-dragX),8,Math.max(8,canvasWidth-panelWidth-8));dragging.y=Math.clamp((int)(e.y()-dragY)+scroll,28,Math.max(28,canvasHeight-18-dragging.height()));positions.put(dragging.title,new int[]{dragging.x,dragging.y});updateScroll();layout();return true;}
+        if(dragging!=null){
+            if(!categoryDragged&&Math.hypot(e.x()-dragging.x-dragX,e.y()-(dragging.y-scroll)-dragY)<4)return true;
+            categoryDragged=true;
+            dragging.x=Math.clamp((int)(e.x()-dragX),8,Math.max(8,canvasWidth-panelWidth-8));
+            dragging.y=Math.clamp((int)(e.y()-dragY)+scroll,28,Math.max(28,canvasHeight-18-dragging.height()));
+            positions.put(dragging.title,new int[]{dragging.x,dragging.y});updateScroll();layout();return true;
+        }
         return super.mouseDragged(e,dx,dy);
     }
-    @Override public boolean mouseReleased(MouseButtonEvent e){if(draggingOptions){draggingOptions=false;return true;}if(dragging!=null){dragging=null;return true;}return super.mouseReleased(logicalMouse(e));}
+    @Override public boolean mouseReleased(MouseButtonEvent event){
+        MouseButtonEvent e=logicalMouse(event);
+        if(e.button()==0&&draggingOptions){draggingOptions=false;return true;}
+        if(e.button()==0&&dragging!=null){
+            Category c=dragging;
+            dragging=null;
+            if(!categoryDragged&&categoryHeaderContains(c,e.x(),e.y()))toggleCategory(c);
+            return true;
+        }
+        return super.mouseReleased(e);
+    }
     @Override public boolean keyPressed(KeyEvent e){
         if (pendingKey != null) {
             if (e.key() == GLFW.GLFW_KEY_ESCAPE) {
