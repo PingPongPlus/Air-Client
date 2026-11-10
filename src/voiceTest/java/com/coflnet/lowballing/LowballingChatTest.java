@@ -30,8 +30,9 @@ public final class LowballingChatTest {
         long shortReply = LowballingSmartChat.typingDelayMs("ok 15m", 0.5);
         long longReply = LowballingSmartChat.typingDelayMs(
                 "lbin isnt what they actually sell for, 15.5m is my best for the new year cake", 0.5);
-        check(shortReply >= 1_000L && shortReply < 1_600L, "short reply quick, got " + shortReply);
-        check(longReply > 3_500L && longReply <= 5_000L, "long reply takes longer, got " + longReply);
+        check(shortReply >= 3_000L && shortReply <= 8_000L, "short reply 3-8s, got " + shortReply);
+        check(longReply >= 3_000L && longReply <= 8_000L, "long reply 3-8s, got " + longReply);
+        check(longReply > shortReply, "long reply takes longer, got " + longReply);
         System.out.println("PASS: emblem chat lines, value claims, typing delay");
     }
 

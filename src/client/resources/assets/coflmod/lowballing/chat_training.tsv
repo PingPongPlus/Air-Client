@@ -1,0 +1,422 @@
+# intent|text - labels used to train the local Naive Bayes chat classifier
+PRICE_OFFER|i do for 9m
+PRICE_OFFER|i can do 9m
+PRICE_OFFER|9m and its yours
+PRICE_OFFER|9.5m ok
+PRICE_OFFER|9,5m then
+PRICE_OFFER|can you do 11m
+PRICE_OFFER|11m and deal
+PRICE_OFFER|make it 12m
+PRICE_OFFER|10m take it
+PRICE_OFFER|i want 15m
+PRICE_OFFER|15m for it
+PRICE_OFFER|20m firm
+PRICE_OFFER|25m lowest i go
+PRICE_OFFER|30m and we trade
+PRICE_OFFER|32m
+PRICE_OFFER|32.5m
+PRICE_OFFER|40m
+PRICE_OFFER|45m
+PRICE_OFFER|50m final
+PRICE_OFFER|55m
+PRICE_OFFER|60m take it
+PRICE_OFFER|70m
+PRICE_OFFER|75m
+PRICE_OFFER|80m
+PRICE_OFFER|90m
+PRICE_OFFER|100m
+PRICE_OFFER|110m
+PRICE_OFFER|120m
+PRICE_OFFER|130m
+PRICE_OFFER|150m
+PRICE_OFFER|200m
+PRICE_OFFER|250m
+PRICE_OFFER|300m
+PRICE_OFFER|350m
+PRICE_OFFER|400m
+PRICE_OFFER|500m
+PRICE_OFFER|550m
+PRICE_OFFER|600m
+PRICE_OFFER|650m
+PRICE_OFFER|700m
+PRICE_OFFER|750m
+PRICE_OFFER|800m
+PRICE_OFFER|850m
+PRICE_OFFER|900m
+PRICE_OFFER|1b
+PRICE_OFFER|1.1b
+PRICE_OFFER|1.2b
+PRICE_OFFER|1.5b
+PRICE_OFFER|2b
+PRICE_OFFER|9500k
+PRICE_OFFER|12.35m
+PRICE_OFFER|14,500,000
+PRICE_OFFER|10.5m and send
+PRICE_OFFER|ill do 10m
+PRICE_OFFER|i take 10m
+PRICE_OFFER|give me 10m
+PRICE_OFFER|10m is enough
+PRICE_OFFER|10m works for me
+PRICE_OFFER|i need 10m
+PRICE_OFFER|10m or nothing
+PRICE_OFFER|how about 10m
+PRICE_OFFER|what about 10m
+PRICE_OFFER|10m pls
+PRICE_OFFER|10m please
+PRICE_OFFER|last price 10m
+PRICE_OFFER|10m final offer
+PRICE_OFFER|10m and its a deal
+PRICE_OFFER|i could do 10m
+PRICE_OFFER|10m then
+PRICE_OFFER|10m ok
+ACCEPT|ok
+ACCEPT|okay
+ACCEPT|sure
+ACCEPT|deal
+ACCEPT|fine
+ACCEPT|yes
+ACCEPT|yeah
+ACCEPT|ye
+ACCEPT|yep
+ACCEPT|yup
+ACCEPT|alr
+ACCEPT|alright
+ACCEPT|bet
+ACCEPT|send
+ACCEPT|send it
+ACCEPT|done
+ACCEPT|accept
+ACCEPT|accepted
+ACCEPT|ight
+ACCEPT|ok deal
+ACCEPT|sure send it
+ACCEPT|yes trade me
+ACCEPT|yeah ill take it
+ACCEPT|fine by me
+ACCEPT|works for me
+ACCEPT|that works
+ACCEPT|ok thats fine
+ACCEPT|deal send trade
+ACCEPT|sure thing
+ACCEPT|go ahead
+ACCEPT|i accept
+ACCEPT|ok send me a trade
+ACCEPT|trade me then
+ACCEPT|sounds good
+ACCEPT|we have a deal
+ACCEPT|yep deal
+ACCEPT|ok cool
+REFUSE|no
+REFUSE|nah
+REFUSE|nope
+REFUSE|never
+REFUSE|pass
+REFUSE|naw
+REFUSE|nty
+REFUSE|noo
+REFUSE|nooo
+REFUSE|no thanks
+REFUSE|no thank you
+REFUSE|im good
+REFUSE|not interested
+REFUSE|no deal
+REFUSE|wont do that
+REFUSE|nah too low
+REFUSE|no sorry
+REFUSE|not selling for that
+REFUSE|ill pass
+REFUSE|hard pass
+REFUSE|no way
+REFUSE|absolutely not
+REFUSE|hell no
+REFUSE|no thank u im sorry
+REFUSE|i dont want that
+REFUSE|not for that price
+REFUSE|no chance
+REFUSE|no ty
+REFUSE|no thx
+REFUSE|nope sorry
+REFUSE|nah im good
+REFUSE|i keep it
+REFUSE|not today
+REFUSE|forget it
+COMPLAINT|too low
+COMPLAINT|thats low
+COMPLAINT|low
+COMPLAINT|lowball
+COMPLAINT|lowballer
+COMPLAINT|insult
+COMPLAINT|thats an insult
+COMPLAINT|worth more
+COMPLAINT|its worth more
+COMPLAINT|worth way more
+COMPLAINT|i can get more
+COMPLAINT|more than that
+COMPLAINT|higher
+COMPLAINT|can you go higher
+COMPLAINT|go higher
+COMPLAINT|thats cheap
+COMPLAINT|cheap offer
+COMPLAINT|scam
+COMPLAINT|scammer
+COMPLAINT|thats a scam
+COMPLAINT|troll
+COMPLAINT|joke
+COMPLAINT|thats a joke
+COMPLAINT|lbin is higher
+COMPLAINT|lowest bin is higher
+COMPLAINT|sells for more
+COMPLAINT|market is higher
+COMPLAINT|lowball much
+COMPLAINT|bruh thats low
+COMPLAINT|come on thats low
+COMPLAINT|not even close
+COMPLAINT|thats robbery
+COMPLAINT|robbery
+COMPLAINT|daylight robbery
+COMPLAINT|terrible price
+COMPLAINT|bad offer
+COMPLAINT|thats nothing
+COMPLAINT|youre lowballing hard
+COMPLAINT|way too low
+COMPLAINT|hell no thats low
+INSULT|are u crazy
+INSULT|are you crazy
+INSULT|crazy
+INSULT|wtf
+INSULT|what the hell
+INSULT|idiot
+INSULT|stupid
+INSULT|dumb
+INSULT|moron
+INSULT|clown
+INSULT|loser
+INSULT|broke
+INSULT|poor
+INSULT|trash
+INSULT|dogshit
+INSULT|shit offer
+INSULT|fuck off
+INSULT|get lost
+INSULT|are you dumb
+INSULT|are you stupid
+INSULT|u crazy
+INSULT|actually insane
+INSULT|insane offer
+INSULT|you must be joking
+INSULT|youre joking right
+INSULT|what a joke
+INSULT|delusional
+INSULT|clueless
+INSULT|braindead
+INSULT|shut up
+INSULT|screw you
+INSULT|nonsense
+INSULT|horrible offer
+INSULT|worst offer
+INSULT|terrible offer
+INSULT|no way lol
+INSULT|are you serious
+INSULT|seriously
+INSULT|what is wrong with you
+INSULT|youre a joke
+INSULT|this is a joke
+VALUE_CLAIM|lbin is 30m
+VALUE_CLAIM|lbin 30m
+VALUE_CLAIM|lowest bin is 30m
+VALUE_CLAIM|its worth 20m
+VALUE_CLAIM|worth like 20m
+VALUE_CLAIM|worth 20m
+VALUE_CLAIM|sells for 20m
+VALUE_CLAIM|sell for 20m
+VALUE_CLAIM|selling for 20m
+VALUE_CLAIM|median is 20m
+VALUE_CLAIM|market is 20m
+VALUE_CLAIM|on ah for 20m
+VALUE_CLAIM|ah price is 20m
+VALUE_CLAIM|cheapest is 20m
+VALUE_CLAIM|goes for 20m
+VALUE_CLAIM|value is 20m
+VALUE_CLAIM|lbin on one of those cakes is 30m
+VALUE_CLAIM|the lbin is 25m
+VALUE_CLAIM|they sell for 25m on ah
+VALUE_CLAIM|its worth at least 30m
+VALUE_CLAIM|market value is 25m
+VALUE_CLAIM|ah has them at 30m
+VALUE_CLAIM|lowest bin 28m
+VALUE_CLAIM|recent sales are 22m
+VALUE_CLAIM|they go for 30m
+VALUE_CLAIM|it sells for more than that
+VALUE_CLAIM|worth way more than that
+AH_OFFER|look at my ah
+AH_OFFER|would u lb my ah
+AH_OFFER|check my ah
+AH_OFFER|check out my ah, tons of dungeon and kudraa items ah Riruu77
+AH_OFFER|buy it from ah
+AH_OFFER|buy from ah
+AH_OFFER|buy it from my ah
+AH_OFFER|buy from my ah
+AH_OFFER|buy my ah items
+AH_OFFER|its on ah
+AH_OFFER|its on my ah
+AH_OFFER|my items are on ah
+AH_OFFER|my stuff is on ah
+AH_OFFER|my ah has it
+AH_OFFER|my ah has them
+AH_OFFER|ah has my items
+AH_OFFER|ah has them at 30m
+AH_OFFER|look at my auction
+AH_OFFER|check my auction house
+AH_OFFER|check my auctions
+AH_OFFER|my auction has it
+AH_OFFER|buy from my auction
+AH_OFFER|i listed it on ah
+AH_OFFER|i put it on ah
+AH_OFFER|i put them on ah
+AH_OFFER|you can buy it from ah
+AH_OFFER|get it from ah
+AH_OFFER|go buy it from ah
+AH_OFFER|buy it off ah
+AH_OFFER|look on my ah
+AH_OFFER|check the ah
+AH_OFFER|selling on ah
+AH_OFFER|sell it on ah
+AH_OFFER|./ah mavrin
+AH_OFFER|/ah mavrin
+QUESTION|how much
+QUESTION|how much for it
+QUESTION|whats your offer
+QUESTION|what is your offer
+QUESTION|whats your max
+QUESTION|what is your max
+QUESTION|why so low
+QUESTION|why low
+QUESTION|how come
+QUESTION|can you do 11m
+QUESTION|could you do 11m
+QUESTION|would you do 11m
+QUESTION|will you do 11m
+QUESTION|can u go higher
+QUESTION|would you go higher
+QUESTION|u there
+QUESTION|are you there
+QUESTION|you there
+QUESTION|do you take items
+QUESTION|do you buy pets
+QUESTION|do you buy this
+QUESTION|how does this work
+QUESTION|what price
+QUESTION|price
+QUESTION|how many coins
+QUESTION|what can you offer
+QUESTION|can you check the trade
+QUESTION|can you do better
+QUESTION|whats the best you can do
+QUESTION|is that your best
+QUESTION|are you a bot
+QUESTION|r u real
+QUESTION|who are you
+QUESTION|why are you doing this
+QUESTION|what does lowballing mean
+QUESTION|how long does it take
+QUESTION|do you accept this
+QUESTION|can i sell multiple
+QUESTION|do you have coins
+WAIT|wait
+WAIT|wait a sec
+WAIT|wait a second
+WAIT|one sec
+WAIT|one second
+WAIT|sec
+WAIT|second
+WAIT|give me a sec
+WAIT|gimme a sec
+WAIT|hold on
+WAIT|hold up
+WAIT|brb
+WAIT|afk
+WAIT|one moment
+WAIT|moment
+WAIT|give me a minute
+WAIT|wait pls
+WAIT|wait please
+WAIT|1 sec
+WAIT|2 sec
+WAIT|a moment
+WAIT|wait im checking
+WAIT|wait let me check
+WAIT|hold on a sec
+WAIT|give me one sec
+GREETING|hi
+GREETING|hey
+GREETING|hello
+GREETING|yo
+GREETING|sup
+GREETING|whats up
+GREETING|good morning
+GREETING|good evening
+GREETING|hi there
+GREETING|hey there
+GREETING|hello there
+GREETING|yo yo
+GREETING|heya
+GREETING|howdy
+GREETING|greetings
+GREETING|hi hi
+GREETING|hey hey
+GREETING|hello hello
+GREETING|o/
+GREETING|o7
+CONTEXT_LESS|lol
+CONTEXT_LESS|lmao
+CONTEXT_LESS|lmfao
+CONTEXT_LESS|xd
+CONTEXT_LESS|bruh
+CONTEXT_LESS|ty
+CONTEXT_LESS|thanks
+CONTEXT_LESS|thx
+CONTEXT_LESS|thank you
+CONTEXT_LESS|gg
+CONTEXT_LESS|hmm
+CONTEXT_LESS|huh
+CONTEXT_LESS|?
+CONTEXT_LESS|??
+CONTEXT_LESS|???
+CONTEXT_LESS|!!!
+CONTEXT_LESS|...
+CONTEXT_LESS|nice
+CONTEXT_LESS|cool
+CONTEXT_LESS|wow
+CONTEXT_LESS|omg
+CONTEXT_LESS|rip
+CONTEXT_LESS|fair
+CONTEXT_LESS|true
+CONTEXT_LESS|same
+CONTEXT_LESS|ikr
+CONTEXT_LESS|maybe
+CONTEXT_LESS|idk
+CONTEXT_LESS|nice one
+CONTEXT_LESS|good luck
+CONTEXT_LESS|gl
+CONTEXT_LESS|have fun
+CONTEXT_LESS|cya
+CONTEXT_LESS|bye
+CONTEXT_LESS|see ya
+CONTEXT_LESS|np
+CONTEXT_LESS|no problem
+CONTEXT_LESS|all good
+CONTEXT_LESS|interesting
+CONTEXT_LESS|weird
+CONTEXT_LESS|ok lol
+CONTEXT_LESS|haha
+CONTEXT_LESS|hehe
+CONTEXT_LESS|xD
+CONTEXT_LESS|kek
+CONTEXT_LESS|what is a lowballer
+CONTEXT_LESS|wtf is a smalltime lowballer
+CONTEXT_LESS|someone else is here
+CONTEXT_LESS|bot
+CONTEXT_LESS|this is a bot
+CONTEXT_LESS|sounds like a bot
+CONTEXT_LESS|why
+CONTEXT_LESS|what

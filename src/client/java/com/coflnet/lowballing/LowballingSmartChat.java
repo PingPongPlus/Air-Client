@@ -99,7 +99,7 @@ public final class LowballingSmartChat {
         return 0;
     }
 
-    private static long toCoins(String number, String suffix) {
+    static long toCoins(String number, String suffix) {
         String raw = number;
         double multiplier;
         if (suffix == null || suffix.isBlank()) {
@@ -175,14 +175,15 @@ public final class LowballingSmartChat {
     }
 
     /**
-     * Human typing time for a reply: a short reading pause plus about 45 ms per
-     * character, a little random, at most 5 s.
+     * Human typing time for a reply: a short reading pause plus some time per
+     * character, a little random. Every reply waits at least 3 s and at most
+     * 8 s before it is written to chat.
      */
     static long typingDelayMs(String text, double random) {
         int length = text == null ? 0 : text.length();
-        double base = 900.0 + 45.0 * length;
+        double base = 3_000.0 + Math.min(5_000.0, 35.0 * length);
         double jitter = 0.85 + 0.3 * Math.max(0, Math.min(1, random));
-        return Math.max(1_000L, Math.min(5_000L, Math.round(base * jitter)));
+        return Math.max(3_000L, Math.min(8_000L, Math.round(base * jitter)));
     }
 
     public static boolean isRefusal(String text) {
