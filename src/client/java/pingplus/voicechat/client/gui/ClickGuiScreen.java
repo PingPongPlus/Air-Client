@@ -426,6 +426,7 @@ public final class  ClickGuiScreen extends Screen {
             add(hud,new DockSizeSlider(panelWidth-20),26);
             toggle(hud,"Dock shelf",()->PlayerSettings.dockShelf,()->PlayerSettings.dockShelf=!PlayerSettings.dockShelf);
             toggle(hud,"Hotbar frame",()->PlayerSettings.dockFrames,()->PlayerSettings.dockFrames=!PlayerSettings.dockFrames);
+            toggle(hud,"Liquid glass frame",()->PlayerSettings.dockGlassFrame,()->PlayerSettings.dockGlassFrame=!PlayerSettings.dockGlassFrame);
             toggle(hud,"Auto hide",()->PlayerSettings.dockAutoHide,()->PlayerSettings.dockAutoHide=!PlayerSettings.dockAutoHide);
             add(hud,new DockAutoHideSlider(panelWidth-20),26);
         });
