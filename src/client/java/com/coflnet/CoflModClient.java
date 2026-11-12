@@ -224,6 +224,7 @@ public class CoflModClient implements ClientModInitializer {
         com.coflnet.flipper.FlipperMod.init();
         com.coflnet.ahflipper.AhFlipperMod.init();
         com.coflnet.lowballing.LowballingMod.init();
+        com.coflnet.experiments.AutoExperimentTable.init();
         com.coflnet.flipper.ServerRestartHandler.init();
         com.coflnet.ahflipper.AhAutomationConfig.load();
         com.coflnet.pathing.PathfinderSystem.init();
