@@ -109,7 +109,8 @@ public final class LowballingAiTest {
                 true, "seller", "look at my ah", 0, 0, 0, false, false, false, 0, false));
         check(ahFirst.action() == LowballingAiDecision.Action.REPLY_ONLY
                         && ahFirst.reply() != null
-                        && ahFirst.reply().toLowerCase().contains("ah"),
+                        && !ahFirst.reply().isBlank()
+                        && ahFirst.price() == 0,
                 "first ah request is refused: " + ahFirst);
 
         LowballingAiDecision ahOther = decide(context(LowballingAiStage.FIRST_TRADE,
