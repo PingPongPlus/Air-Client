@@ -23,13 +23,6 @@ loom {
             sourceSet sourceSets.client
         }
     }
-
-    runs {
-        named("client") {
-            // Auto-join Hypixel on start (like SkyHanni) for live testing.
-            programArguments.addAll("--quickPlayMultiplayer", "hypixel.net")
-        }
-    }
 }
 
 fabricApi {
