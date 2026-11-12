@@ -903,6 +903,31 @@ public final class  ClickGuiScreen extends Screen {
                 LowballingMod.CONFIG.save();
             }),26);
         });
+        toggle(skyblock,"Auto Experiment Table",com.coflnet.experiments.AutoExperimentTable::isEnabled,
+                com.coflnet.experiments.AutoExperimentTable::toggle);
+        options(skyblock,"Experiment Table Settings",()-> {
+            var ec = com.coflnet.experiments.AutoExperimentTable.CONFIG;
+            add(skyblock,new CombatSlider(panelWidth-20,"Click delay (ms)",0,
+                    com.coflnet.experiments.ExperimentConfig.MAX_CLICK_DELAY_MS,10,
+                    ()->ec.clickDelayMs,v-> {
+                ec.clickDelayMs=(int)Math.round(v);
+                ec.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Chronomatron rounds",0,
+                    com.coflnet.experiments.ExperimentConfig.MAX_ROUNDS,1,
+                    ()->ec.chronomatronRounds,v-> {
+                ec.chronomatronRounds=(int)Math.round(v);
+                ec.save();
+            }),26);
+            add(skyblock,new CombatSlider(panelWidth-20,"Ultrasequencer rounds",0,
+                    com.coflnet.experiments.ExperimentConfig.MAX_ROUNDS,1,
+                    ()->ec.ultrasequencerRounds,v-> {
+                ec.ultrasequencerRounds=(int)Math.round(v);
+                ec.save();
+            }),26);
+            optionLabel(skyblock,"0 rounds = skip that minigame");
+            optionLabel(skyblock,"Superpairs always plays until out of clicks");
+        });
         options(skyblock,"General", null,()-> {
             toggle(skyblock,"No particles",()->PlayerSettings.hideParticles,()->PlayerSettings.hideParticles=!PlayerSettings.hideParticles);
             toggle(skyblock,"No mob names",()->PlayerSettings.hideMobNames,()->{
