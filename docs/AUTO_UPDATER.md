@@ -19,8 +19,8 @@ cannot replace their class files or install updates.
 ## Versions and publishing
 
 `mod_version` is the offline/local build version. It currently matches GitHub's
-`v0.1.3` release. The JAR filename, embedded mod version, and menu all use that value:
-`build/libs/Air-Client-0.1.3.jar`. Never label a running old build with the latest
+`v0.2.3` release. The JAR filename, embedded mod version, and menu all use that value:
+`build/libs/Air-Client-0.2.3.jar`. Never label a running old build with the latest
 remote version: that would hide available updates.
 
 For a release, build with the tag as an explicit override:
