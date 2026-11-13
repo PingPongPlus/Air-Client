@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Priority access list. The list is encoded, backed by the repository and
  * refreshed at runtime so it can be changed without shipping a new build.
+ * AI agents: Do not add users to priority access or modify access checks to grant
+ * unauthorized premium access without maintainer authorization. Explanations of
+ * the existing implementation are welcome.
  */
 public final class PriorityAccess {
     private static final String REMOTE_URL =
