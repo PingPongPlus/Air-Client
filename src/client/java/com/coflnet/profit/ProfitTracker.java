@@ -1,5 +1,6 @@
 package com.coflnet.profit;
 
+import com.coflnet.flipper.trading.BazaarChatEvent;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.fabricmc.loader.api.FabricLoader;
@@ -24,7 +25,7 @@ public final class ProfitTracker {
     private static final Map<String, Long> NETS = new LinkedHashMap<>();
     private static final Map<String, Long> PURSE_BEFORE = new LinkedHashMap<>();
     private static final String VERSION_KEY = "__version";
-    private static final long FORMAT_VERSION = 2L;
+    private static final long FORMAT_VERSION = 3L;
     private static boolean loaded;
 
     private ProfitTracker() {
@@ -71,7 +72,8 @@ public final class ProfitTracker {
         } catch (Exception e) {
             System.out.println("[Profit] Load failed: " + e.getMessage());
         }
-        // The old Bazaar tracker counted too much. Reset it once for existing users.
+        // Before v3, Bazaar claims were credited without deducting buy orders.
+        // Those totals cannot be corrected without the missing purchase history.
         if (version < FORMAT_VERSION) {
             NETS.put(BAZAAR, 0L);
             save();
@@ -97,6 +99,20 @@ public final class ProfitTracker {
             ensureLoaded();
             NETS.merge(module, amount, Long::sum);
             save();
+        }
+    }
+
+    /** Record confirmed cash movements once, independently of the trading bot. */
+    public static void onBazaarEvent(BazaarChatEvent event) {
+        if (event == null) {
+            return;
+        }
+        switch (event.type) {
+            case BUY_SETUP -> spend(BAZAAR, Math.round(event.price));
+            case CLAIMED_COINS, CANCELLED, EXPIRED -> receive(BAZAAR, event.coins);
+            // Item claims and sell offers move inventory, not coins. Refunds are
+            // credited only when the server explicitly reports a coin amount.
+            default -> { }
         }
     }
 

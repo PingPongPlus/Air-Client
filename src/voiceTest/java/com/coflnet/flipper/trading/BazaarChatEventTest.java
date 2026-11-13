@@ -28,6 +28,12 @@ public final class BazaarChatEventTest {
                 "[Bazaar] Cancelled! Refunded 1,000,000 coins from cancelling Buy Order!");
         check("cancelled buy order", buyCancel != null
                 && buyCancel.side == BazaarChatEvent.Side.BUY);
+        check("buy cancellation coin refund", buyCancel != null && buyCancel.coins == 1_000_000L);
+        check("sell cancellation is an item refund", sellCancel != null && sellCancel.coins == 0L);
+
+        BazaarChatEvent decimalRefund = BazaarChatEvent.parse(
+                "[Bazaar] Cancelled! Refunded 600,000.5 coins from cancelling Buy Order!");
+        check("fractional coin refund", decimalRefund != null && decimalRefund.coins == 600_001L);
 
         BazaarChatEvent setup = BazaarChatEvent.parse(
                 "[Bazaar] Sell Offer Setup! 5x Singed Powder for 5,040,129 coins.");

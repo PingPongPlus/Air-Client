@@ -1,5 +1,6 @@
 package com.coflnet.flipper.trading;
 
+import com.coflnet.profit.ProfitTracker;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -51,6 +52,7 @@ public class BazaarChatListener {
                     }
                 }
                 if (event != null) {
+                    ProfitTracker.onBazaarEvent(event);
                     BazaarLimits.onEvent(event);
                     Trader trader = Trader.get();
                     if (trader != null) {

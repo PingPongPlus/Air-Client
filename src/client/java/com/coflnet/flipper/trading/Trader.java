@@ -7,7 +7,6 @@ import com.coflnet.flipper.data.BazaarApi;
 import com.coflnet.flipper.data.BazaarPriceHistory;
 import com.coflnet.flipper.data.ItemNames;
 import com.coflnet.flipper.data.MarketData;
-import com.coflnet.profit.ProfitTracker;
 
 import net.minecraft.network.chat.Component;
 
@@ -2762,7 +2761,6 @@ public class Trader {
                 }
                 case CLAIMED_COINS -> {
                     orderLimitReached = false;
-                    ProfitTracker.receive(ProfitTracker.BAZAAR, event.coins);
                     Trade trade = null;
                     if (event.item != null && !event.item.isBlank()) {
                         trade = ledger.firstMatching(event.item, Trade.State.SOLD);

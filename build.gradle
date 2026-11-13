@@ -181,6 +181,14 @@ tasks.register('bazaarChatEventTest', JavaExec) {
 }
 tasks.named('check') { dependsOn 'bazaarChatEventTest' }
 
+tasks.register('bazaarProfitTest', JavaExec) {
+    dependsOn voiceTestClasses, clientClasses
+    classpath = sourceSets.voiceTest.runtimeClasspath
+    mainClass = 'com.coflnet.profit.BazaarProfitTest'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.named('check') { dependsOn 'bazaarProfitTest' }
+
 tasks.register('spotifySmokeTest', JavaExec) {
     dependsOn voiceTestClasses, clientClasses
     classpath = sourceSets.voiceTest.runtimeClasspath

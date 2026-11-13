@@ -90,12 +90,14 @@ public class BazaarChatEvent {
                 event.item = extractItemAfterClaim(stripped);
                 event.qty = firstNumber(stripped);
                 event.price = firstDecimal(stripped);
+                parseRefund(event, stripped);
                 return event;
             }
             if (stripped.contains("expired") || stripped.contains("Expired")) {
                 event.type = Type.EXPIRED;
                 event.item = extractItemAfterClaim(stripped);
                 event.qty = firstNumber(stripped);
+                parseRefund(event, stripped);
                 return event;
             }
             return parseWithoutPrefix(event, stripped);
@@ -128,6 +130,14 @@ public class BazaarChatEvent {
             }
         }
         return null;
+    }
+
+    private static void parseRefund(BazaarChatEvent event, String stripped) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(?i)Refunded ([\\d,]+(?:\\.\\d+)?) coins").matcher(stripped);
+        if (matcher.find()) {
+            event.coins = Math.round(parseDouble(matcher.group(1)));
+        }
     }
 
     private static void parseSetup(BazaarChatEvent event, String stripped) {
