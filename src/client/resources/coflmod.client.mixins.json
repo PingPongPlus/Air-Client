@@ -3,6 +3,8 @@
   "package": "com.coflnet.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "BackgroundAutomationMixin",
+    "BackgroundFramerateMixin",
     "ChatScreenMixin",
     "ClientPlayerEntityMixin",
     "FlipperSignFillMixin",
