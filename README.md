@@ -11,6 +11,7 @@ Build it yourself with **Java 25** using `./gradlew build` (`gradlew.bat build` 
 3. Launch the Fabric profile. Press **Right Shift** for client settings, **G** to edit the HUD, or **V** for voice chat settings.
 
 The main menu shows the installed version and an **Update** button when a newer GitHub release is available. Download it there, then quit and relaunch Minecraft to apply it. See [updater and release instructions](docs/AUTO_UPDATER.md).
+<img width="1919" height="1046" alt="image" src="https://github.com/user-attachments/assets/6491ab15-b6e2-4656-8b89-96bc15a3435a" />
 
 ![Menu screen](docs/readme/menu.png)
 ![Settings screen](docs/readme/settings.png)
